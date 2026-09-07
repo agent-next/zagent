@@ -1,0 +1,28 @@
+name: test-matrix
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        # All three run here: this repo is public, so Actions minutes are free
+        # and unlimited. The private source repo runs ubuntu only, because there
+        # Windows bills 2x and macOS 10x.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      # Pure-unit cross-platform suite: no runtime, no API key, no PTY. Live-protocol
+      # and PTY suites stay on the ubuntu lane (.github/workflows/test.yml).
+      - name: unit tests (cross-platform)
+        run: node --test packages/driver/test-util.mjs packages/driver/test-runtime-xplat.mjs packages/driver/test-extract.mjs packages/driver/test-runtime-info.mjs packages/driver/test-plugins.mjs packages/driver/test-attachments.mjs packages/driver/test-mentions.mjs packages/driver/test-memory.mjs packages/driver/test-diffs.mjs packages/driver/test-reset-shape.mjs packages/driver/test-automation.mjs packages/driver/test-settings.mjs packages/driver/test-tasks-index.mjs packages/driver/test-headless-retry.mjs packages/driver/test-xplat-coverage.mjs packages/driver/test-path-hygiene.mjs packages/driver/test-release-gate.mjs packages/driver/test-offpeak-command.mjs packages/driver/test-tui-launch.mjs packages/tui/test-theme.mjs packages/tui/test-events.mjs packages/tui/test-render.mjs packages/tui/test-chrome.mjs packages/tui/test-keys.mjs packages/tui/test-screen.mjs packages/tui/test-markdown.mjs packages/tui/test-sanitize.mjs packages/tui/test-width.mjs packages/tui/test-strings.mjs packages/tui/test-runtui.mjs packages/tui/test-frame-cache.mjs packages/tui/test-complete.mjs packages/tui/test-pickers.mjs packages/driver/test-marketplace-refresh.mjs packages/driver/test-provider-errors.mjs packages/tui/test-turn-end.mjs
+        shell: bash
