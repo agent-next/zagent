@@ -434,6 +434,15 @@ export async function runTui(host = {}) {
     // prompt swallowed it, so neither abort nor double-ctrl-c exit worked while a
     // prompt was on screen — contradicting the UI's own "press ctrl+c again" hint.
     if (event.name === 'ctrl-c' && ui.permission) {
+      // The doubled press must leave from here too. This branch returned before
+      // reaching the double-press check below, so a permission prompt trapped the
+      // session: ctrl+c only ever denied-and-interrupted, and the prompt reopened
+      // on the next tool call. Found by the journey fuzzer, which could not exit a
+      // session with a prompt on screen and had to SIGKILL it. Same defect class as
+      // the busy branch, in the one place that fix did not reach.
+      const now = Date.now();
+      if (now - ui.lastCtrlC < DOUBLE_CTRL_C_MS) { denyPendingPermission(); quit(); return; }
+      ui.lastCtrlC = now;
       denyPendingPermission();
       interrupt();
       return;
