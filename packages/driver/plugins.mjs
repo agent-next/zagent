@@ -92,6 +92,52 @@ export function updateLine(rows) {
 import { createHash, randomUUID } from 'node:crypto';
 import { defaultUnzipCmd } from './extract.mjs';
 
+/** The official marketplace, as the runtime itself records it. */
+export const OFFICIAL_MARKETPLACE_URL = 'https://cdn-zcode.z.ai/zcode/official-plugin/marketplace.json';
+
+/**
+ * Refresh a marketplace catalog from its source of truth.
+ *
+ * installPlugin() has always verified and installed correctly, but the CLI only
+ * ever read the LOCAL cache — and that cache is written by the desktop app, so on
+ * this machine it was 5 weeks stale and listed 2 plugins while the CDN listed 18.
+ * `zagent plugins install video2code` therefore failed with "no verifiable source"
+ * for a plugin that exists and is published.
+ *
+ * The URL comes from the runtime's own known_marketplaces.json when present, and
+ * is required to be https on the official CDN host — a local file is not a
+ * sufficient reason to fetch from anywhere.
+ */
+export async function fetchMarketplace({ marketplaceId = 'zcode-plugins-official', home = os.homedir(),
+  fetchImpl = fetch, timeoutMs = 8000, write = true } = {}) {
+  let url = OFFICIAL_MARKETPLACE_URL;
+  try {
+    const known = JSON.parse(readFileSync(`${home}/.zcode/cli/plugins/known_marketplaces.json`, 'utf8'));
+    const entry = (known?.marketplaces ?? []).find(m => m?.id === marketplaceId);
+    if (typeof entry?.source?.url === 'string') url = entry.source.url;
+  } catch { /* no record: the official default stands */ }
+
+  const parsed = (() => { try { return new URL(url); } catch { return null; } })();
+  if (!parsed || parsed.protocol !== 'https:' || parsed.hostname !== 'cdn-zcode.z.ai')
+    throw new Error(`marketplace refresh: refusing a non-official source (${url})`);
+
+  const r = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!r.ok) throw new Error(`marketplace refresh: http ${r.status}`);
+  const json = await r.json();
+  if (!Array.isArray(json?.plugins)) throw new Error('marketplace refresh: response has no plugins array');
+
+  if (write) {
+    // Cache beside the runtime's own copy, under our own filename, so a refresh
+    // never overwrites what the desktop app maintains.
+    const dir = `${home}/.zcode/cli/plugins/marketplaces/${marketplaceId}`;
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(`${dir}/zagent-marketplace.json`, JSON.stringify(json, null, 1));
+    } catch { /* a read-only home must not fail the install */ }
+  }
+  return json;
+}
+
 export async function installPlugin({ name, marketplaceJson, marketplaceId = 'zcode-plugins-official', home = os.homedir(),
   fetchImpl = fetch, renameImpl = renameSync,
   unzipCmd = defaultUnzipCmd() } = {}) {

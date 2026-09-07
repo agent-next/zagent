@@ -20,20 +20,38 @@ const env = {
   npm_config_userconfig: path.join(fixture, 'absent-npmrc'),
   npm_config_registry: 'https://registry.npmjs.org/',
 };
+/**
+ * What the published payload may and may not contain. Exported so the repo's
+ * drift test can assert against the REAL predicates — it used to scrape them out
+ * of this file with a regex, which broke on Windows the moment the checkout used
+ * CRLF line endings.
+ */
+export const allowed = file => ['package.json', 'package-lock.json', 'VERSION', 'README.md', 'LICENSE', 'NOTICE',
+  'bin/zmax', 'bin/zcodes', 'bin/zquota',
+  // This script itself: the exported package's `npm test` runs it, so it ships.
+  'scripts/verify-public-package.mjs'].includes(file)
+  || /^packages\/(driver|cli|tui)\/[\w-]+\.mjs$/.test(file);
+
+// These name the INTERNAL filenames (zmax-*, zmaxd*), which were deliberately not
+// renamed when the product became zagent. A rename-time find/replace turned them
+// into zagent-*, which matches nothing on disk — so the block was dead for
+// zmax-wechat, zmax-compact, zmaxd and zmaxd-compact.
+export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|daemon-request|zmax-(?:telegram|feishu|wechat|compact)|zmaxd[^/]*)\.mjs$/;
+
+// Importing this module must not pack and install anything; only running it does.
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (!isMain) { /* imported for its predicates */ }
+
 const run = (cmd, args, cwd = fixture, expected = 0) => {
   const result = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: 120000 });
   assert.ifError(result.error);
   assert.equal(result.status, expected, `${cmd} ${args.join(' ')}: ${result.stderr}\n${result.stdout}`);
   return result.stdout;
 };
-try {
+if (isMain) try {
   const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   const [packed] = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', fixture], root));
   const files = packed.files.map(f => f.path);
-  const allowed = file => ['package.json', 'package-lock.json', 'VERSION', 'README.md', 'LICENSE', 'NOTICE',
-    'bin/zmax', 'bin/zcodes', 'bin/zquota'].includes(file)
-    || /^packages\/(driver|cli)\/[\w-]+\.mjs$/.test(file);
-  const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|daemon-request|zagent-(?:telegram|feishu|wechat|compact)|zagentd[^/]*)\.mjs$/;
   assert(files.length > 10, 'payload must contain actual runtime modules');
   for (const file of files) {
     assert(allowed(file), `unexpected npm payload: ${file}`);
@@ -41,6 +59,14 @@ try {
   }
   for (const file of ['bin/zmax', 'VERSION', 'packages/cli/zmax.mjs', 'packages/driver/zcode-protocol.mjs'])
     assert(files.includes(file), `required package file missing: ${file}`);
+  // Naming four paths is not enough: npm pack silently omits any listed file that
+  // does not exist, so the payload must contain everything files[] promised.
+  // Without this, deleting a module while leaving it listed ships a package that
+  // fails with ERR_MODULE_NOT_FOUND on the headline command, with the gate green.
+  for (const declared of pkg.files) {
+    assert(files.includes(declared),
+      `files[] declares ${declared} but npm pack did not ship it — does it exist on disk?`);
+  }
   const tarball = path.join(fixture, packed.filename);
   const sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex');
   const prefix = path.join(fixture, 'install');

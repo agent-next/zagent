@@ -47,8 +47,9 @@ zagent                         # interactive TUI
 ### Requirements
 
 - **Node.js ≥ 22.5**
-- **A GLM Coding Plan** and your own installed **ZCode runtime** — the third-party `zcode-app-cli`
-  (required for the interactive TUI) or the ZCode desktop bundle (headless).
+- **A GLM Coding Plan** and your own installed **ZCode runtime** — the ZCode desktop app, or the
+  third-party `zcode-app-cli`. Either works for both headless and interactive use: zagent brings
+  its own TUI, so no third-party package is required.
 
 ### Authentication — your GLM Coding Plan
 
@@ -85,7 +86,15 @@ sent only to your own provider endpoint.
 
 zagent is a thin, protocol-first client. It discovers a compatible runtime — `ZCODE_RUNTIME`
 first, then `zcode-app-cli`, then the ZCode desktop bundle per OS — and drives it over its native
-protocol. It ships **no** runtime binaries and uses **your** Coding Plan. Running it can make real
+protocol.
+
+The interactive TUI is zagent's own (`packages/tui`). The ZCode runtime imports a `@zcode/tui`
+module that z.ai does not ship, so on a stock desktop install `zcode tui` fails with
+`Cannot find package '@zcode/tui'`; zagent supplies that module through a Node ESM resolve hook.
+The runtime is read **in place** — nothing is copied, patched, or written into its install root.
+Set `ZAGENT_TUI=runtime` to hand off to a TUI the runtime vendors instead.
+
+It ships **no** runtime binaries and uses **your** Coding Plan. Running it can make real
 requests and execute tools with your permissions, so use trusted workspaces and review changes.
 
 Not auto-discovered? Point at it explicitly:

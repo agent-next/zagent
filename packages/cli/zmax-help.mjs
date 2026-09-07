@@ -14,6 +14,7 @@ const CMDS = [
   ['diff [sessionId]', 'per-turn +A -D aggregate + per-file hunks'],
   ['task list|archive|pin|rename|delete', 'inspect or modify existing runtime task records (no create)'],
   ['memory show|index|append', 'runtime-compatible memory store'],
+  ['offpeak [--refresh|--json]', 'is GLM-5.3-Flash free right now (exit 0 = yes)'],
   ['cron add|list|tick', 'scheduled prompts (heartbeat receipts, no daemon)'],
   ['plugins', 'inspect and manage local plugins'],
 ];

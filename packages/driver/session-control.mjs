@@ -97,7 +97,7 @@ export function replayEvents(client, sessionId, { afterSeq, limit } = {}) {
 }
 
 // A3: subscribed-event catalog — 6 types live-captured 2026-09-06 on the desktop-continuous
-// lane during an agentic edit turn; authoritative receipt: artifacts/verify/a3-catalog-2026-09-06.md.
+// lane during an agentic edit turn; verified by execution
 // fileChanges/fileRewindPreview do NOT ride this lane (relay/web-remote-replayable payloads).
 export const SESSION_EVENT_TYPES = ['session.titleUpdated', 'turn.started', 'session.updated',
   'model.streaming', 'tool.updated', 'streamRecovery.updated'];

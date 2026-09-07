@@ -1,8 +1,13 @@
 #!/usr/bin/env node
-// zagent — zcode-cli TUI entry. Finds a ZCode runtime on THIS machine (never vendors one),
+// zagent — TUI entry. Finds a ZCode runtime on THIS machine (never vendors one),
 // bootstraps ~/.zcode/cli/config.json if absent, and hands off to the interactive TUI or
-// headless -p. Runtime preference: zcode-app-cli install (its launcher+TUI) > official
-// desktop bundle (headless only, no TUI package shipped).
+// headless -p.
+//
+// The interactive path supplies OUR OWN TUI (packages/tui) through a Node ESM resolve
+// hook. The official kernel imports '@zcode/tui' and z.ai ships no implementation, so a
+// desktop-only install used to die with "Cannot find package '@zcode/tui'" and interactive
+// use required the third-party zcode-app-cli. Set ZAGENT_TUI=runtime to hand off to
+// whatever TUI the runtime itself vendors, or =auto to prefer the runtime's when present.
 import { spawn } from 'node:child_process';
 const NODE = process.execPath; // eslint-disable-line
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
@@ -10,6 +15,7 @@ import os from 'node:os';
 
 import { findRuntime } from '../driver/runtime.mjs';
 import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs';
+import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
 
 function ensureConfig() { // same shape kingsword09's launcher creates; ours adds nothing secret
   const dir = `${os.homedir()}/.zcode/cli`;
@@ -35,7 +41,7 @@ function ensureConfig() { // same shape kingsword09's launcher creates; ours add
   mkdirSync(dir, { recursive: true });
   let key = process.env.ZAI_API_KEY;
   if (!key) { try { key = readFileSync(`${os.homedir()}/.config/ccz/.api_key`, 'utf8').trim(); } catch {} }
-  if (!key) { console.error('zagent: no API key — set ZAI_API_KEY (see doctor)'); process.exit(1); }
+  if (!key) { console.error('zagent: no GLM Coding Plan credential — set ZAI_API_KEY (see doctor)'); process.exit(1); }
   // Launcher-native shape (provider key "zai" — what the TUI's /login and model picker
   // expect). The builtin:zai-coding-plan key is NOT recognized by the TUI (owner-verified
   // failure 2026-09-04: "Model access is not configured" banner + /login overwrite).
@@ -75,6 +81,19 @@ if (args[0] === 'doctor' || !rt) {
     } catch { invalidConfig = true; }
   }
   console.log(rt ? `runtime: ${rt.kind} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  // Before zagent shipped its own TUI, doctor exited 0 on a desktop-only install while
+  // the headline command (`zagent`) died with "Cannot find package '@zcode/tui'". A gate
+  // that reports healthy for a configuration whose primary path crashes is a defect.
+  if (rt) {
+    // Ask the launcher rather than re-deriving its rule: a hand-copied verdict
+    // would keep reporting healthy after the launcher's rule changed.
+    const launch = buildLaunchArgs({ entry: rt.entry, args: [], preference: tuiPreference() });
+    const source = launch.tui === 'zagent' ? 'zagent (built in)'
+      : launch.ships ? 'runtime-provided' : 'NONE';
+    console.log(`interactive TUI: ${source}${source === 'NONE'
+      ? ' — ZAGENT_TUI=runtime is set but this runtime ships no @zcode/tui; unset it' : ''}`);
+    if (source === 'NONE') invalidConfig = true; // interactive use is broken; do not exit 0
+  }
   if (rt && args.includes('--capabilities')) {
     const { ZCodeProtocolClient } = await import(new URL('../driver/zcode-protocol.mjs', import.meta.url).href);
     let c;
@@ -88,7 +107,7 @@ if (args[0] === 'doctor' || !rt) {
     } catch (e) { console.error(`capabilities: probe failed (${String(e?.message ?? e).slice(0, 80)})`); }
     finally { try { c?.close(); } catch {} } // r1: spawned runtime always terminated
   }
-  console.log(`config: ${invalidConfig ? 'INVALID CONFIG — repair the JSON object manually; existing file preserved' : existsSync(cfg) ? 'present' : !rt ? 'blocked: no runtime found (fix runtime first)' : haveKey ? 'will be created on first run (doctor --fix to do it now)' : 'NO API KEY — export ZAI_API_KEY'}`);
+  console.log(`config: ${invalidConfig ? 'INVALID CONFIG — repair the JSON object manually; existing file preserved' : existsSync(cfg) ? 'present' : !rt ? 'blocked: no runtime found (fix runtime first)' : haveKey ? 'will be created on first run (doctor --fix to do it now)' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'}`);
   for (const w of warnings) console.log(`warn: ${w}`);
   if (fixes.length) console.log(`fixed: ${fixes.join(', ')}`);
   process.exit(rt && !invalidConfig && (existsSync(cfg) || haveKey) ? 0 : 1); // doctor must fail when the diagnosis is unhealthy
@@ -109,7 +128,12 @@ if (headlessJson) {
   // envelopes — the m5 4/4 regression root cause).
   process.stdout.write(r.stdout, done); // r6 #1: write-true ≠ flushed; callback form is the only safe exit
 } else { // interactive/other paths — the headless branch schedules its own exit above
-  const child = spawn(NODE, [rt.entry, ...args], { cwd: process.cwd(), stdio: 'inherit' });
+  const launch = buildLaunchArgs({ entry: rt.entry, args, preference: tuiPreference() });
+  if (launch.tui === 'runtime' && !launch.ships) {
+    console.error("zagent: ZAGENT_TUI=runtime, but this runtime ships no '@zcode/tui'. Unset it to use zagent's own TUI.");
+    process.exit(1);
+  }
+  const child = spawn(NODE, launch.argv, { cwd: process.cwd(), stdio: 'inherit' });
   child.on('error', e => { console.error('zagent:', e.message); process.exit(1); });
   child.on('exit', (c, sig) => process.exit(c ?? (sig ? 1 : 0))); // signal death is failure, not success
 }

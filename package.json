@@ -1,6 +1,6 @@
 {
   "name": "zagent",
-  "version": "0.0.180",
+  "version": "0.0.184",
   "description": "Unofficial terminal client for a separately installed ZCode runtime.",
   "type": "module",
   "license": "MIT",
@@ -12,19 +12,32 @@
     "za": "bin/zmax"
   },
   "engines": {
-    "node": ">=22.5"
+    "node": "^22.15.0 || >=23.5.0"
   },
   "dependencies": {
     "ws": "8.21.3"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "tag": "next"
+    "registry": "https://registry.npmjs.org/"
   },
   "files": [
-    "bin/zmax",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "VERSION",
     "bin/zcodes",
+    "bin/zmax",
     "bin/zquota",
+    "packages/cli/zmax-cron.mjs",
+    "packages/cli/zmax-diff.mjs",
+    "packages/cli/zmax-help.mjs",
+    "packages/cli/zmax-memory.mjs",
+    "packages/cli/zmax-models.mjs",
+    "packages/cli/zmax-offpeak.mjs",
+    "packages/cli/zmax-onboard.mjs",
+    "packages/cli/zmax-plugins.mjs",
+    "packages/cli/zmax-task.mjs",
+    "packages/cli/zmax.mjs",
     "packages/driver/automation.mjs",
     "packages/driver/credentials.mjs",
     "packages/driver/diffs.mjs",
@@ -42,20 +55,23 @@
     "packages/driver/runtime.mjs",
     "packages/driver/session-control.mjs",
     "packages/driver/tasks-index.mjs",
+    "packages/driver/tui-launch.mjs",
     "packages/driver/zcode-protocol.mjs",
-    "packages/cli/zmax-cron.mjs",
-    "packages/cli/zmax-diff.mjs",
-    "packages/cli/zmax-help.mjs",
-    "packages/cli/zmax-memory.mjs",
-    "packages/cli/zmax-models.mjs",
-    "packages/cli/zmax-onboard.mjs",
-    "packages/cli/zmax-plugins.mjs",
-    "packages/cli/zmax-task.mjs",
-    "packages/cli/zmax.mjs",
-    "VERSION",
-    "LICENSE",
-    "NOTICE",
-    "README.md"
+    "packages/tui/chrome.mjs",
+    "packages/tui/complete.mjs",
+    "packages/tui/events.mjs",
+    "packages/tui/index.mjs",
+    "packages/tui/keys.mjs",
+    "packages/tui/loader.mjs",
+    "packages/tui/markdown.mjs",
+    "packages/tui/pickers.mjs",
+    "packages/tui/render.mjs",
+    "packages/tui/sanitize.mjs",
+    "packages/tui/screen.mjs",
+    "packages/tui/strings.mjs",
+    "packages/tui/theme.mjs",
+    "packages/tui/width.mjs",
+    "scripts/verify-public-package.mjs"
   ],
   "repository": {
     "type": "git",
@@ -71,7 +87,6 @@
     "llm",
     "terminal",
     "tui",
-    "z-ai",
     "zagent",
     "zcode"
   ],

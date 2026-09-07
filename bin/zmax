@@ -1,22 +1,62 @@
-#!/usr/bin/env bash
-# zagent — single entry (za). Portable: resolves the repo root from this script's location.
-R="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-NODE_BIN="${NODE:-$(command -v node || echo /usr/bin/node)}"
-case "$1" in
-  --version|-V|version) exec "$NODE_BIN" -p "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).version" "$R/package.json" ;;
-  --help|-h) exec "$NODE_BIN" "$R/packages/cli/zmax-help.mjs" ;;
-  telegram|feishu|wechat|compact|dcompact|plugin-validate)
-    echo "zagent: $1 is source-only experimental functionality, not included in this public candidate." >&2
-    exit 2 ;;
-  quota)    shift; exec "$NODE_BIN" "$R/bin/zquota" "$@" ;;
-  sessions) shift; exec "$NODE_BIN" --experimental-sqlite "$R/bin/zcodes" "$@" ;;
-  diff)     shift; exec "$NODE_BIN" "$R/packages/cli/zmax-diff.mjs" "$@" ;;
-  onboard)  shift; exec "$NODE_BIN" "$R/packages/cli/zmax-onboard.mjs" "$@" ;;
-  cron)     shift; exec "$NODE_BIN" "$R/packages/cli/zmax-cron.mjs" "$@" ;;
-  task)     shift; exec "$NODE_BIN" --experimental-sqlite "$R/packages/cli/zmax-task.mjs" "$@" ;;
-  memory)   shift; exec "$NODE_BIN" "$R/packages/cli/zmax-memory.mjs" "$@" ;;
-  models)   shift; exec "$NODE_BIN" "$R/packages/cli/zmax-models.mjs" "$@" ;;
-  help)     shift; exec "$NODE_BIN" "$R/packages/cli/zmax-help.mjs" "$@" ;;
-  plugins)  shift; exec "$NODE_BIN" "$R/packages/cli/zmax-plugins.mjs" "$@" ;;
-  *)        exec "$NODE_BIN" "$R/packages/cli/zmax.mjs" "$@" ;;
-esac
+#!/usr/bin/env node
+// zagent — single entry (also installed as `za`).
+//
+// This was a bash script. npm generated a .cmd shim for it on Windows that
+// resolves the interpreter to `bash`, so `npm install -g zagent` succeeded there
+// and every invocation then died with "'bash' is not recognized" — while
+// package.json declared no `os` field, so npm issued no warning and the README
+// advertised cross-platform support. It also used `readlink -f`, which BSD
+// readlink (older macOS) does not support: `$R` silently became the parent of the
+// cwd rather than the package root.
+//
+// Node is already a hard dependency, so the dispatcher is written in it.
+
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const [command, ...rest] = process.argv.slice(2);
+
+/** Subcommand -> the script that implements it, and whether it needs node:sqlite. */
+const ROUTES = {
+  quota: ['bin/zquota'],
+  sessions: ['bin/zcodes', '--experimental-sqlite'],
+  diff: ['packages/cli/zmax-diff.mjs'],
+  onboard: ['packages/cli/zmax-onboard.mjs'],
+  cron: ['packages/cli/zmax-cron.mjs'],
+  task: ['packages/cli/zmax-task.mjs', '--experimental-sqlite'],
+  memory: ['packages/cli/zmax-memory.mjs'],
+  offpeak: ['packages/cli/zmax-offpeak.mjs'],
+  models: ['packages/cli/zmax-models.mjs'],
+  help: ['packages/cli/zmax-help.mjs'],
+  plugins: ['packages/cli/zmax-plugins.mjs'],
+};
+
+/** Present in the source repo, deliberately not part of this distribution. */
+const SOURCE_ONLY = new Set(['telegram', 'feishu', 'wechat', 'compact', 'dcompact', 'plugin-validate']);
+
+/** Run a script under this same Node and inherit its exit status. */
+const run = (script, nodeArgs = [], args = []) => {
+  const r = spawnSync(process.execPath, [...nodeArgs, path.join(root, script), ...args], { stdio: 'inherit' });
+  if (r.error) { console.error(`zagent: ${r.error.message}`); process.exit(1); }
+  // A signal death is a failure, not a success.
+  process.exit(r.status ?? (r.signal ? 1 : 0));
+};
+
+if (command === '--version' || command === '-V' || command === 'version') {
+  process.stdout.write(`${JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version}\n`);
+  process.exit(0);
+}
+if (command === '--help' || command === '-h') run('packages/cli/zmax-help.mjs');
+if (SOURCE_ONLY.has(command)) {
+  console.error(`zagent: ${command} is source-only experimental functionality, not included in this public candidate.`);
+  process.exit(2);
+}
+if (Object.hasOwn(ROUTES, command)) {
+  const [script, ...nodeArgs] = ROUTES[command];
+  run(script, nodeArgs, rest);
+}
+// Everything else, including no arguments at all, is the main entry.
+run('packages/cli/zmax.mjs', [], process.argv.slice(2));
