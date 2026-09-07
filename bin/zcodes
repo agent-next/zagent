@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+// zcodes — session/task panel: lists runtime sessions (live via protocol) joined with
+// GUI task titles (read-only tasks-index.sqlite). Parity: GUI task list, minimal.
+import { ZCodeProtocolClient } from '../packages/driver/zcode-protocol.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import os from 'node:os';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+const KW = { dim: s => `\x1b[2m${s}\x1b[0m`, grn: s => `\x1b[32m${s}\x1b[0m`, ylw: s => `\x1b[33m${s}\x1b[0m`, bold: s => `\x1b[1m${s}\x1b[0m` };
+const ago = ts => { const m = Math.round((Date.now() - ts) / 60000); return m < 60 ? `${m}m` : `${Math.round(m / 60)}h`; };
+
+// 1) GUI task index (read-only): title + status + pin/archive state per task_id
+const tasks = new Map();
+try {
+  const db = new DatabaseSync(`${os.homedir()}/.zcode/v2/tasks-index.sqlite`, { readOnly: true });
+  for (const r of db.prepare('SELECT task_id, title, task_status, pinned, archived, updated_at FROM tasks').all()) {
+    tasks.set(r.task_id, r);
+  }
+} catch (e) { console.error(KW.dim(`(tasks-index: ${e.message})`)); }
+
+// 2) Live sessions from the runtime
+const c = new ZCodeProtocolClient({ cwd: process.cwd() });
+await sleep(1200);
+const { sessions } = await c.listSessions();
+c.close();
+const rows = sessions
+  .map(s => ({ ...s, gui: tasks.get(s.sessionId) }))
+  .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+  .slice(0, 30);
+console.log(KW.bold(`${rows.length} sessions (newest first)`));
+for (const s of rows) {
+  const flag = s.gui ? (s.gui.pinned ? '📌' : s.gui.archived ? KW.dim('arch') : 'gui') : KW.dim('cli');
+  const st = s.status === 'running' ? KW.ylw(s.status) : KW.grn(s.status);
+  const ws = (s.workspace?.workspacePath ?? '').replace(os.homedir(), '~');
+  console.log(`${KW.dim(ago(s.updatedAt ?? Date.now())).padStart(5)}  ${String(s.sessionId).slice(5, 13)}  ${st.padEnd(9)} ${String(flag).padEnd(4)} ${(s.gui?.title ?? s.title ?? '').slice(0, 48).padEnd(48)} ${KW.dim(ws.slice(-38))}`);
+}

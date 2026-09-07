@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+// zquota — coding-plan quota/entitlement panel (B2/B2b). Usage: node bin/zquota [balance|preview|reset] [--json]
+import { billing, resetStatus } from '../packages/driver/quota.mjs';
+import { normalizeReset, resetLine } from '../packages/driver/reset-shape.mjs';
+const args = process.argv.slice(2);
+const which = args[0] ?? 'balance';
+const raw = args.includes('--json');
+if (which === 'reset' && !raw) {
+  const { status, body } = await resetStatus();
+  console.log(JSON.stringify({ http: status, ...normalizeReset(body) }, null, 1));
+  console.log(resetLine(normalizeReset(body)));
+} else {
+  const { status, body } = which === 'reset' ? await resetStatus() : await billing(which);
+  console.log(JSON.stringify({ http: status, ...body }, null, 1));
+}

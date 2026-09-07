@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# zagent — single entry (za). Portable: resolves the repo root from this script's location.
+R="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+NODE_BIN="${NODE:-$(command -v node || echo /usr/bin/node)}"
+case "$1" in
+  --version|-V|version) exec "$NODE_BIN" -p "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).version" "$R/package.json" ;;
+  --help|-h) exec "$NODE_BIN" "$R/packages/cli/zmax-help.mjs" ;;
+  telegram|feishu|wechat|compact|dcompact|plugin-validate)
+    echo "zagent: $1 is source-only experimental functionality, not included in this public candidate." >&2
+    exit 2 ;;
+  quota)    shift; exec "$NODE_BIN" "$R/bin/zquota" "$@" ;;
+  sessions) shift; exec "$NODE_BIN" --experimental-sqlite "$R/bin/zcodes" "$@" ;;
+  diff)     shift; exec "$NODE_BIN" "$R/packages/cli/zmax-diff.mjs" "$@" ;;
+  onboard)  shift; exec "$NODE_BIN" "$R/packages/cli/zmax-onboard.mjs" "$@" ;;
+  cron)     shift; exec "$NODE_BIN" "$R/packages/cli/zmax-cron.mjs" "$@" ;;
+  task)     shift; exec "$NODE_BIN" --experimental-sqlite "$R/packages/cli/zmax-task.mjs" "$@" ;;
+  memory)   shift; exec "$NODE_BIN" "$R/packages/cli/zmax-memory.mjs" "$@" ;;
+  models)   shift; exec "$NODE_BIN" "$R/packages/cli/zmax-models.mjs" "$@" ;;
+  help)     shift; exec "$NODE_BIN" "$R/packages/cli/zmax-help.mjs" "$@" ;;
+  plugins)  shift; exec "$NODE_BIN" "$R/packages/cli/zmax-plugins.mjs" "$@" ;;
+  *)        exec "$NODE_BIN" "$R/packages/cli/zmax.mjs" "$@" ;;
+esac

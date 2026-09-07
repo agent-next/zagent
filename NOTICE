@@ -1,0 +1,37 @@
+zagent is an UNOFFICIAL terminal client for the ZCode agent runtime.
+It is not affiliated with, authorized, or endorsed by Z.ai. "ZCode" and "Z.ai"
+are trademarks of their respective owners.
+
+This repository does NOT redistribute any Z.ai binaries. The runtime is discovered
+and driven from the user's own installation (ZCode desktop bundle or zcode-app-cli).
+
+Intended use
+- Non-commercial, personal interoperability and research, against your OWN Z.ai
+  account and your OWN installed runtime. Do not use it to access accounts,
+  credentials, or services you are not authorized to use.
+- The MIT license (see LICENSE) governs this source. "Non-commercial" is the
+  project's intent, not a license restriction; the MIT terms still apply.
+
+Interoperability and reverse engineering
+- To interoperate with the desktop app, this project implements protocol, local
+  credential-store, billing/quota and off-peak contracts that were observed from
+  the officially installed desktop app on the author's own machine. Some modules
+  (e.g. packages/driver/credentials.mjs, quota.mjs, offpeak.mjs) read the user's
+  own local credential store and send desktop-compatible identity headers so the
+  CLI is accepted by the same endpoints the desktop uses.
+- These interoperability features may be inconsistent with Z.ai's Terms of Service.
+  You are solely responsible for reviewing and complying with those Terms and all
+  applicable law for your account and your use. Evaluate before enabling them.
+
+Credits
+- TUI foundation: kingsword09/zcode-cli (zcode-app-cli), MIT-claimed — our launcher
+  hands off to the user's own install of it; see packages/cli/zmax.mjs.
+
+Disclaimer of warranty and liability
+- Provided "AS IS", WITHOUT WARRANTY OF ANY KIND. To the maximum extent permitted
+  by law, the authors and contributors are NOT liable for any claim, damages,
+  account action, data loss, or cost arising from use of this software.
+
+All third-party names and implementations remain owned by their respective owners.
+This notice records interoperability attribution and user responsibility; it is
+NOT legal advice and NOT a verified legal clearance.

@@ -1,0 +1,72 @@
+{
+  "name": "zagent",
+  "version": "0.0.180",
+  "description": "Unofficial terminal client for a separately installed ZCode runtime.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node scripts/verify-public-package.mjs"
+  },
+  "bin": {
+    "zagent": "bin/zmax",
+    "za": "bin/zmax"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "ws": "8.21.3"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "tag": "next"
+  },
+  "files": [
+    "bin/zmax",
+    "bin/zcodes",
+    "bin/zquota",
+    "packages/driver/automation.mjs",
+    "packages/driver/credentials.mjs",
+    "packages/driver/diffs.mjs",
+    "packages/driver/extract.mjs",
+    "packages/driver/headless-retry.mjs",
+    "packages/driver/memory.mjs",
+    "packages/driver/offpeak.mjs",
+    "packages/driver/permissions.mjs",
+    "packages/driver/plugins.mjs",
+    "packages/driver/providers.mjs",
+    "packages/driver/quota.mjs",
+    "packages/driver/reset-shape.mjs",
+    "packages/driver/rewind.mjs",
+    "packages/driver/runtime-info.mjs",
+    "packages/driver/runtime.mjs",
+    "packages/driver/session-control.mjs",
+    "packages/driver/tasks-index.mjs",
+    "packages/driver/zcode-protocol.mjs",
+    "packages/cli/zmax-cron.mjs",
+    "packages/cli/zmax-diff.mjs",
+    "packages/cli/zmax-help.mjs",
+    "packages/cli/zmax-memory.mjs",
+    "packages/cli/zmax-models.mjs",
+    "packages/cli/zmax-onboard.mjs",
+    "packages/cli/zmax-plugins.mjs",
+    "packages/cli/zmax-task.mjs",
+    "packages/cli/zmax.mjs",
+    "VERSION",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robotlearning123/zcode-cli.git"
+  },
+  "keywords": [
+    "glm",
+    "zcode",
+    "coding-agent",
+    "terminal",
+    "ai",
+    "cli"
+  ]
+}
