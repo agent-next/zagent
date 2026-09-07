@@ -442,10 +442,16 @@ export async function runTui(host = {}) {
     if (ui.permission) return onPermissionKey(event);
 
     if (event.name === 'ctrl-c') {
-      if (ui.busy) { interrupt(); return; }
       const now = Date.now();
-      if (now - ui.lastCtrlC < DOUBLE_CTRL_C_MS) { exit(); return; }
+      // The doubled press exits whether or not a turn is running. Previously a
+      // busy session returned at `if (ui.busy) interrupt()` before ever reaching
+      // this, so the double-ctrl-c exit was unreachable during a turn — and if the
+      // provider ignored the abort (a hung turn) the user could press it forever
+      // while the status line said "ctrl+c twice to exit". Found by the journey
+      // fuzzer, which could not leave a hung session and had to SIGKILL it.
+      if (now - ui.lastCtrlC < DOUBLE_CTRL_C_MS) { quit(); return; }
       ui.lastCtrlC = now;
+      if (ui.busy) { interrupt(); return; }   // the first press still interrupts
       addNotice(state, str.exitTwice, 'faint');
       draw();
       return;
