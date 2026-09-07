@@ -1,57 +1,67 @@
+<div align="center">
+
 # zagent
 
-**The open-source, GLM-native terminal coding agent.** Drive GLM straight from your
-terminal — a headless one-shot for scripts and CI, or a full interactive TUI — on top of
-your own ZCode runtime and GLM Coding Plan.
+**The open-source, GLM-native terminal coding agent.**
 
-> Unofficial. Not affiliated with or endorsed by Z.ai. **No Z.ai binaries are redistributed** —
-> `zagent` drives the runtime you already installed, with your own account and key.
+Run GLM straight from your terminal — a headless one-shot for scripts and CI, or a full
+interactive TUI — on your own **GLM Coding Plan**.
 
-**English** · [中文文档](docs/README.zh-CN.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.5-brightgreen.svg)](package.json)
+[![CI](https://github.com/agent-next/zagent/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-next/zagent/actions/workflows/ci.yml)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-```bash
-npx zagent -p "Explain this repository"   # headless one-shot
-npx zagent                                # interactive TUI
-```
+English · [中文](docs/README.zh-CN.md)
 
-## Why zagent
-
-- **GLM-native.** Talks to the same GLM engine Z.ai ships in its desktop app, from your terminal.
-- **Headless or interactive.** `zagent -p "…" --json` for scripts and pipelines, or a full TUI session.
-- **Uses what you already have.** Drives your own installed ZCode runtime / GLM Coding Plan with your own key — nothing bundled, nothing phoned home.
-- **Batteries included.** Quota, sessions, diffs, memory, scheduled prompts, and plugins — all from the CLI.
-- **Cross-platform discovery.** Finds the runtime on Linux, macOS, and Windows.
-
-## Requirements
-
-- **Node.js ≥ 22.5**
-- **Your own ZCode runtime + GLM account** — either the third-party `zcode-app-cli` (required for the interactive TUI) or the ZCode desktop bundle (headless).
-- A GLM API key (`ZAI_API_KEY`), supplied via your own secret manager.
-
-Model access, quotas, and pricing depend on your account.
-
-## Install
+</div>
 
 ```bash
-npm install -g zagent        # or run ad-hoc with: npx zagent
-zagent --version
-zagent doctor                # diagnose runtime + config;  doctor --fix sets it up
+npx zagent -p "Add a --json flag to cli.py and update the tests"
 ```
+
+> **Unofficial.** Not affiliated with or endorsed by Z.ai. zagent ships **no** Z.ai binaries —
+> it drives the ZCode runtime you already installed, on your own account.
+
+## What is zagent?
+
+zagent turns your **GLM Coding Plan** into a first-class terminal coding agent. It speaks the
+ZCode runtime's protocol directly, so you get the same GLM engine Z.ai ships in its desktop
+app — scriptable, headless, and in the terminal where you already work.
+
+- 🚀 **Headless or interactive** — `zagent -p "…" --json` for scripts, CI and pipelines; or a full TUI.
+- 🔌 **Your plan, your machine** — runs on your own GLM Coding Plan and installed runtime. Nothing bundled, nothing phoned home.
+- 🧰 **Batteries included** — quota, sessions, diffs, memory, scheduled prompts, and plugins, all from the CLI.
+- 🖥️ **Cross-platform** — discovers your runtime on Linux, macOS, and Windows.
+- 🪶 **Tiny & honest** — a thin protocol client; your prompts and credentials never leave your machine except to your own provider.
 
 ## Quick start
 
 ```bash
-export ZAI_API_KEY=…                              # your own key — never commit it
-zagent doctor                                     # confirm the runtime is found
-zagent -p "Refactor utils.py for readability" --json
-zagent                                            # or drop into the interactive TUI
+npm install -g zagent          # or run ad-hoc: npx zagent
+zagent doctor                  # checks your runtime + Coding Plan setup
+zagent -p "Explain this repo"  # headless one-shot
+zagent                         # interactive TUI
 ```
 
-If the runtime isn't auto-discovered, point at it explicitly:
+### Requirements
+
+- **Node.js ≥ 22.5**
+- **A GLM Coding Plan** and your own installed **ZCode runtime** — the third-party `zcode-app-cli`
+  (required for the interactive TUI) or the ZCode desktop bundle (headless).
+
+### Authentication — your GLM Coding Plan
+
+zagent runs on **your GLM Coding Plan subscription — not a metered pay-per-token API key.**
+Provide your Coding Plan credential once and zagent writes a local, `0600` config:
 
 ```bash
-export ZCODE_RUNTIME=/absolute/path/to/runtime-entry.cjs
+export ZAI_API_KEY=<your GLM Coding Plan credential>   # or reuse ~/.config/ccz/.api_key
+zagent doctor --fix                                    # writes ~/.zcode/cli/config.json
 ```
+
+`zagent doctor` tells you exactly what's missing. Your credential stays on your machine and is
+sent only to your own provider endpoint.
 
 ## Commands
 
@@ -59,46 +69,49 @@ export ZCODE_RUNTIME=/absolute/path/to/runtime-entry.cjs
 |---|---|
 | `zagent -p "…" [--json]` | Headless one-shot (retry-safe) |
 | `zagent` | Interactive TUI |
-| `zagent onboard` | First-run: doctor + live smoke + guidance |
-| `zagent doctor [--fix]` | Runtime / config / key diagnosis |
-| `zagent models [query]` | Search the provider model catalog |
-| `zagent quota [balance\|preview\|reset]` | Coding-plan quota |
-| `zagent sessions` | GUI task store, in your terminal |
-| `zagent diff [sessionId]` | Per-turn / per-file change view |
-| `zagent memory show\|index\|append` | Runtime-compatible memory store |
+| `zagent onboard` | First-run: checks + live smoke + guidance |
+| `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |
+| `zagent models [query]` | Search the model catalog |
+| `zagent quota [balance\|preview\|reset]` | Coding-Plan usage |
+| `zagent sessions` | Your task store, in the terminal |
+| `zagent diff [sessionId]` | Per-turn / per-file changes |
+| `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent cron add\|list\|tick` | Scheduled prompts |
-| `zagent plugins` | Inspect / manage local plugins |
+| `zagent plugins` | Manage local plugins |
 
 `za` is a short alias for `zagent`.
 
 ## How it works
 
-`zagent` is a thin, protocol-first client. It discovers a compatible runtime — `ZCODE_RUNTIME`
-first, then `zcode-app-cli` (`~/.local/opt/…` or `node_modules/`), then the ZCode desktop bundle
-per OS — and drives it. It ships **no runtime binaries** and requires your own account. Running it
-can make real, billable requests and execute tools with your permissions, so use trusted
-workspaces and review changes. First run may create `~/.zcode/cli/config.json` (mode `0600`).
+zagent is a thin, protocol-first client. It discovers a compatible runtime — `ZCODE_RUNTIME`
+first, then `zcode-app-cli`, then the ZCode desktop bundle per OS — and drives it over its native
+protocol. It ships **no** runtime binaries and uses **your** Coding Plan. Running it can make real
+requests and execute tools with your permissions, so use trusted workspaces and review changes.
+
+Not auto-discovered? Point at it explicitly:
+
+```bash
+export ZCODE_RUNTIME=/absolute/path/to/runtime-entry.cjs
+```
 
 ## Platform support
 
-Runtime discovery covers Linux, macOS, and Windows (unit-tested across all three). **Linux is the
-fully validated target;** macOS and Windows are supported at the code level but not yet
-real-machine-validated against every GUI install layout.
+Runtime discovery covers Linux, macOS, and Windows (unit-tested across all three). **Linux is
+fully validated;** macOS and Windows are supported at the code level and being hardened against
+every GUI install layout.
 
 ## Privacy
 
-Task, memory, diff, and quota output can contain private workspace, prompt, account, or billing
-data. Redact before sharing logs, and never commit account profiles, config files, or credential
-stores.
+Task, memory, diff, and quota output can contain private workspace, prompt, or account data.
+Redact before sharing logs, and never commit credentials or config files.
 
-## Not included (source-only, experimental)
+## Contributing
 
-Chat bots (Telegram / Feishu / WeChat), the standalone compact command, warm daemon, raw RPC
-bridge, and plugin-validate are experimental and excluded from the npm package.
+Issues and PRs are welcome — see [CONTRIBUTING](CONTRIBUTING.md) and [SECURITY](SECURITY.md).
+Questions and ideas go in [Discussions](https://github.com/agent-next/zagent/discussions).
 
 ## License
 
-[MIT](LICENSE). Intended for **non-commercial**, personal interoperability and research — you are
-responsible for complying with Z.ai's terms for your own account. (MIT permits commercial use, so
-"non-commercial" is the project's intent, not a license restriction.) See [NOTICE](NOTICE) for the
+[MIT](LICENSE) — for **non-commercial**, personal interoperability and research. You are
+responsible for complying with Z.ai's terms for your own account. See [NOTICE](NOTICE) for the
 interoperability disclaimer.

@@ -1,41 +1,97 @@
+<div align="center">
+
 # zagent（中文）
 
-> English: [README.md](../README.md)
+**开源、GLM 原生的终端编码 agent。**
 
-**开源、GLM 原生的终端编码 agent。** 在终端直接驱动 GLM——用于脚本与 CI 的无头一次性执行，或完整的交互式
-TUI——运行在你自己安装的 ZCode runtime 与 GLM Coding Plan 之上。
+在终端直接驱动 GLM——用于脚本与 CI 的无头一次性执行，或完整的交互式 TUI——运行在你自己的
+**GLM Coding Plan** 之上。
 
-> 非官方，与 Z.ai 无隶属或背书关系，**不分发其任何二进制**；zagent 只驱动你已安装的 runtime，使用你自己的账户与密钥。
+[English](../README.md) · 中文
+
+</div>
 
 ```bash
-npx zagent -p "解释这个仓库"   # 无头一次性执行
-npx zagent                    # 交互式 TUI
+npx zagent -p "给 cli.py 加一个 --json 参数并更新测试"
 ```
 
-## 特性
-- **GLM 原生**：在终端直连 Z.ai 桌面端所用的同一 GLM 引擎。
-- **无头或交互**：`zagent -p "…" --json` 适合脚本/流水线，或进入完整 TUI。
-- **复用你已有的**：驱动你自己安装的 ZCode runtime / GLM Coding Plan，用你自己的 key，不打包、不回传。
-- **开箱即用**：额度、会话、diff、memory、定时 prompt、插件，全在 CLI。
-- **跨平台发现**：Linux / macOS / Windows 都能找到 runtime。
+> **非官方**，与 Z.ai 无隶属或背书关系。zagent **不分发任何** Z.ai 二进制——它只驱动你已安装的
+> ZCode runtime，使用你自己的账户。
 
-## 环境
+## 这是什么？
+
+zagent 把你的 **GLM Coding Plan** 变成一等公民级的终端编码 agent。它直接讲 ZCode runtime 的协议，
+因此你在终端里用到的就是 Z.ai 桌面端所用的同一 GLM 引擎——可脚本化、可无头、就在你日常工作的终端里。
+
+- 🚀 **无头或交互**：`zagent -p "…" --json` 适合脚本 / CI / 流水线；或进入完整 TUI。
+- 🔌 **你的套餐、你的机器**：跑在你自己的 GLM Coding Plan 与已安装 runtime 上，不打包、不回传。
+- 🧰 **开箱即用**：额度、会话、diff、memory、定时 prompt、插件，全在 CLI。
+- 🖥️ **跨平台**：在 Linux / macOS / Windows 上自动发现 runtime。
+- 🪶 **轻量而诚实**：只是一个薄协议客户端；你的 prompt 与凭据只发给你自己的 provider。
+
+## 快速上手
+
+```bash
+npm install -g zagent          # 或临时运行：npx zagent
+zagent doctor                  # 检查 runtime 与 Coding Plan 配置
+zagent -p "解释这个仓库"        # 无头一次性执行
+zagent                         # 交互式 TUI
+```
+
+### 环境
 - **Node.js ≥ 22.5**
-- 你自己的 **ZCode runtime + GLM 账户**（交互 TUI 需第三方 `zcode-app-cli`；desktop bundle 提供无头运行）。
-- GLM API key（`ZAI_API_KEY`），通过你自己的密钥管理提供。
+- 一个 **GLM Coding Plan**，以及你自己安装的 **ZCode runtime**——第三方 `zcode-app-cli`（交互 TUI 必需）
+  或 ZCode desktop bundle（无头）。
 
-## 安装与上手
+### 认证——你的 GLM Coding Plan
+zagent 跑在**你的 GLM Coding Plan 订阅之上，而不是按量计费的 API key。** 提供一次你的 Coding Plan
+凭据，zagent 会写入一个本地 `0600` 配置：
+
 ```bash
-npm install -g zagent      # 或 npx zagent
-export ZAI_API_KEY=…       # 你自己的 key，切勿提交
-zagent doctor             # 确认 runtime 被发现（doctor --fix 可写配置）
-zagent -p "把 utils.py 重构得更易读" --json
-zagent                    # 或进入交互式 TUI
+export ZAI_API_KEY=<你的 GLM Coding Plan 凭据>   # 或复用 ~/.config/ccz/.api_key
+zagent doctor --fix                              # 写入 ~/.zcode/cli/config.json
 ```
-若未自动发现 runtime：`export ZCODE_RUNTIME=/绝对路径/runtime-entry.cjs`。`za` 是 `zagent` 的短别名。
+`zagent doctor` 会告诉你还缺什么。凭据只留在你机器上，且只发往你自己的 provider。
 
-## 说明
-zagent 是轻量的协议优先客户端，只**发现并驱动**你已安装的 runtime，不分发任何二进制，需你自己的账户；运行会以你的权限执行工具并可能产生真实费用，请只在可信工作区使用并审查改动。task/memory/diff/quota 输出可能含私有数据，分享前请脱敏，切勿提交凭据。机器人、独立 compact、常驻 daemon、RPC bridge、plugin-validate 为**仅源码实验功能**，不进入 npm 包。当前 Linux 为完整验收目标，macOS/Windows 已在代码层支持但尚未真机验收。
+## 命令
+
+| 命令 | 作用 |
+|---|---|
+| `zagent -p "…" [--json]` | 无头一次性执行（可重试） |
+| `zagent` | 交互式 TUI |
+| `zagent onboard` | 首次运行：检查 + live 冒烟 + 引导 |
+| `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
+| `zagent models [query]` | 搜索模型目录 |
+| `zagent quota [balance\|preview\|reset]` | Coding-Plan 额度 |
+| `zagent sessions` | 终端里的任务库 |
+| `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
+| `zagent memory show\|index\|append` | runtime 兼容的 memory |
+| `zagent cron add\|list\|tick` | 定时 prompt |
+| `zagent plugins` | 管理本地插件 |
+
+`za` 是 `zagent` 的短别名。
+
+## 工作原理
+
+zagent 是一个薄的、协议优先的客户端。它按 `ZCODE_RUNTIME`、`zcode-app-cli`、再到各系统的 ZCode
+desktop bundle 顺序发现兼容 runtime，并通过其原生协议驱动它。它**不分发**任何 runtime 二进制，使用
+**你的** Coding Plan；运行会以你的权限执行工具并可能产生真实请求，请只在可信工作区使用并审查改动。
+若未自动发现：`export ZCODE_RUNTIME=/绝对路径/runtime-entry.cjs`。
+
+## 平台支持
+
+runtime 发现覆盖 Linux / macOS / Windows（三平台均有单测）。**Linux 为完整验收目标**；macOS/Windows
+已在代码层支持，正针对各 GUI 安装布局做加固。
+
+## 隐私
+
+task / memory / diff / quota 输出可能含私有工作区、prompt 或账户数据。分享日志前请脱敏，切勿提交凭据或配置。
+
+## 参与贡献
+
+欢迎 issue 与 PR，见 [CONTRIBUTING](../CONTRIBUTING.md) 与 [SECURITY](../SECURITY.md)；问题与想法请到
+[Discussions](https://github.com/agent-next/zagent/discussions)。
 
 ## 许可
-[MIT](LICENSE)。定位为**非商业**的个人互操作与研究，请自行遵守 Z.ai 的服务条款；MIT 允许商业使用，"非商业"是项目意图而非许可证限制。互操作与责任免责声明见 [NOTICE](NOTICE)。
+
+[MIT](../LICENSE)——用于**非商业**的个人互操作与研究，请自行遵守 Z.ai 的服务条款。互操作与责任免责声明见 [NOTICE](../NOTICE)。
