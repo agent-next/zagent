@@ -46,7 +46,7 @@ zagent                         # interactive TUI
 
 ### Requirements
 
-- **Node.js ≥ 22.5**
+- **Node.js ≥ 22.15** (Node 23 needs ≥ 23.5)
 - **A GLM Coding Plan** and your own installed **ZCode runtime** — the ZCode desktop app, or the
   third-party `zcode-app-cli`. Either works for both headless and interactive use: zagent brings
   its own TUI, so no third-party package is required.
@@ -77,7 +77,9 @@ sent only to your own provider endpoint.
 | `zagent sessions` | Your task store, in the terminal |
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
+| `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent cron add\|list\|tick` | Scheduled prompts |
+| `zagent offpeak [--refresh\|--json]` | Is GLM-5.3-Flash free right now (exit 0 = yes) |
 | `zagent plugins` | Manage local plugins |
 
 `za` is a short alias for `zagent`.

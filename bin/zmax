@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { commandFor, formatRow } from '../packages/cli/commands.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [command, ...rest] = process.argv.slice(2);
@@ -22,11 +23,14 @@ const [command, ...rest] = process.argv.slice(2);
 /** Subcommand -> the script that implements it, and whether it needs node:sqlite. */
 const ROUTES = {
   quota: ['bin/zquota'],
-  sessions: ['bin/zcodes', '--experimental-sqlite'],
+  // --no-warnings: node prints "SQLite is an experimental feature" on stderr for
+  // every run, which is noise the user can do nothing about and which corrupts
+  // otherwise-parseable output.
+  sessions: ['bin/zcodes', '--experimental-sqlite', '--no-warnings'],
   diff: ['packages/cli/zmax-diff.mjs'],
   onboard: ['packages/cli/zmax-onboard.mjs'],
   cron: ['packages/cli/zmax-cron.mjs'],
-  task: ['packages/cli/zmax-task.mjs', '--experimental-sqlite'],
+  task: ['packages/cli/zmax-task.mjs', '--experimental-sqlite', '--no-warnings'],
   memory: ['packages/cli/zmax-memory.mjs'],
   offpeak: ['packages/cli/zmax-offpeak.mjs'],
   models: ['packages/cli/zmax-models.mjs'],
@@ -54,9 +58,31 @@ if (SOURCE_ONLY.has(command)) {
   console.error(`zagent: ${command} is source-only experimental functionality, not included in this public candidate.`);
   process.exit(2);
 }
+// `zagent <cmd> --help` used to be passed through to the subcommand, which had no
+// notion of it: `models --help` searched the catalog for a model named "--help",
+// found none, and printed NOTHING with exit 0; `diff --help` read it as a session
+// id; `plugins --help` as a plugin name. Answer it here, once, from the same table
+// the palette prints, rather than teaching eleven scripts the same flag.
+const HELP_FLAGS = new Set(['--help', '-h']);
+// Only before a `--` separator. Otherwise a subcommand that takes free text —
+// `zagent memory append` — could never be given the literal string "--help",
+// because the dispatcher would answer it as a help request and never run.
+// `zagent memory append -- --help` appends the text, as POSIX users expect.
+const sep = rest.indexOf('--');
+const flagArgs = sep === -1 ? rest : rest.slice(0, sep);
+if (flagArgs.some(a => HELP_FLAGS.has(a))) {
+  const row = commandFor(command);
+  if (row) {
+    console.log(formatRow(row).trimStart());
+    process.exit(0);
+  }
+}
 if (Object.hasOwn(ROUTES, command)) {
   const [script, ...nodeArgs] = ROUTES[command];
-  run(script, nodeArgs, rest);
+  // Consume the separator we just interpreted. Leaving it in made
+  // `zagent memory append -- --help` store the literal text "-- --help".
+  const args = sep === -1 ? rest : [...rest.slice(0, sep), ...rest.slice(sep + 1)];
+  run(script, nodeArgs, args);
 }
 // Everything else, including no arguments at all, is the main entry.
 run('packages/cli/zmax.mjs', [], process.argv.slice(2));

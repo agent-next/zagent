@@ -39,7 +39,7 @@ zagent                         # 交互式 TUI
 ```
 
 ### 环境
-- **Node.js ≥ 22.5**
+- **Node.js ≥ 22.15**（Node 23 需 ≥ 23.5）
 - 一个 **GLM Coding Plan**，以及你自己安装的 **ZCode runtime**——第三方 `zcode-app-cli`（交互 TUI 必需）
   或 ZCode desktop bundle（无头）。
 
@@ -66,7 +66,9 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent sessions` | 终端里的任务库 |
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
+| `zagent task list\|archive\|pin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent cron add\|list\|tick` | 定时 prompt |
+| `zagent offpeak [--refresh\|--json]` | GLM-5.3-Flash 当前是否免费（exit 0 = 是） |
 | `zagent plugins` | 管理本地插件 |
 
 `za` 是 `zagent` 的短别名。
