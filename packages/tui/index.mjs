@@ -11,11 +11,12 @@
 
 import crypto from 'node:crypto';
 import { createTheme } from './theme.mjs';
-import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry } from './events.mjs';
+import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
 import { decodeKeys, applyKey } from './keys.mjs';
+import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates } from './complete.mjs';
 import { stringsFor } from './strings.mjs';
 import { sanitizeText } from './sanitize.mjs';
@@ -94,9 +95,21 @@ export async function runTui(host = {}) {
 
   // --- submitting -----------------------------------------------------------
   /** Enter while a turn runs queues instead of dropping the message. */
+  // Slash commands are the runtime's, and its list has no way to leave: a user who
+  // typed /exit got "Unknown command", then /exi, and was stuck — the only
+  // documented way out is ctrl+c twice, which is not what anyone tries first.
+  // Handled here rather than sent to the runtime, which knows nothing of our loop.
+  const QUIT = new Set(['/exit', '/quit', '/q', '/bye']);
+  const isQuit = (t) => QUIT.has(t.toLowerCase());
+  const quit = () => { exit(); resolveRun?.(); };
+
   function enqueueOrSubmit(text) {
     const trimmed = sanitizeText(text, { keepNewlines: false }).trim();
     if (trimmed === '') return;
+    // Before the busy guard below, which would otherwise QUEUE the quit: the user
+    // typing /exit while a turn runs is asking to leave now, not after it finishes.
+    // That is exactly the state they are in when a turn has hung.
+    if (isQuit(trimmed)) { quit(); return; }
     // A bare /effort, /model or /mode is a request to choose, not a command to run.
     const picker = pickerFor(trimmed);
     if (picker && !ui.busy) {
@@ -115,6 +128,7 @@ export async function runTui(host = {}) {
 
   async function submit(text) {
     const trimmed = text.trim();
+    if (isQuit(trimmed)) { quit(); return; }   // also covers the queue drain
     if (trimmed === '' || ui.busy) return;
     // History is recorded once, by enqueueOrSubmit. Recording it here too made a
     // drained queue re-append every message (queue [a,b] -> history a,b,a,b).
@@ -144,8 +158,20 @@ export async function runTui(host = {}) {
       applyResult(result, { wasCommand: trimmed.startsWith('/') && !result?.turnId });
     } catch (error) {
       const message = String(error?.message ?? error);
-      addNotice(state, ui.abort?.signal.aborted ? 'interrupted' : `error: ${message}`,
-        ui.abort?.signal.aborted ? 'muted' : 'error');
+      if (ui.abort?.signal.aborted) {
+        addNotice(state, 'interrupted', 'muted');
+      } else {
+        addNotice(state, `error: ${message}`, 'error');
+        // "Turn execution failed" on its own tells the user nothing. When the
+        // provider said WHY — a rate limit, or the plan's usage window and when it
+        // resets — say that too. The headless path already did; the TUI did not.
+        const explained = explainProviderError(`${error?.stack ?? ''}\n${message}`);
+        if (explained) {
+          for (const line of formatProviderError(explained).split('\n')) {
+            addNotice(state, line.replace(/^zagent: /, ''), 'warning');
+          }
+        }
+      }
     } finally {
       // A prompt still open when the turn ends would trap every later keypress in
       // permission mode and leak its resolve — the host is not guaranteed to pass
@@ -154,6 +180,11 @@ export async function runTui(host = {}) {
       ui.busy = false;
       ui.abort = null;
       stopSpinner();
+      // The reducer owns turn.active and the status line renders the spinner from
+      // it, so stopping the animation is not the same as ending the turn: an
+      // errored turn left "working 3.2s" on screen forever. Only `turn_complete`
+      // used to clear it, and a throw never gets one.
+      endTurn(state, { reason: 'error' });
       draw();
     }
     // Drain in order. A turn that was interrupted drops the queue: the user hit
@@ -382,6 +413,12 @@ export async function runTui(host = {}) {
   const interrupt = () => { ui.abortedByUser = true; ui.abort?.abort(); };
 
   let exiting = false;
+
+  // Hoisted so a /exit typed at the prompt can end the run loop. Without it, exit()
+
+  // only flips `exiting` and the process waits for a keypress that never comes.
+
+  let resolveRun = null;
   const exit = () => {
     if (exiting) return;
     exiting = true;
@@ -521,6 +558,7 @@ export async function runTui(host = {}) {
   draw();
 
   await new Promise((resolve) => {
+    resolveRun = resolve;
     stdin.on('data', (chunk) => {
       if (process.env.ZAGENT_KEYLOG) { try { (require('node:fs')).appendFileSync(process.env.ZAGENT_KEYLOG, JSON.stringify({raw: String(chunk).slice(0,40), events: decodeKeys(chunk).map(e=>e.name??('t:'+e.text))}) + '\n'); } catch {} }
       for (const event of decodeKeys(chunk)) onKey(event); if (exiting) resolve(); });

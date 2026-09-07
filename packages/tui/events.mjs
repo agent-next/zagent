@@ -257,9 +257,10 @@ export function applyEvent(state, event) {
 
     case 'turn_complete':
       if (state.turn) {
-        state.turn.active = false;
         state.turn.usage = p.usage ?? null;
         state.turn.durationMs = num(p.duration, Date.now() - state.turn.startedAt);
+        state.turn.active = false;
+        state.turn.endedBy = 'complete';
       }
       break;
 
@@ -278,6 +279,23 @@ export function applyEvent(state, event) {
       break;
   }
   return state;
+}
+
+/**
+ * End the turn in the reducer, whatever happened to it.
+ *
+ * `turn_complete` was the only thing that cleared `turn.active`, and the status
+ * line renders the spinner from exactly that flag. So a turn that THREW — a
+ * provider limit, an aborted stream — left the UI showing "working 3.2s" forever,
+ * with a frozen frame, because index.mjs's finally block only stopped the
+ * animation interval and set its own ui.busy. Two owners of one piece of state.
+ */
+export function endTurn(state, { reason = 'ended' } = {}) {
+  if (!state.turn || state.turn.active === false) return false;
+  state.turn.active = false;
+  state.turn.endedBy = reason;
+  state.turn.durationMs ??= Date.now() - state.turn.startedAt;
+  return true;
 }
 
 export function addNotice(state, text, level = 'muted') {
