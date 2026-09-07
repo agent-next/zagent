@@ -492,24 +492,37 @@ export async function runTui(host = {}) {
       // The runtime keeps input history that OUTLIVES the session; ours died with
       // it. Ask the host first and fall back to the in-memory list.
       const step = event.name === 'up' ? 1 : -1;
+      // The in-memory fallback. Named so the host path can actually reach it: the
+      // previous version returned unconditionally after asking the host, so the
+      // fallback was dead code whenever the host implemented the method — and a
+      // fresh session has no persisted history, so recallPreviousInput answers
+      // null and up-arrow silently did nothing. Which is precisely when a user
+      // first presses it.
+      const recallLocal = () => {
+        if (ui.history.length === 0) return;
+        const next = event.name === 'up' ? ui.historyIndex - 1 : ui.historyIndex + 1;
+        ui.historyIndex = Math.min(ui.history.length, Math.max(0, next));
+        const recalled = ui.history[ui.historyIndex] ?? '';
+        ui.input = { value: recalled, cursor: recalled.length };
+        draw();
+      };
       if (typeof host.recallPreviousInput === 'function') {
         ui.recallDepth = Math.max(0, (ui.recallDepth ?? 0) + step);
         void Promise.resolve(host.recallPreviousInput(ui.recallDepth))
           .then((recalled) => {
             const text = typeof recalled === 'string' ? recalled : recalled?.text;
-            if (typeof text !== 'string') { ui.recallDepth = Math.max(0, ui.recallDepth - step); return; }
+            if (typeof text !== 'string') {
+              ui.recallDepth = Math.max(0, ui.recallDepth - step);
+              recallLocal();                      // the host has nothing; we might
+              return;
+            }
             ui.input = { value: text, cursor: text.length };
             draw();
           })
-          .catch(() => {});
+          .catch(() => { recallLocal(); });       // a broken host must not disable history
         return;
       }
-      if (ui.history.length === 0) return;
-      const next = event.name === 'up' ? ui.historyIndex - 1 : ui.historyIndex + 1;
-      ui.historyIndex = Math.min(ui.history.length, Math.max(0, next));
-      const recalled = ui.history[ui.historyIndex] ?? '';
-      ui.input = { value: recalled, cursor: recalled.length };
-      draw();
+      recallLocal();
       return;
     }
 

@@ -36,7 +36,11 @@ export const allowed = file => ['package.json', 'package-lock.json', 'VERSION', 
 // renamed when the product became zagent. A rename-time find/replace turned them
 // into zagent-*, which matches nothing on disk — so the block was dead for
 // zmax-wechat, zmax-compact, zmaxd and zmaxd-compact.
-export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|daemon-request|zmax-(?:telegram|feishu|wechat|compact)|zmaxd[^/]*)\.mjs$/;
+// fake-host / journey / journey-entry / screen-replay are the hermetic PTY test
+// harness. They are dev infrastructure — a published CLI has no business shipping
+// a scriptable fake of its own runtime — but they do not start with "test", so the
+// release gate would otherwise demand they be added to files[].
+export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|daemon-request|zmax-(?:telegram|feishu|wechat|compact)|zmaxd[^/]*|fake-host|journey|journey-entry|screen-replay)\.mjs$/;
 
 // Importing this module must not pack and install anything; only running it does.
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
