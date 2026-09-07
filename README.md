@@ -2,13 +2,12 @@
 
 # zagent
 
-**The open-source, GLM-native terminal coding agent.**
+**Z.ai's coding agent, in your terminal — the part Z.ai never shipped.**
 
-Run GLM straight from your terminal — a headless one-shot for scripts and CI, or a full
-interactive TUI — on your own **GLM Coding Plan**.
-
+[![npm](https://img.shields.io/npm/v/zagent.svg)](https://www.npmjs.com/package/zagent)
+[![downloads](https://img.shields.io/npm/dm/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.5-brightgreen.svg)](package.json)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.15-brightgreen.svg)](package.json)
 [![CI](https://github.com/agent-next/zagent/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-next/zagent/actions/workflows/ci.yml)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -23,17 +22,50 @@ npx zagent -p "Add a --json flag to cli.py and update the tests"
 > **Unofficial.** Not affiliated with or endorsed by Z.ai. zagent ships **no** Z.ai binaries —
 > it drives the ZCode runtime you already installed, on your own account.
 
-## What is zagent?
+## Why this exists
 
-zagent turns your **GLM Coding Plan** into a first-class terminal coding agent. It speaks the
-ZCode runtime's protocol directly, so you get the same GLM engine Z.ai ships in its desktop
-app — scriptable, headless, and in the terminal where you already work.
+The ZCode runtime Z.ai ships in its desktop app already has a terminal mode. Try it on a stock
+install and it dies:
 
-- 🚀 **Headless or interactive** — `zagent -p "…" --json` for scripts, CI and pipelines; or a full TUI.
-- 🔌 **Your plan, your machine** — runs on your own GLM Coding Plan and installed runtime. Nothing bundled, nothing phoned home.
-- 🧰 **Batteries included** — quota, sessions, diffs, memory, scheduled prompts, and plugins, all from the CLI.
-- 🖥️ **Cross-platform** — discovers your runtime on Linux, macOS, and Windows.
-- 🪶 **Tiny & honest** — a thin protocol client; your prompts and credentials never leave your machine except to your own provider.
+```console
+$ zcode tui
+Error: Cannot find package '@zcode/tui'
+```
+
+The runtime imports that module. Z.ai does not publish it. So the terminal path is a dead import
+on every machine that has ZCode installed.
+
+**zagent is that missing module** — a native TUI written against the runtime's own 28-member host
+contract — plus the CLI around it. It supplies `@zcode/tui` through a Node ESM resolve hook, so
+the runtime is read **in place**: nothing copied, nothing patched, nothing written into its
+install root. You get the same GLM engine the desktop app runs, driven from the terminal you
+already work in, on the Coding Plan you already pay for.
+
+```console
+$ zagent
+╭──────────────────────────────────────────────────────────────╮
+│ > refactor the parser to use a lookup table                  │
+╰──────────────────────────────────────────────────────────────╯
+  glm-5.3 · ~/src/myproject · 12.4k tokens
+
+⏺ Read(src/parser.py)
+  ⎿ 214 lines
+
+⏺ I'll replace the if/elif chain with a dispatch table.
+
+⏺ Edit(src/parser.py)
+  ⎿ +18 -31
+```
+
+## What you get
+
+| | |
+|---|---|
+| **A real TUI** | Streaming output, tool calls, permission prompts, model/effort pickers, slash commands, `@`-file completion. Wide-character correct (CJK, emoji), and every rendered string is sanitised — no ANSI or bidi injection from model output. |
+| **Headless too** | `zagent -p "…" --json` for scripts, CI and pipelines. Real exit codes: a failed turn fails, a typo'd command fails. |
+| **Your plan, your machine** | Runs on your own GLM Coding Plan and your own installed runtime. Nothing bundled, nothing phoned home. |
+| **The rest of the product** | Quota, sessions, per-turn diffs, memory, scheduled prompts, plugins, and off-peak routing — all from the CLI. |
+| **Cross-platform** | Runtime discovery on Linux, macOS and Windows. |
 
 ## Quick start
 

@@ -2,10 +2,13 @@
 
 # zagent（中文）
 
-**开源、GLM 原生的终端编码 agent。**
+**把 Z.ai 的编码 agent 搬进终端 —— Z.ai 自己没发的那一块。**
 
-在终端直接驱动 GLM——用于脚本与 CI 的无头一次性执行，或完整的交互式 TUI——运行在你自己的
-**GLM Coding Plan** 之上。
+[![npm](https://img.shields.io/npm/v/zagent.svg)](https://www.npmjs.com/package/zagent)
+[![downloads](https://img.shields.io/npm/dm/zagent.svg)](https://www.npmjs.com/package/zagent)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.15-brightgreen.svg)](../package.json)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../CONTRIBUTING.md)
 
 [English](../README.md) · 中文
 
@@ -18,16 +21,32 @@ npx zagent -p "给 cli.py 加一个 --json 参数并更新测试"
 > **非官方**，与 Z.ai 无隶属或背书关系。zagent **不分发任何** Z.ai 二进制——它只驱动你已安装的
 > ZCode runtime，使用你自己的账户。
 
-## 这是什么？
+## 为什么会有这个项目
 
-zagent 把你的 **GLM Coding Plan** 变成一等公民级的终端编码 agent。它直接讲 ZCode runtime 的协议，
-因此你在终端里用到的就是 Z.ai 桌面端所用的同一 GLM 引擎——可脚本化、可无头、就在你日常工作的终端里。
+Z.ai 桌面端里的 ZCode runtime 本来就带终端模式。但在原装环境里跑,它直接挂掉:
 
-- 🚀 **无头或交互**：`zagent -p "…" --json` 适合脚本 / CI / 流水线；或进入完整 TUI。
-- 🔌 **你的套餐、你的机器**：跑在你自己的 GLM Coding Plan 与已安装 runtime 上，不打包、不回传。
-- 🧰 **开箱即用**：额度、会话、diff、memory、定时 prompt、插件，全在 CLI。
-- 🖥️ **跨平台**：在 Linux / macOS / Windows 上自动发现 runtime。
-- 🪶 **轻量而诚实**：只是一个薄协议客户端；你的 prompt 与凭据只发给你自己的 provider。
+```console
+$ zcode tui
+Error: Cannot find package '@zcode/tui'
+```
+
+runtime 会 import 这个模块,而 Z.ai 从未发布它。所以在每一台装了 ZCode 的机器上,终端这条路都是
+一个死掉的 import。
+
+**zagent 就是那个缺失的模块** —— 一个照着 runtime 自己那份 28 成员 host 契约写的原生 TUI ——
+外加围绕它的整套 CLI。它通过 Node ESM resolve hook 提供 `@zcode/tui`,runtime 是**就地读取**的:
+不复制、不打补丁、不往它的安装目录里写任何东西。你用的就是桌面端跑的那个 GLM 引擎,在你本来就
+在用的终端里,花的还是你已经付过的 Coding Plan。
+
+## 你会得到什么
+
+| | |
+|---|---|
+| **真正的 TUI** | 流式输出、工具调用、权限确认、模型/effort 选择器、斜杠命令、`@` 文件补全。宽字符正确(中日韩、emoji),且每一段渲染文本都做过消毒 —— 模型输出无法注入 ANSI 或 bidi 控制符。 |
+| **也能无头跑** | `zagent -p "…" --json` 适合脚本 / CI / 流水线。退出码是真的:一轮失败就是失败,命令打错就是错。 |
+| **你的套餐、你的机器** | 跑在你自己的 GLM Coding Plan 与已安装 runtime 上,不打包、不回传。 |
+| **产品的其余部分** | 额度、会话、每轮 diff、memory、定时 prompt、插件、off-peak 路由 —— 全在 CLI 里。 |
+| **跨平台** | 在 Linux / macOS / Windows 上自动发现 runtime。 |
 
 ## 快速上手
 
