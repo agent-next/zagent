@@ -59,14 +59,24 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robotlearning123/zcode-cli.git"
+    "url": "git+https://github.com/agent-next/zagent.git"
   },
   "keywords": [
-    "glm",
-    "zcode",
-    "coding-agent",
-    "terminal",
+    "agent",
     "ai",
-    "cli"
-  ]
+    "cli",
+    "coding-agent",
+    "glm",
+    "glm-coding-plan",
+    "llm",
+    "terminal",
+    "tui",
+    "z-ai",
+    "zagent",
+    "zcode"
+  ],
+  "homepage": "https://github.com/agent-next/zagent#readme",
+  "bugs": {
+    "url": "https://github.com/agent-next/zagent/issues"
+  }
 }
