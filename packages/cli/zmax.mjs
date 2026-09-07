@@ -16,6 +16,7 @@ import os from 'node:os';
 import { findRuntime } from '../driver/runtime.mjs';
 import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs';
 import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
+import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 
 function ensureConfig() { // same shape kingsword09's launcher creates; ours adds nothing secret
   const dir = `${os.homedir()}/.zcode/cli`;
@@ -122,6 +123,10 @@ if (headlessJson) {
   const r = runHeadlessWithRetry(process.execPath, [entry, ...args], { cwd: process.cwd(), env: process.env,
     onAttempt: (a, v) => { if (v.retry) console.error(`zagent: attempt ${a} ${v.reason} — ${a < 2 ? 'retrying once' : 'giving up (exit 1)'}`); } });
   if (r.stderr) process.stderr.write(String(r.stderr).slice(-2000)); // r5 #6: runtime diagnostics surfaced
+  if ((r.exitCode ?? 1) !== 0) {
+    const explained = explainProviderError(String(r.stderr ?? ''));
+    if (explained) process.stderr.write(`\n${formatProviderError(explained)}\n`);
+  }
   const done = () => process.exit(r.exitCode ?? 1);
   // r5-followup: the write callback is ASYNC — without the return below, control fell
   // through to the interactive spawn and the runtime ran TWICE (two concatenated JSON
@@ -133,7 +138,29 @@ if (headlessJson) {
     console.error("zagent: ZAGENT_TUI=runtime, but this runtime ships no '@zcode/tui'. Unset it to use zagent's own TUI.");
     process.exit(1);
   }
-  const child = spawn(NODE, launch.argv, { cwd: process.cwd(), stdio: 'inherit' });
+  // A headless run's stderr is teed so a provider business error can be explained
+  // after it. Hitting the plan's 5-hour window printed 63 lines of stack trace with
+  // the only actionable fact — when it resets — buried in the first one. The TUI
+  // keeps plain inherited stdio; nothing about its rendering changes.
+  const headless = args.includes('-p');
+  const child = spawn(NODE, launch.argv, {
+    cwd: process.cwd(),
+    stdio: headless ? ['inherit', 'inherit', 'pipe'] : 'inherit',
+  });
+  let errTail = '';
+  if (headless && child.stderr) {
+    child.stderr.on('data', (d) => {
+      process.stderr.write(d);                       // nothing is swallowed
+      errTail = (errTail + d).slice(-65536);         // bounded: this can stream
+    });
+  }
   child.on('error', e => { console.error('zagent:', e.message); process.exit(1); });
-  child.on('exit', (c, sig) => process.exit(c ?? (sig ? 1 : 0))); // signal death is failure, not success
+  child.on('exit', (c, sig) => {
+    const code = c ?? (sig ? 1 : 0);
+    if (headless && code !== 0) {
+      const explained = explainProviderError(errTail);
+      if (explained) process.stderr.write(`\n${formatProviderError(explained)}\n`);
+    }
+    process.exit(code); // signal death is failure, not success
+  });
 }

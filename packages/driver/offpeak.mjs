@@ -1,7 +1,9 @@
 // I3 — off-peak scheduler helper: pure functions for the zero-quota flash window.
 // Window is data-driven (from the docs client-configs endpoint when reachable, cached);
 // local fallback is 23:00–09:00 SGT (the documented campaign default through 2026-09-20).
-// The campaign gives GLM-5.3-Flash via ZCode at zero quota during this window — routing
+// Z.ai's campaign advertises GLM-5.3-Flash via ZCode at no quota cost in this window.
+// That is their published claim, not a measurement: the plan's rolling usage window is
+// enforced independently (a 1308 was observed during an open window, 2026-09-07). Routing
 // eligible mechanical work to flash then is free compute.
 
 import os from 'node:os';
@@ -37,7 +39,7 @@ export function routeToFlash(now, { mechanical = true, win = DEFAULT } = {}) {
   if (!mechanical) return { flash: false, reason: 'judgment task stays on main model' };
   if (!campaignActive(now, win)) return { flash: false, reason: 'campaign ended' };
   if (!inOffPeak(now, win)) return { flash: false, reason: 'outside off-peak hours (costs credits)' };
-  return { flash: true, reason: 'mechanical + off-peak + campaign active = zero quota' };
+  return { flash: true, reason: 'mechanical + off-peak + campaign active' };
 }
 
 // Pure: how many minutes until the next off-peak window opens (for scheduling delayed work).

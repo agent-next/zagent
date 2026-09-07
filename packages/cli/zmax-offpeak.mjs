@@ -57,7 +57,12 @@ if (asJson) {
   if (!active) {
     console.log(`campaign: ENDED ${window.campaignEnd} — flash costs quota at all hours now`);
   } else if (open) {
-    console.log(`status: OPEN — mechanical work routed to GLM-5.3-Flash costs zero quota`);
+    // Z.ai's published campaign terms, not something zagent measured. Said plainly,
+    // because the plan's own rolling usage window is enforced independently of it:
+    // a 1308 ("Usage limit reached for 5 hour") was observed DURING an open window
+    // on 2026-09-07. Off-peak routing is not a licence to ignore the window.
+    console.log(`status: OPEN — Z.ai's campaign routes GLM-5.3-Flash at no quota cost (their terms, not measured here)`);
+    console.log(`note: your plan's rolling usage window still applies — off-peak does not lift it`);
     console.log(`campaign runs through ${window.campaignEnd}`);
   } else {
     console.log(`status: closed — opens in ${humanDuration(untilOpen)}`);
