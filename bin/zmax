@@ -29,7 +29,7 @@ const ROUTES = {
   sessions: ['bin/zcodes', '--experimental-sqlite', '--no-warnings'],
   diff: ['packages/cli/zmax-diff.mjs'],
   onboard: ['packages/cli/zmax-onboard.mjs'],
-  cron: ['packages/cli/zmax-cron.mjs'],
+  cron: ['packages/cli/zmax-cron.mjs', '--experimental-sqlite', '--no-warnings'],
   task: ['packages/cli/zmax-task.mjs', '--experimental-sqlite', '--no-warnings'],
   memory: ['packages/cli/zmax-memory.mjs'],
   offpeak: ['packages/cli/zmax-offpeak.mjs'],

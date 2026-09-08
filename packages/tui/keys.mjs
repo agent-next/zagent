@@ -16,62 +16,71 @@ const NAMED = new Map([
   ['\x1b[3~', 'delete'],
 ]);
 
-/**
- * Decode one chunk into key events. Bracketed-paste content arrives as a single
- * large chunk; it must be inserted verbatim, never interpreted as keystrokes.
- * @returns {Array<{name?: string, text?: string}>}
- */
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
+
+/** A terminal stream may split a paste or escape sequence at any byte. */
+export function createKeyDecoder() {
+  let pending = '';
+  let pasting = false;
+  return {
+    push(chunk) {
+      pending += String(chunk ?? '');
+      const events = [];
+      while (pending !== '') {
+        if (pasting) {
+          const end = pending.indexOf(PASTE_END);
+          if (end === -1) break;
+          events.push({ text: pending.slice(0, end).replace(/\r\n?/g, '\n') });
+          pending = pending.slice(end + PASTE_END.length);
+          pasting = false;
+          continue;
+        }
+        if (pending.startsWith(PASTE_START)) {
+          pending = pending.slice(PASTE_START.length);
+          pasting = true;
+          continue;
+        }
+        const ch = pending[0];
+        if (ch === '\x1b') {
+          if (pending.length === 1) break; // distinguish Escape from a split sequence
+          if (pending[1] === '[' || pending[1] === 'O') {
+            const end = pending.slice(2).search(/[@-~]/);
+            if (end === -1) break;
+            const sequence = pending.slice(0, end + 3);
+            if (NAMED.has(sequence)) events.push({ name: NAMED.get(sequence) });
+            pending = pending.slice(sequence.length); // unknown CSI/SS3 is ignored
+            continue;
+          }
+          const alt = pending.slice(0, 2);
+          if (NAMED.has(alt)) { events.push({ name: NAMED.get(alt) }); pending = pending.slice(2); }
+          else { events.push({ name: 'escape' }); pending = pending.slice(1); }
+          continue;
+        }
+        const code = pending.codePointAt(0);
+        // setEncoding('utf8') already preserves code points; also support callers
+        // feeding string fragments that end in a high surrogate.
+        if (pending.length === 1 && code >= 0xD800 && code <= 0xDBFF) break;
+        const point = String.fromCodePoint(code);
+        if (NAMED.has(ch)) events.push({ name: NAMED.get(ch) });
+        else if (code >= 0x20) events.push({ text: point });
+        pending = pending.slice(point.length);
+      }
+      return events;
+    },
+    get waitingForEscape() { return !pasting && pending === '\x1b'; },
+    flushEscape() {
+      if (pasting || pending !== '\x1b') return [];
+      pending = '';
+      return [{ name: 'escape' }];
+    },
+  };
+}
+
+/** Decode a complete key string; stream consumers must retain createKeyDecoder(). */
 export function decodeKeys(chunk) {
-  const input = String(chunk ?? '');
-  if (input === '') return [];
-
-  // Bracketed paste: ESC[200~ ... ESC[201~
-  const paste = /\x1b\[200~([\s\S]*?)\x1b\[201~/g;
-  if (paste.test(input)) {
-    const events = [];
-    let last = 0;
-    paste.lastIndex = 0;
-    for (let m; (m = paste.exec(input)); ) {
-      if (m.index > last) events.push(...decodeKeys(input.slice(last, m.index)));
-      events.push({ text: m[1].replace(/\r\n?/g, '\n') });
-      last = m.index + m[0].length;
-    }
-    if (last < input.length) events.push(...decodeKeys(input.slice(last)));
-    return events;
-  }
-
-  const events = [];
-  let i = 0;
-  while (i < input.length) {
-    const ch = input[i];
-    if (ch === '\x1b') {
-      // Longest-match a known sequence; otherwise swallow the whole CSI so a
-      // mouse report or unknown key cannot leak escape bytes into the buffer.
-      let matched = null;
-      for (let len = Math.min(6, input.length - i); len >= 2; len--) {
-        const candidate = input.slice(i, i + len);
-        if (NAMED.has(candidate)) { matched = { name: NAMED.get(candidate), len }; break; }
-      }
-      if (matched) { events.push({ name: matched.name }); i += matched.len; continue; }
-      if (input[i + 1] === '[' || input[i + 1] === 'O') {
-        let j = i + 2;
-        while (j < input.length && !/[A-Za-z~]/.test(input[j])) j++;
-        i = j + 1;
-        continue;
-      }
-      events.push({ name: 'escape' }); i += 1; continue;
-    }
-    if (NAMED.has(ch)) { events.push({ name: NAMED.get(ch) }); i += 1; continue; }
-    // Control characters other than the ones we name are dropped, not typed.
-    // Read the codepoint from the STRING, not from ch: ch is a single UTF-16 unit,
-    // so an emoji would otherwise be emitted as two broken surrogate halves.
-    const code = input.codePointAt(i);
-    if (code < 0x20) { i += 1; continue; }
-    const point = String.fromCodePoint(code);
-    events.push({ text: point });
-    i += point.length;
-  }
-  return events;
+  const decoder = createKeyDecoder();
+  return [...decoder.push(chunk), ...decoder.flushEscape()];
 }
 
 /**
@@ -80,8 +89,13 @@ export function decodeKeys(chunk) {
  * typing. Pure — every method returns a new state, and returns the SAME object
  * when nothing moved so no redraw is forced.
  */
+const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+function adjacentBoundary(value, cursor, direction) {
+  const part = segments.segment(value).containing(direction < 0 ? cursor - 1 : cursor);
+  return direction < 0 ? part.index : part.index + part.segment.length;
+}
 const lineBounds = (value, cursor) => {
-  const start = value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
+  const start = cursor === 0 ? 0 : value.lastIndexOf('\n', cursor - 1) + 1;
   const end = value.indexOf('\n', cursor);
   return { start, end: end === -1 ? value.length : end };
 };
@@ -91,14 +105,17 @@ export function applyKey(state, event) {
     return { value: value.slice(0, cursor) + event.text + value.slice(cursor), cursor: cursor + event.text.length };
   }
   switch (event.name) {
-    case 'backspace':
-      return cursor === 0 ? state : { value: value.slice(0, cursor - 1) + value.slice(cursor), cursor: cursor - 1 };
+    case 'backspace': {
+      if (cursor === 0) return state;
+      const previous = adjacentBoundary(value, cursor, -1);
+      return { value: value.slice(0, previous) + value.slice(cursor), cursor: previous };
+    }
     case 'delete':
-      return cursor >= value.length ? state : { value: value.slice(0, cursor) + value.slice(cursor + 1), cursor };
+      return cursor >= value.length ? state : { value: value.slice(0, cursor) + value.slice(adjacentBoundary(value, cursor, 1)), cursor };
     // Return the SAME object when nothing moved: index.mjs redraws on identity
     // change, so a new object for a no-op arrow key forced a full frame.
-    case 'left': return cursor === 0 ? state : { value, cursor: cursor - 1 };
-    case 'right': return cursor === value.length ? state : { value, cursor: cursor + 1 };
+    case 'left': return cursor === 0 ? state : { value, cursor: adjacentBoundary(value, cursor, -1) };
+    case 'right': return cursor === value.length ? state : { value, cursor: adjacentBoundary(value, cursor, 1) };
     // home/end act on the CURRENT line, which is what they mean in a multi-line box.
     case 'home': {
       const { start } = lineBounds(value, cursor);

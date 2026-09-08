@@ -7,6 +7,15 @@ import { decryptCredential, loadCredentialStore, deviceMid } from './credentials
 
 export const BASE = process.env.ZCODE_BASE_URL ?? 'https://zcode.z.ai';
 
+export function quotaError({ status, body }) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.keys(body).length)
+    return `HTTP ${status}: invalid quota response`;
+  if (status >= 200 && status < 300 && body.success !== false && !body.error &&
+      (body.code === undefined || [0, '0', 200, '200'].includes(body.code))) return null;
+  const message = body.message ?? body.msg ?? body.error?.message ?? 'quota request failed';
+  return `HTTP ${status}${body.code === undefined ? '' : ` (code ${body.code})`}: ${String(message)}`;
+}
+
 export function getZcodeJwt() {
   return decryptCredential(loadCredentialStore()['zcodejwttoken']);
 }

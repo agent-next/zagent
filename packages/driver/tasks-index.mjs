@@ -18,6 +18,7 @@ export function listTasks(db, { includeArchived = false } = {}) {
 }
 
 export function findTask(db, taskId) { // exact id, or unique suffix match (sess_… uuid tails are what users type)
+  if (typeof taskId !== 'string' || !taskId.trim()) return [];
   const exact = db.prepare('SELECT workspace_key, task_id FROM tasks WHERE task_id = ? AND deleted = 0').all(taskId);
   if (exact.length) return exact;
   const suff = db.prepare('SELECT workspace_key, task_id FROM tasks WHERE task_id LIKE ? AND deleted = 0').all(`%${taskId}`);

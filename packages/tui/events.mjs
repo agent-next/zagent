@@ -132,6 +132,7 @@ export function applyEvent(state, event) {
     case 'turn_started':
       state.turn = {
         turnId: str(event?.turnId), active: true, startedAt: Date.now(),
+        entryStart: state.entries.length,
         usage: null, retries: 0, toolCalls: 0, errors: 0,
       };
       break;
@@ -152,15 +153,19 @@ export function applyEvent(state, event) {
         state.querySource = 'main_turn';
         break;
       }
-      if (!isMainTurn(state.messageSource.get(id))) break;
+      const source = state.messageSource.get(id);
       // 'start'/'finish' bracket the whole message and carry no channel of their
       // own; 'finish' is what settles every open entry for this message.
       if (kind === 'finish' || p.done === true) {
-        for (const e of state.entries) {
-          if ((e.kind === 'assistant' || e.kind === 'thinking') && e.id === id) e.done = true;
+        if (isMainTurn(source)) {
+          for (const e of state.entries) {
+            if ((e.kind === 'assistant' || e.kind === 'thinking') && e.id === id) e.done = true;
+          }
         }
+        state.messageSource.delete(id);
         break;
       }
+      if (!isMainTurn(source)) break;
       // Absent kind and UNKNOWN kind are different cases and must not share a rule.
       //   * absent — every live event carries a kind, so this is an older or
       //     different runtime; prose is the graceful reading and such a stream
@@ -173,6 +178,10 @@ export function applyEvent(state, event) {
       if (!channel) { state.unhandled.set(`kind:${kind}`, (state.unhandled.get(`kind:${kind}`) ?? 0) + 1); break; }
       const delta = str(p.delta);
       if (delta === '') break;                 // *_start / *_end markers
+      // Late deltas cannot reopen a settled message, even after its routing map
+      // was retired. model_complete retains its separate authoritative path.
+      const prior = findEntry(state, 'assistant', id) ?? findEntry(state, 'thinking', id);
+      if (prior?.done) break;
       streamEntry(state, id, channel).text += delta;
       break;
     }
@@ -256,6 +265,7 @@ export function applyEvent(state, event) {
       break;
 
     case 'turn_complete':
+      endTurn(state, { reason: 'complete' });
       if (state.turn) {
         state.turn.usage = p.usage ?? null;
         state.turn.durationMs = num(p.duration, Date.now() - state.turn.startedAt);
@@ -291,11 +301,34 @@ export function applyEvent(state, event) {
  * animation interval and set its own ui.busy. Two owners of one piece of state.
  */
 export function endTurn(state, { reason = 'ended' } = {}) {
-  if (!state.turn || state.turn.active === false) return false;
-  state.turn.active = false;
-  state.turn.endedBy = reason;
-  state.turn.durationMs ??= Date.now() - state.turn.startedAt;
-  return true;
+  let changed = state.currentMessageId !== null || state.querySource !== 'main_turn';
+  // An exception or abort may omit every stream/tool completion marker. Retire
+  // those entries too, or their old tails keep repainting beneath later turns.
+  for (const entry of state.entries.slice(state.turn?.entryStart ?? 0)) {
+    if ((entry.kind === 'assistant' || entry.kind === 'thinking') && !entry.done) {
+      entry.done = true;
+      changed = true;
+    } else if (entry.kind === 'tool' && (entry.status === 'scheduled' || entry.status === 'running')) {
+      entry.status = 'error';
+      entry.resultText ||= 'Tool ended without a result.';
+      if (state.turn) state.turn.errors += 1;
+      changed = true;
+    }
+  }
+  if (state.turn && state.turn.active !== false) {
+    state.turn.active = false;
+    state.turn.endedBy = reason;
+    state.turn.durationMs ??= Date.now() - state.turn.startedAt;
+    changed = true;
+  }
+  // Reset per-turn latches, but preserve side-query routing until that stream
+  // finishes: session-title generation can outlive the main turn.
+  if (state.currentMessageId !== null && isMainTurn(state.messageSource.get(state.currentMessageId))) {
+    state.messageSource.delete(state.currentMessageId);
+  }
+  state.currentMessageId = null;
+  state.querySource = 'main_turn';
+  return changed;
 }
 
 export function addNotice(state, text, level = 'muted') {

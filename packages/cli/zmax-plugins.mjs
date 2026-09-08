@@ -7,7 +7,7 @@ import { marketplaceVersions, installedPlugins, suppressedBuiltins, updateReport
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 
-const [arg, sub] = process.argv.slice(2);
+const [arg, sub] = process.argv.slice(2).filter(value => value !== '--offline');
 const q = arg === 'install' ? null : arg;
 if (arg === 'install') {
   if (!sub) { console.error('usage: zagent plugins install <name>'); process.exit(2); }

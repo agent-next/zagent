@@ -111,9 +111,11 @@ export function undoPreview(artifacts, readCurrent) {
     // Write-tool artifacts for NEW files: beforeContent null, empty patch, truth in
     // afterContent (review r2 #7) — verify via afterContent; undo = delete the file.
     if (f.beforeContent == null && f.structuredPatch?.length === 0) {
-      if (f.afterContent != null && lf(cur) !== lf(f.afterContent)) {
+      if (typeof f.afterContent !== 'string') {
+        plans.push({ path, canApply: false, state: 'unsafe', reason: 'creation artifact has no afterContent to verify' });
+      } else if (lf(cur) !== lf(f.afterContent)) {
         plans.push({ path, canApply: false, state: 'external_modified', reason: 'file changed since creation; refusing to clobber' });
-      } else plans.push({ path, canApply: true, state: 'safe', delete: true, restore: null });
+      } else plans.push({ path, canApply: true, state: 'safe', delete: true, restore: null, expectedAfter: cur });
       continue;
     }
     const after = applyHunks(f.beforeContent ?? '', f.structuredPatch);
@@ -135,6 +137,11 @@ export function undoApply(plans, writeCurrent, { readCurrent, removeCurrent } = 
     try {
       if (p.delete) {
         if (!removeCurrent) return { path: p.path, state: 'unsafe', reverted: false, error: 'deletion requires removeCurrent' };
+        if (!readCurrent || typeof p.expectedAfter !== 'string')
+          return { path: p.path, state: 'unsafe', reverted: false, error: 'deletion requires readCurrent and verified creation content' };
+        const current = readCurrent(p.path);
+        if (current === null) return { path: p.path, state: 'file_missing', reverted: false };
+        if (current !== p.expectedAfter) return { path: p.path, state: 'external_modified', reverted: false };
         removeCurrent(p.path); return { path: p.path, state: 'reverted', reverted: true, deleted: true };
       }
       if (readCurrent && p.expectedAfter !== undefined && lf(readCurrent(p.path) ?? '') !== lf(p.expectedAfter))

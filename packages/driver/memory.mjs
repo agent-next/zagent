@@ -60,15 +60,30 @@ export function loadProjectMemory(workspacePath) {
   return '';
 }
 
-// Serialized write (r10 #3): exclusive lockfile + tmp/rename atomic replace.
-export function saveProjectMemory(workspacePath, content) {
+// The lock covers content preparation too: appends must read the previous version
+// only after obtaining exclusive access, or two successful writers can lose a line.
+function writeProjectMemory(workspacePath, getContent) {
   const dir = `${PROJECT_BASE}/${workspaceId(workspacePath)}/memory`;
   mkdirSync(dir, { recursive: true });
   const lock = `${dir}/.lock`;
   const fh = openSync(lock, 'wx'); // EEXIST → another writer holds it
+  const tmp = `${dir}/MEMORY.md.tmp-${process.pid}`;
   try {
-    const tmp = `${dir}/MEMORY.md.tmp-${process.pid}`;
-    writeFileSync(tmp, content);
+    writeFileSync(tmp, getContent());
     renameSync(tmp, `${dir}/MEMORY.md`);
-  } finally { closeSync(fh); try { unlinkSync(lock); } catch {} } // unlink: no artifacts left in the GUI-owned store
+  } finally {
+    try { unlinkSync(tmp); } catch {}
+    closeSync(fh); try { unlinkSync(lock); } catch {}
+  }
+}
+
+export function saveProjectMemory(workspacePath, content) {
+  writeProjectMemory(workspacePath, () => content);
+}
+
+export function appendProjectMemory(workspacePath, line) {
+  writeProjectMemory(workspacePath, () => {
+    const cur = loadProjectMemory(workspacePath);
+    return (cur ? cur.replace(/\n*$/, '\n') : '# Memory Index\n') + `- ${line}\n`;
+  });
 }

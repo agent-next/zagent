@@ -4,6 +4,7 @@
 // errors are JSON-RPC-style codes (-32601 method, -32602 invalid params with Zod detail).
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 import { findRuntime } from './runtime.mjs';
 export { DEFAULT_RUNTIME } from './runtime.mjs';
@@ -23,7 +24,7 @@ export class ZCodeProtocolClient {
     runtime ??= findRuntime({ cwd })?.entry;
     if (!runtime) throw new Error('ZCode runtime not found; set ZCODE_RUNTIME or install zcode-app-cli / ZCode desktop');
     this.child = spawn(nodeBin, [runtime, 'app-server', '--stdio'], { cwd, stdio: ['pipe', 'pipe', 'inherit'] });
-    this.buf = ''; this.pending = new Map(); this.nextId = 1; this.onNotify = onNotify ?? (() => {});
+    this.buf = ''; this.decoder = new StringDecoder('utf8'); this.pending = new Map(); this.nextId = 1; this.onNotify = onNotify ?? (() => {});
     this.requestHandlers = { ...DEFAULT_REQUEST_HANDLERS, ...(requestHandlers ?? {}) };
     // stdin can EPIPE/write-after-end during the exit race; without a sink that is an
     // unhandled 'error' event that crashes the host process.
@@ -44,10 +45,11 @@ export class ZCodeProtocolClient {
     });
     this.call('session/list', undefined, 30000)
       .then(this._readyOk, e => { if (!this.dead) this._readyErr(Object.assign(new Error(`runtime not ready: ${e?.message ?? e}`), { code: 'E_RUNTIME_NOT_READY' })); });
-    this.exited = new Promise(res => this.child.on('exit', (c, s) => { this._gone(); res({ code: c, signal: s }); }));
-    // Spawn failures (e.g. bad nodeBin) fire 'error' WITHOUT 'exit' — same cleanup, or
-    // pending calls would hang to their own timeouts and dead would never be set.
-    this.child.on('error', () => this._gone());
+    this.exited = new Promise(res => {
+      this.child.on('exit', (c, s) => { this._gone(); res({ code: c, signal: s }); });
+      // Spawn failures emit error without exit; settle both exit and pending RPCs.
+      this.child.on('error', error => { this._gone(); res({ code: null, signal: null, error }); });
+    });
     this.child.stdout.on('data', d => this._feed(d));
   }
   _gone() {
@@ -57,12 +59,13 @@ export class ZCodeProtocolClient {
     this.pending.clear();
   }
   _feed(d) {
-    this.buf += d.toString();
+    this.buf += typeof d === 'string' ? d : (this.decoder ??= new StringDecoder('utf8')).write(d);
     let i;
     while ((i = this.buf.indexOf('\n')) >= 0) {
       const line = this.buf.slice(0, i).replace(/\r$/, ''); this.buf = this.buf.slice(i + 1);
       if (!line.trim()) continue;
       let msg; try { msg = JSON.parse(line); } catch { continue; }
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg)) continue;
       if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined)) {
         const r = this.pending.get(String(msg.id));
         if (r) { this.pending.delete(String(msg.id)); msg.error ? r.reject(Object.assign(new Error(msg.error.message), { code: msg.error.code, data: msg.error.data })) : r.resolve(msg.result); }
@@ -70,7 +73,7 @@ export class ZCodeProtocolClient {
         if (msg.id !== undefined) { // server->client request: answer via handler map
           const h = this.requestHandlers[msg.method];
           if (h) {
-            Promise.resolve(h(msg.params)).then(result =>
+            Promise.resolve().then(() => h(msg.params)).then(result =>
               this.child.stdin.write(JSON.stringify({ id: msg.id, result }) + '\n')).catch(e =>
               this.child.stdin.write(JSON.stringify({ id: msg.id, error: { code: -32000, message: String(e?.message ?? e) } }) + '\n'));
           } else {
@@ -105,42 +108,79 @@ export function sessionSid(created) { return created?.session?.sessionId ?? crea
 
 // --- A2: prompt sending + streaming events ---
 export async function runTurn(client, sessionId, prompt, { timeoutMs = 120000, onEvent } = {}) {
-  // Event flow (verified 2026-09-03): the runtime delivers ALL events as server->client
-  // REQUESTS (msg.method + msg.id, auto-answered by the client). Turn completion =
-  // state.updated with patch.status "idle" after we saw "running".
-  // The onNotify save/restore wrapper is NOT reentrant: overlapping turns would silently
-  // drop the inner turn's events (and a stale restore leaves a zombie wrapper installed).
-  // Refuse loudly instead — one turn per client at a time.
   if (client._turnInFlight) throw new Error('runTurn: another turn is already active on this client');
+  if (client.dead) throw Object.assign(new Error('runtime exited'), { code: 'E_RUNTIME_EXITED' });
   client._turnInFlight = true;
+  const prevNotify = client.onNotify;
+  const events = [], lifecycle = [];
+  let timer, detachExit = () => {}, sendResult, acknowledged = false, active = true;
+  let turnId = null, sawRunning = false;
+  let settle;
+  const done = new Promise(resolve => { settle = resolve; });
+  const accept = (kind, params) => {
+    if (!active) return;
+    if (params.sessionId != null && params.sessionId !== sessionId) return;
+    if (turnId != null && params.turnId != null && params.turnId !== turnId) return;
+    events.push({ kind, params });
+    try { onEvent?.(kind, params); } catch {}
+    if (kind === 'state.updated' && params.scope === 'session' && params.patch?.status === 'running') sawRunning = true;
+    if (kind !== 'computer-use/operation-event') return;
+    if (params.kind === 'turn-started') {
+      turnId ??= params.turnId ?? null;
+      sawRunning = true;
+    }
+    if (sawRunning && (params.kind === 'turn-completed' || params.kind === 'turn-failed') &&
+        (turnId == null || params.turnId === turnId)) {
+      settle({ ended: params.kind, turnId: params.turnId });
+    }
+  };
   try {
-    const events = [];
-    let settle; const done = new Promise(r => settle = r);
-    let sawRunning = false;
-    const prevNotify = client.onNotify;
-    client.onNotify = (msg) => {
+    client.onNotify = msg => {
       try { prevNotify?.(msg); } catch {}
       if (!msg.method) return;
-      const kind = msg.method;
       const params = msg.params ?? {};
-      events.push({ kind, params });
-      try { onEvent?.(kind, params); } catch {} // a throwing consumer must not break turn tracking
-      if (kind === 'state.updated' && params.scope === 'session' && params.patch?.status === 'running') sawRunning = true;
-      // Turn lifecycle rides computer-use/operation-event {kind: turn-started|turn-completed} (verified 2026-09-03).
-      if (kind === 'computer-use/operation-event' && typeof params.kind === 'string' && params.kind.startsWith('turn-')) {
-        if (params.kind === 'turn-started') sawRunning = true;
-        if (sawRunning && (params.kind === 'turn-completed' || params.kind === 'turn-failed'))
-          settle({ ended: params.kind, turnId: params.turnId });
-      }
+      // Events can precede the send acknowledgement. Defer consumers as well as
+      // lifecycle tracking until its turn ID can exclude stale output and usage.
+      if (acknowledged) accept(msg.method, params);
+      else lifecycle.push([msg.method, params]);
     };
-    const timer = setTimeout(() => settle({ ended: 'timeout' }), timeoutMs);
-    let sendResult;
-    try { sendResult = await client.call('session/send', { sessionId, content: prompt }); }
-    catch (e) { clearTimeout(timer); client.onNotify = prevNotify; throw e; }
-    const end = await done;
-    clearTimeout(timer); client.onNotify = prevNotify;
+    const gone = new Promise((resolve, reject) => {
+      const fail = () => reject(Object.assign(new Error('runtime exited during turn'), { code: 'E_RUNTIME_EXITED' }));
+      if (client.child?.once) {
+        client.child.once('exit', fail);
+        client.child.once('error', fail);
+        detachExit = () => { client.child.off('exit', fail); client.child.off('error', fail); };
+      } else if (client.exited) {
+        // Injectable clients need only expose the public exit promise.
+        let active = true;
+        client.exited.then(() => { if (active) fail(); }, () => { if (active) fail(); });
+        detachExit = () => { active = false; };
+      }
+      if (client.dead) fail();
+    });
+    const expired = new Promise(resolve => { timer = setTimeout(() => resolve({ ended: 'timeout' }), timeoutMs); });
+    const running = (async () => {
+      const response = await client.call('session/send', { sessionId, content: prompt });
+      if (!active) return;
+      sendResult = response;
+      turnId = sendResult?.turnId ?? lifecycle.find(([kind, params]) =>
+        kind === 'computer-use/operation-event' && params.kind === 'turn-started' &&
+        (params.sessionId == null || params.sessionId === sessionId) && params.turnId != null)?.[1].turnId ?? null;
+      acknowledged = true;
+      for (const [kind, params] of lifecycle) accept(kind, params);
+      lifecycle.length = 0;
+      return done;
+    })();
+    const end = await Promise.race([running, gone, expired]);
     return { sendResult, events, end };
-  } finally { client._turnInFlight = false; }
+  } finally {
+    active = false;
+    lifecycle.length = 0;
+    clearTimeout(timer);
+    detachExit();
+    client.onNotify = prevNotify;
+    client._turnInFlight = false;
+  }
 }
 
 // --- I5: robustness trio (from official 3.10.1 changelog) ---
@@ -241,15 +281,24 @@ export function usageLine(usage) {
   return `${f(t.inputTokens)} in · ${f(t.outputTokens)} out · ${f(t.cacheReadTokens)} cache-read${t.cacheWriteTokens ? ` · ${f(t.cacheWriteTokens)} cache-write` : ''} · ${models}`;
 }
 
-// Shared answer extraction: read the session back and return the last assistant text
-// (zmaxd + telegram both need it; runTurn's return carries events, not the text).
-export async function turnAnswer(client, sessionId) {
-  const read = await client.call('session/read', { sessionId }, 30000);
-  return (read.messages ?? [])
+// Assistant text created by this turn; the pre-send snapshot prevents historical
+// replies from being repeated when a session is reused.
+export function currentAnswer(before, after) {
+  const ids = new Set(before.map(m => m?.info?.id).filter(Boolean));
+  return after.filter((m, i) => m?.info?.id ? !ids.has(m.info.id) : i >= before.length)
     .filter(m => m?.info?.role === 'assistant')
-    .flatMap(m => m.parts ?? [])
-    .filter(p => p?.type === 'text' && p.text)
+    .flatMap(m => m.parts ?? []).filter(p => p?.type === 'text' && p.text)
     .map(p => p.text).join('\n');
+}
+
+export async function turnAnswer(client, sessionId, { beforeMessages } = {}) {
+  const read = await client.call('session/read', { sessionId }, 30000);
+  const messages = read.messages ?? [];
+  if (beforeMessages !== undefined) return currentAnswer(beforeMessages, messages);
+  // Legacy callers without a snapshot get only messages after the latest user input.
+  const lastUser = messages.findLastIndex(m => m?.info?.role === 'user');
+  const boundary = lastUser >= 0 ? lastUser + 1 : Math.max(0, messages.findLastIndex(m => m?.info?.role === 'assistant'));
+  return currentAnswer(messages.slice(0, boundary), messages);
 }
 
 // --- E1 substrate: tool-call summary from a turn's events ---

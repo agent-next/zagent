@@ -9,17 +9,6 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const fixture = mkdtempSync(path.join(os.tmpdir(), 'zagent-package-'));
-const profile = path.join(fixture, 'home');
-mkdirSync(profile);
-const env = {
-  PATH: process.env.PATH, HOME: profile, USERPROFILE: profile,
-  TMPDIR: fixture, XDG_CONFIG_HOME: path.join(profile, '.config'),
-  ZCODE_RUNTIME: path.join(fixture, 'missing-runtime.cjs'),
-  npm_config_cache: path.join(fixture, 'npm-cache'),
-  npm_config_userconfig: path.join(fixture, 'absent-npmrc'),
-  npm_config_registry: 'https://registry.npmjs.org/',
-};
 /**
  * What the published payload may and may not contain. Exported so the repo's
  * drift test can assert against the REAL predicates — it used to scrape them out
@@ -40,21 +29,70 @@ export const allowed = file => ['package.json', 'package-lock.json', 'VERSION', 
 // harness. They are dev infrastructure — a published CLI has no business shipping
 // a scriptable fake of its own runtime — but they do not start with "test", so the
 // release gate would otherwise demand they be added to files[].
-export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|daemon-request|zmax-(?:telegram|feishu|wechat|compact)|zmaxd[^/]*|fake-host|journey|journey-entry|screen-replay)\.mjs$/;
+export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|chat-turns|daemon-request|zmax-(?:telegram|feishu|wechat|compact)|zmaxd[^/]*|fake-host|journey|journey-entry|screen-replay)\.mjs$/;
 
-// Importing this module must not pack and install anything; only running it does.
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (!isMain) { /* imported for its predicates */ }
+export function installationPaths(prefix, pkg, platform = process.platform) {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const windows = platform === 'win32';
+  return {
+    installed: paths.join(prefix, ...(windows ? [] : ['lib']), 'node_modules', pkg.name),
+    bins: Object.fromEntries(Object.keys(pkg.bin ?? {}).map(name =>
+      [name, paths.join(prefix, ...(windows ? [] : ['bin']), `${name}${windows ? '.cmd' : ''}`)])),
+  };
+}
 
-const run = (cmd, args, cwd = fixture, expected = 0) => {
-  const result = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: 120000 });
+// Node cannot spawn npm.cmd directly. Invoke npm's JS entry with the current
+// Node; npm test supplies npm_execpath, and standalone Windows Node installs
+// place npm beside node.exe.
+export function npmInvocation({ platform = process.platform, env = process.env,
+  execPath = process.execPath, exists = existsSync } = {}) {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const cli = [env.npm_execpath, paths.join(paths.dirname(execPath), 'node_modules/npm/bin/npm-cli.js')]
+    .find(file => file && /\.js$/i.test(file) && exists(file));
+  if (cli) return { command: execPath, args: [cli] };
+  if (platform === 'win32') throw new Error('Cannot locate npm-cli.js; run this verifier with npm test');
+  return { command: 'npm', args: [] };
+}
+
+export function installedInvocation(entry, args, platform = process.platform, env = process.env) {
+  if (platform !== 'win32') return { command: entry, args, env: {} };
+  // Only fixed smoke-test verbs/flags enter cmd.exe. Pass the path through an
+  // environment variable so spaces, &, %, and ! in the install prefix remain
+  // literal, with delayed expansion disabled.
+  assert(args.every(arg => /^[\w-]+$/.test(arg)), 'unsafe Windows smoke-test argument');
+  return { command: env.ComSpec || path.win32.join(env.SystemRoot || 'C:\\Windows', 'System32/cmd.exe'),
+    args: ['/d', '/v:off', '/s', '/c', `""%ZAGENT_VERIFY_ENTRY%" ${args.join(' ')}"`],
+    env: { ZAGENT_VERIFY_ENTRY: entry }, windowsVerbatimArguments: true };
+}
+
+function main() {
+const fixture = mkdtempSync(path.join(os.tmpdir(), 'zagent-package-'));
+try {
+const profile = path.join(fixture, 'home');
+mkdirSync(profile);
+const env = {
+  ...Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'ComSpec', 'PATHEXT']
+    .filter(key => process.env[key]).map(key => [key, process.env[key]])),
+  HOME: profile, USERPROFILE: profile, TMPDIR: fixture, TMP: fixture, TEMP: fixture,
+  APPDATA: path.join(profile, 'AppData/Roaming'), LOCALAPPDATA: path.join(profile, 'AppData/Local'),
+  XDG_CONFIG_HOME: path.join(profile, '.config'),
+  ZCODE_RUNTIME: path.join(fixture, 'missing-runtime.cjs'),
+  npm_config_cache: path.join(fixture, 'npm-cache'),
+  npm_config_userconfig: path.join(fixture, 'absent-npmrc'),
+  npm_config_registry: 'https://registry.npmjs.org/',
+};
+
+const run = (cmd, args, cwd = fixture, expected = 0, invocation = {}) => {
+  const result = spawnSync(cmd, args, { cwd, env: { ...env, ...invocation.env },
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments, encoding: 'utf8', timeout: 120000 });
   assert.ifError(result.error);
   assert.equal(result.status, expected, `${cmd} ${args.join(' ')}: ${result.stderr}\n${result.stdout}`);
   return result.stdout;
 };
-if (isMain) try {
+  const npm = npmInvocation();
+  const runNpm = (args, cwd) => run(npm.command, [...npm.args, ...args], cwd);
   const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const [packed] = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', fixture], root));
+  const [packed] = JSON.parse(runNpm(['pack', '--ignore-scripts', '--json', '--pack-destination', fixture], root));
   const files = packed.files.map(f => f.path);
   assert(files.length > 10, 'payload must contain actual runtime modules');
   for (const file of files) {
@@ -74,16 +112,21 @@ if (isMain) try {
   const tarball = path.join(fixture, packed.filename);
   const sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex');
   const prefix = path.join(fixture, 'install');
-  run('npm', ['install', '--global', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', tarball]);
-  const entry = path.join(prefix, 'bin', 'zagent');
-  assert.equal(run(entry, ['--version']).trim(), pkg.version);
-  assert.match(run(entry, ['--help']), /headless/);
-  assert.match(run(path.join(prefix, 'bin', 'za'), ['help']), /doctor/);
-  assert.match(run(entry, ['doctor'], fixture, 1), /NOT FOUND/);
+  runNpm(['install', '--global', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', tarball]);
+  const { bins, installed } = installationPaths(prefix, pkg);
+  assert(bins.zagent && bins.za, 'manifest must install zagent and za');
+  const cli = (name, args, expected = 0) => {
+    assert(existsSync(bins[name]), `installed alias missing: ${name}`);
+    const invocation = installedInvocation(bins[name], args);
+    return run(invocation.command, invocation.args, fixture, expected, invocation);
+  };
+  for (const name of Object.keys(bins)) assert.equal(cli(name, ['--version']).trim(), pkg.version);
+  assert.match(cli('zagent', ['--help']), /headless/);
+  assert.match(cli('za', ['help']), /doctor/);
+  assert.match(cli('zagent', ['doctor'], 1), /NOT FOUND/);
   for (const command of ['telegram', 'feishu', 'wechat', 'compact', 'dcompact', 'plugin-validate'])
-    run(entry, [command], fixture, 2);
+    cli('zagent', [command], 2);
   assert(!existsSync(path.join(profile, '.zcode')), 'offline smoke must not create a user runtime profile');
-  const installed = path.join(prefix, 'lib', 'node_modules', pkg.name);
   run(process.execPath, ['--input-type=module', '-e', "await import('./packages/driver/runtime.mjs'); console.log('driver import OK')"], installed);
   for (const file of files.filter(f => f.endsWith('.mjs')))
     run(process.execPath, ['--check', path.join(installed, file)]);
@@ -100,3 +143,7 @@ if (isMain) try {
 } finally {
   rmSync(fixture, { recursive: true, force: true });
 }
+}
+
+// Imports expose only pure predicates/path helpers and allocate no fixtures.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

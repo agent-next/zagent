@@ -21,10 +21,15 @@ const DESKTOP_BUNDLES = {
 
 export const DEFAULT_RUNTIME = DESKTOP_BUNDLES.linux[0]; // legacy alias (linux deb path)
 
+export function desktopRuntimeEntries({ env = process.env, home = os.homedir(), platform = process.platform } = {}) {
+  const p = { home, localAppData: env.LOCALAPPDATA ?? '', appData: env.APPDATA ?? '' };
+  return (DESKTOP_BUNDLES[platform] ?? DESKTOP_BUNDLES.linux)
+    .map(entry => typeof entry === 'function' ? entry({ ...p, ...env }) : entry);
+}
+
 export function findRuntime({ env = process.env, home = os.homedir(), cwd = process.cwd(),
                               platform = process.platform, exists = existsSync } = {}) {
   const p = { home, localAppData: env.LOCALAPPDATA ?? '', appData: env.APPDATA ?? '' };
-  const entryOf = c => (typeof c === 'function' ? c({ ...p, ...env }) : c);
   const candidate = (entry, kind) => entry && exists(entry) ? { entry, kind, root: path.dirname(entry) } : null;
   // An explicit override is authoritative, including when it is invalid.
   if (env.ZCODE_RUNTIME) return candidate(path.resolve(cwd, env.ZCODE_RUNTIME), 'explicit');
@@ -37,8 +42,8 @@ export function findRuntime({ env = process.env, home = os.homedir(), cwd = proc
     if (found) return found;
   }
   // official desktop bundle, per-OS install roots in priority order
-  for (const c of DESKTOP_BUNDLES[platform] ?? DESKTOP_BUNDLES.linux) {
-    const found = candidate(entryOf(c), 'desktop-bundle');
+  for (const entry of desktopRuntimeEntries({ env, home, platform })) {
+    const found = candidate(entry, 'desktop-bundle');
     if (found) return found;
   }
   return null;

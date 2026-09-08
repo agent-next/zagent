@@ -3,10 +3,20 @@
 // zcode.model-providers.v1; 2026-06-03 edition: 10 providers, 84 models, endpoint
 // paths, modality, contextWindow, reasoning levels; counts COMPUTED at runtime, never hardcoded). Read-only; we never invent entries.
 import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { findRuntime, desktopRuntimeEntries } from './runtime.mjs';
 
 export const CATALOG_DIRS = ['/opt/ZCode/resources/model-providers'];
 
-export function loadCatalog({ dirs = CATALOG_DIRS } = {}) {
+export function catalogDirs({ runtime = findRuntime(), platform = process.platform, env = process.env, home = os.homedir() } = {}) {
+  if (!runtime) return [];
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const entries = [runtime.entry, ...(runtime.kind === 'explicit' ? [] : desktopRuntimeEntries({ platform, env, home }))];
+  return [...new Set(entries.map(entry => paths.resolve(paths.dirname(entry), '..', 'model-providers')))];
+}
+
+export function loadCatalog({ dirs = catalogDirs() } = {}) {
   // r13: candidates restricted to models_catalog_*.json, newest-first, until one parses
   // with the expected schema — an unrelated/malformed later-sorting JSON cannot shadow it.
   for (const d of dirs) {

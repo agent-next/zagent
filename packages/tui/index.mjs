@@ -15,7 +15,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
 import { createScreen, composeFrame } from './screen.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
-import { decodeKeys, applyKey } from './keys.mjs';
+import { createKeyDecoder, applyKey } from './keys.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates } from './complete.mjs';
 import { stringsFor } from './strings.mjs';
@@ -62,6 +62,11 @@ export async function runTui(host = {}) {
     lastCtrlC: 0,
     abort: null,
   };
+  let exiting = false;
+  let escapeTimer = null;
+  const keyDecoder = createKeyDecoder();
+
+  const clearCompletion = () => { ui.completionSeq += 1; ui.completion = null; };
 
   screen.writeRaw(renderBanner(theme, screen.width, {
     version: host.version, workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
@@ -72,6 +77,7 @@ export async function runTui(host = {}) {
   }
 
   const draw = () => {
+    if (exiting) return;
     const { commit, live } = composeFrame(state, theme, screen.width);
     const tail = ui.permission
       ? renderPermission(ui.permission.request, ui.permission.selected, theme, screen.width)
@@ -104,7 +110,9 @@ export async function runTui(host = {}) {
   const quit = () => { exit(); resolveRun?.(); };
 
   function enqueueOrSubmit(text) {
-    const trimmed = sanitizeText(text, { keepNewlines: false }).trim();
+    if (exiting) return;
+    clearCompletion();
+    const trimmed = sanitizeText(text).trim();
     if (trimmed === '') return;
     // Before the busy guard below, which would otherwise QUEUE the quit: the user
     // typing /exit while a turn runs is asking to leave now, not after it finishes.
@@ -127,6 +135,7 @@ export async function runTui(host = {}) {
   }
 
   async function submit(text) {
+    if (exiting) return;
     const trimmed = text.trim();
     if (isQuit(trimmed)) { quit(); return; }   // also covers the queue drain
     if (trimmed === '' || ui.busy) return;
@@ -135,7 +144,8 @@ export async function runTui(host = {}) {
     addUserEntry(state, trimmed);
     ui.busy = true;
     ui.activity = trimmed.startsWith('/') ? 'running command' : 'working';
-    ui.abort = new AbortController();
+    const abort = new AbortController();
+    ui.abort = abort;
     startSpinner();
     draw();
 
@@ -146,19 +156,20 @@ export async function runTui(host = {}) {
       const payload = ui.attachments.length ? { text: trimmed, attachments: [...ui.attachments] } : trimmed;
       ui.attachments = [];
       const result = await host.submitPrompt(payload, {
-        abortSignal: ui.abort.signal,
+        abortSignal: abort.signal,
         delivery: 'start_turn',
         inputId: `input_${crypto.randomUUID()}`,
         queryId: `query_${crypto.randomUUID()}`,
-        onEvent: (event) => { applyEvent(state, event); draw(); },
+        onEvent: (event) => { if (!exiting && !abort.signal.aborted) { applyEvent(state, event); draw(); } },
         requestPermission: (request, context) => askPermission(request, context),
       });
       // A slash command that produced a turn (e.g. /goal <objective>) streamed its
       // answer already; only a command with no turnId is pure command output.
-      applyResult(result, { wasCommand: trimmed.startsWith('/') && !result?.turnId });
+      if (!exiting) applyResult(result, { wasCommand: trimmed.startsWith('/') && !result?.turnId });
     } catch (error) {
       const message = String(error?.message ?? error);
-      if (ui.abort?.signal.aborted) {
+      if (exiting) return;
+      if (abort.signal.aborted) {
         addNotice(state, 'interrupted', 'muted');
       } else {
         addNotice(state, `error: ${message}`, 'error');
@@ -189,7 +200,7 @@ export async function runTui(host = {}) {
     }
     // Drain in order. A turn that was interrupted drops the queue: the user hit
     // esc to stop, and silently continuing with queued work would defy that.
-    const next = ui.abortedByUser ? (ui.queue.length = 0, undefined) : ui.queue.shift();
+    const next = exiting || ui.abortedByUser ? (ui.queue.length = 0, undefined) : ui.queue.shift();
     ui.abortedByUser = false;
     if (next !== undefined) await submit(next);
   }
@@ -235,11 +246,14 @@ export async function runTui(host = {}) {
   }
 
   function askPermission(request, context) {
+    const options = permissionOptions(request);
+    if (exiting || context?.abortSignal?.aborted) return Promise.resolve(denyResponse(options));
     return new Promise((resolve) => {
-      const options = permissionOptions(request);
+      const onAbort = () => settle(denyResponse(options));
       const settle = (response) => {
         if (ui.permission?.resolve !== settle) return;
         ui.permission = null;
+        context?.abortSignal?.removeEventListener?.('abort', onAbort);
         draw();
         resolve(response);
       };
@@ -258,7 +272,7 @@ export async function runTui(host = {}) {
       };
       ui.permission = { request: safeRequest, options, selected: 0, resolve: settle };
       // A caller-side abort must release the prompt, or an interrupted turn hangs.
-      context?.abortSignal?.addEventListener?.('abort', () => settle(denyResponse(options)), { once: true });
+      context?.abortSignal?.addEventListener?.('abort', onAbort, { once: true });
       draw();
     });
   }
@@ -269,6 +283,8 @@ export async function runTui(host = {}) {
   const commands = slashCandidates(host.slashCommands);
 
   async function refreshCompletion() {
+    const seq = ++ui.completionSeq;
+    if (exiting) return;
     const context = completionContext(ui.input.value, ui.input.cursor);
     if (!context) { if (ui.completion) { ui.completion = null; draw(); } return; }
 
@@ -280,12 +296,13 @@ export async function runTui(host = {}) {
     }
 
     if (typeof host.listWorkspacePathSuggestions !== 'function') return;
-    const seq = ++ui.completionSeq;
+    const input = ui.input;
+    if (ui.completion) { ui.completion = null; draw(); }
     let suggestions;
     // {token} in, {items:[{kind,path}]} out — verified live; a bare string throws.
     try { suggestions = await host.listWorkspacePathSuggestions({ token: context.query }); }
     catch { return; }                       // a failed lookup closes nothing
-    if (seq !== ui.completionSeq) return;   // a newer keystroke already superseded this
+    if (exiting || seq !== ui.completionSeq || ui.input !== input) return;
     const items = rankCandidates(fileCandidates(suggestions), context.query);
     ui.completion = items.length ? { type: 'file', items, index: 0, context } : null;
     draw();
@@ -300,9 +317,9 @@ export async function runTui(host = {}) {
     // selected candidate, enter meant "submit" — otherwise a fully typed command
     // silently ate its own enter and the next line concatenated onto it.
     const next = applyCompletion(ui.input, c.context, item.value);
-    if (next.value.trim() === ui.input.value.trim()) { ui.completion = null; return false; }
+    if (next.value.trim() === ui.input.value.trim()) { clearCompletion(); return false; }
     ui.input = next;
-    ui.completion = null;
+    clearCompletion();
     draw();
     void refreshCompletion();               // a completed directory keeps completing
     return true;
@@ -318,7 +335,7 @@ export async function runTui(host = {}) {
       case 'enter':
         return acceptCompletion();
       case 'escape':
-        ui.completion = null; draw(); return true;
+        clearCompletion(); draw(); return true;
       default:
         return false;
     }
@@ -329,6 +346,7 @@ export async function runTui(host = {}) {
   // a picker, /effort, /model and /mode only worked if you already knew the
   // argument to type.
   async function openPicker(kind) {
+    if (exiting) return false;
     if (kind === 'effort') {
       const items = effortItems(host.effortOptions, ui.effort);
       if (!items.length) return false;
@@ -360,7 +378,7 @@ export async function runTui(host = {}) {
         parsed = parseModes(probe?.response);
         if (typeof probe?.mode === 'string') ui.mode = probe.mode;
       } catch { return false; }
-      if (!parsed) return false;
+      if (!parsed || exiting) return false;
       ui.chooser = { title: str.modeTitle, items: parsed.items,
         index: Math.max(0, parsed.items.findIndex(i => i.value === (parsed.current ?? ui.mode))),
         pick: async (item) => {
@@ -412,8 +430,6 @@ export async function runTui(host = {}) {
   /** Both statements must always fire together; three copies drifted apart easily. */
   const interrupt = () => { ui.abortedByUser = true; ui.abort?.abort(); };
 
-  let exiting = false;
-
   // Hoisted so a /exit typed at the prompt can end the run loop. Without it, exit()
 
   // only flips `exiting` and the process waits for a keypress that never comes.
@@ -422,7 +438,17 @@ export async function runTui(host = {}) {
   const exit = () => {
     if (exiting) return;
     exiting = true;
+    interrupt();
+    ui.queue.length = 0;
+    clearCompletion();
+    denyPendingPermission();
     stopSpinner();
+    clearTimeout(escapeTimer);
+    stdin.removeListener?.('data', onData);
+    stdin.removeListener?.('end', finish);
+    stdout.removeListener?.('resize', draw);
+    process.removeListener('SIGTERM', finish);
+    process.removeListener('SIGHUP', finish);
     screen.clearLive();
     try { stdin.setRawMode?.(false); } catch {}
     screen.writeRaw('\x1b[?2004l');
@@ -430,6 +456,7 @@ export async function runTui(host = {}) {
   };
 
   function onKey(event) {
+    if (exiting) return;
     // ctrl-c is handled BEFORE the permission dispatch. Routing it into the
     // prompt swallowed it, so neither abort nor double-ctrl-c exit worked while a
     // prompt was on screen — contradicting the UI's own "press ctrl+c again" hint.
@@ -468,7 +495,7 @@ export async function runTui(host = {}) {
     // Completion owns tab/up/down/enter/escape while it is open.
     if (ui.completion && onCompletionKey(event)) return;
 
-    if (event.name === 'escape') { if (ui.busy) interrupt(); return; }
+    if (event.name === 'escape') { clearCompletion(); if (ui.busy) interrupt(); return; }
     if (event.name === 'ctrl-d') { if (ui.input.value === '' && !ui.busy) exit(); return; }
     if (event.name === 'ctrl-l') { screen.writeRaw('\x1b[2J\x1b[H'); draw(); return; }
     // In developer mode ctrl+o reports the event kinds the reducer had no renderer
@@ -501,7 +528,7 @@ export async function runTui(host = {}) {
       return;
     }
     if (event.name === 'tab') { void refreshCompletion(); return; }
-    if (event.name === 'enter') { ui.completion = null; enqueueOrSubmit(ui.input.value); return; }
+    if (event.name === 'enter') { enqueueOrSubmit(ui.input.value); return; }
 
     if (event.name === 'up' || event.name === 'down') {
       // The runtime keeps input history that OUTLIVES the session; ours died with
@@ -519,12 +546,13 @@ export async function runTui(host = {}) {
         ui.historyIndex = Math.min(ui.history.length, Math.max(0, next));
         const recalled = ui.history[ui.historyIndex] ?? '';
         ui.input = { value: recalled, cursor: recalled.length };
-        draw();
+        draw(); void refreshCompletion();
       };
       if (typeof host.recallPreviousInput === 'function') {
         ui.recallDepth = Math.max(0, (ui.recallDepth ?? 0) + step);
         void Promise.resolve(host.recallPreviousInput(ui.recallDepth))
           .then((recalled) => {
+            if (exiting) return;
             const text = typeof recalled === 'string' ? recalled : recalled?.text;
             if (typeof text !== 'string') {
               ui.recallDepth = Math.max(0, ui.recallDepth - step);
@@ -532,7 +560,7 @@ export async function runTui(host = {}) {
               return;
             }
             ui.input = { value: text, cursor: text.length };
-            draw();
+            draw(); void refreshCompletion();
           })
           .catch(() => { recallLocal(); });       // a broken host must not disable history
         return;
@@ -579,6 +607,23 @@ export async function runTui(host = {}) {
   };
 
   // --- run ------------------------------------------------------------------
+  function finish() { exit(); resolveRun?.(); }
+
+  function onData(chunk) {
+    clearTimeout(escapeTimer);
+    for (const event of keyDecoder.push(chunk)) {
+      if (exiting) break;
+      onKey(event);
+    }
+    if (exiting) { resolveRun?.(); return; }
+    // A bare Escape is ambiguous until the terminal has had a chance to send
+    // the rest of a sequence. Incomplete CSI and paste payloads never time out
+    // into ordinary keystrokes.
+    if (keyDecoder.waitingForEscape) {
+      escapeTimer = setTimeout(() => { for (const event of keyDecoder.flushEscape()) onKey(event); }, 40);
+    }
+  }
+
   try { stdin.setRawMode?.(true); } catch {}
   screen.writeRaw('\x1b[?2004h');            // bracketed paste: paste arrives verbatim
   stdin.resume?.();
@@ -587,12 +632,9 @@ export async function runTui(host = {}) {
 
   await new Promise((resolve) => {
     resolveRun = resolve;
-    stdin.on('data', (chunk) => {
-      if (process.env.ZAGENT_KEYLOG) { try { (require('node:fs')).appendFileSync(process.env.ZAGENT_KEYLOG, JSON.stringify({raw: String(chunk).slice(0,40), events: decodeKeys(chunk).map(e=>e.name??('t:'+e.text))}) + '\n'); } catch {} }
-      for (const event of decodeKeys(chunk)) onKey(event); if (exiting) resolve(); });
-    stdin.on('end', () => { exit(); resolve(); });
+    stdin.on('data', onData);
+    stdin.on('end', finish);
     stdout.on?.('resize', draw);
-    const finish = () => { exit(); resolve(); };
     process.once('SIGTERM', finish);
     process.once('SIGHUP', finish);
   });

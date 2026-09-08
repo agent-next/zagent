@@ -5,7 +5,9 @@
 // No daemon: the user's crontab calls `zmax cron tick`; every tick appends a heartbeat
 // receipt and exits nonzero on failures (no-bare-cron rule).
 
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import os from 'node:os';
 
 const BOUNDS = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]]; // m h dom mon dow (dow 7 == 0 == Sunday)
@@ -61,29 +63,54 @@ export function saveJobs(jobs, { home = os.homedir() } = {}) {
   mkdirSync(dir, { recursive: true }); // also guarantees the heartbeat file's dir (r7 #9)
   const p = jobsPath({ home });
   const tmp = `${p}.tmp-${process.pid}`;
-  writeFileSync(tmp, JSON.stringify({ version: 2, jobs }, null, 2));
-  renameSync(tmp, p); // atomic: readers never see a truncated file
+  try {
+    writeFileSync(tmp, JSON.stringify({ version: 2, jobs }, null, 2));
+    renameSync(tmp, p); // atomic: readers never see a truncated file
+  } finally { try { unlinkSync(tmp); } catch {} }
   return p;
 }
 
-export function dueJobs(jobs, now = new Date()) {
-  return jobs.filter(j => cronMatches(j.cron, now) && (!j.lastAttemptMs || now.getTime() - j.lastAttemptMs >= 60_000));
+// All read/modify/write operations use this transaction. Atomic rename alone
+// protects readers from torn JSON, but cannot serialize competing job claims.
+// SQLite only coordinates writers; jobs stay in JSON. Its OS lock is released
+// even on process death, without a stale-lock takeover protocol. Callbacks are
+// synchronous and the transaction closes before running an agent job.
+export function mutateJobs(update, { home = os.homedir(), lockTimeoutMs = 5000 } = {}) {
+  if (!Number.isInteger(lockTimeoutMs) || lockTimeoutMs < 0 || lockTimeoutMs > 2147483647)
+    throw new Error('invalid automation lock timeout');
+  mkdirSync(`${home}/.zcode/cli`, { recursive: true });
+  const db = new DatabaseSync(`${jobsPath({ home })}.coordination.sqlite`);
+  try {
+    db.exec(`PRAGMA busy_timeout = ${lockTimeoutMs}; BEGIN IMMEDIATE`);
+    const jobs = loadJobs({ home });
+    const result = update(jobs);
+    saveJobs(jobs, { home });
+    db.exec('COMMIT');
+    return result;
+  } finally { db.close(); }
 }
 
-// Per-job lifecycle: claim atomically before spawning; complete persists immediately
-// after each job (r7 #6 #7). Stale claims (>10min, crashed mid-run) are reclaimable.
-export function claimJob(jobs, id, { nowMs = Date.now(), staleAfterMs = 10 * 60_000 } = {}) {
+const minuteOf = ms => Math.floor(ms / 60_000);
+export function dueJobs(jobs, now = new Date()) {
+  return jobs.filter(j => cronMatches(j.cron, now) &&
+    (j.lastAttemptMs == null || minuteOf(j.lastAttemptMs) < minuteOf(now.getTime())));
+}
+
+// Use inside mutateJobs: recheck the scheduled minute while holding the lock.
+// Stale claims (>10min, crashed mid-run) can run on a later scheduled occurrence.
+export function claimJob(jobs, id, { nowMs = Date.now(), scheduledAtMs = nowMs, staleAfterMs = 10 * 60_000 } = {}) {
   const j = jobs.find(x => x.id === id);
   if (!j) return null;
   if (j.status === 'running' && nowMs - (j.claimedAtMs ?? 0) < staleAfterMs) return null; // live elsewhere
-  j.status = 'running'; j.claimedAtMs = nowMs;
+  if (!dueJobs([j], new Date(scheduledAtMs)).length) return null;
+  j.status = 'running'; j.claimedAtMs = nowMs; j.lastAttemptMs = scheduledAtMs;
+  j.claimToken = randomUUID();
   return j;
 }
 
-export function completeJob(jobs, id, { ok, error = null, nowMs = Date.now() } = {}) {
+export function completeJob(jobs, id, { ok, error = null, nowMs = Date.now(), claimToken } = {}) {
   const j = jobs.find(x => x.id === id);
-  if (!j) return null;
-  j.lastAttemptMs = nowMs;
+  if (!j || (claimToken !== undefined && j.claimToken !== claimToken)) return null;
   if (ok) { j.lastSuccessMs = nowMs; j.status = 'idle'; j.error = null; }
   else { j.status = 'failed'; j.error = String(error).slice(0, 200); }
   return j;

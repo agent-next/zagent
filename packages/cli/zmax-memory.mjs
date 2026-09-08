@@ -3,7 +3,7 @@
 // Usage: zagent memory [show]        → this workspace's MEMORY.md
 //        zagent memory index         → list workspaces that HAVE memories
 //        zagent memory append <txt>  → append one line to this workspace's MEMORY.md
-import { appendGlobalMemory, loadProjectMemory, saveProjectMemory } from '../driver/memory.mjs';
+import { appendProjectMemory, loadProjectMemory } from '../driver/memory.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 const [cmd, ...rest] = process.argv.slice(2);
@@ -24,11 +24,10 @@ if (cmd === 'index') {
   let ok = false;
   for (let i = 0; i < 20 && !ok; i++) {
     try {
-      const cur = loadProjectMemory(cwd);
-      saveProjectMemory(cwd, (cur ? cur.replace(/\n*$/, '\n') : '# Memory Index\n') + `- ${line}\n`);
+      appendProjectMemory(cwd, line);
       ok = true;
     } catch (e) { if (e?.code !== 'EEXIST') { console.error(`append failed: ${e.message}`); process.exit(1); }
-      const until = Date.now() + 100; while (Date.now() < until); }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); }
   }
   if (!ok) { console.error('append: lock busy after retries'); process.exit(1); }
   console.log(`appended to ${cwd} memory`);
