@@ -63,8 +63,8 @@ export function parseModes(response) {
   return items.length ? { items, current } : null;
 }
 
-/** A bare /effort, /model or /mode — with no argument — is a request to choose. */
+/** A bare /effort, /model, /mode, /skill, /mcp or /goal — with no argument — is a request to choose. */
 export function pickerFor(input) {
-  const match = /^\/(effort|model|mode)\s*$/u.exec(String(input ?? '').trim());
+  const match = /^\/(effort|model|mode|skill|mcp|goal)\s*$/u.exec(String(input ?? '').trim());
   return match ? match[1] : null;
 }

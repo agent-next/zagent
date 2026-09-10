@@ -89,6 +89,9 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent cron add\|list\|tick` | 定时 prompt |
 | `zagent offpeak [--refresh\|--json]` | 活动时间窗口（exit 0 = 开放；实际计费未验证） |
 | `zagent plugins` | 管理本地插件 |
+| `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
+| `zagent inspect [--json]` | 打印 runtime、配置层、skills、任务、插件（密钥已脱敏） |
+| `zagent import [--dry-run\|--apply] [--force] [--json]` | 从 Claude Code 导入说明、commands、skills |
 
 `za` 是 `zagent` 的短别名。
 

@@ -113,6 +113,9 @@ sent only to your own provider endpoint.
 | `zagent cron add\|list\|tick` | Scheduled prompts |
 | `zagent offpeak [--refresh\|--json]` | Campaign time window (exit 0 = open; billing unverified) |
 | `zagent plugins` | Manage local plugins |
+| `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
+| `zagent inspect [--json]` | Dump runtime, config, skills, tasks, plugins (secrets redacted) |
+| `zagent import [--dry-run\|--apply] [--force] [--json]` | Import Claude Code instructions, commands, and skills |
 
 `za` is a short alias for `zagent`.
 

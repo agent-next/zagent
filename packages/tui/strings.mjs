@@ -25,8 +25,11 @@ const EN = {
   linesHidden: (n) => `… +${n} line${n === 1 ? '' : 's'}`,
   truncatedByRuntime: '… truncated by the runtime',
   needsPermission: (tool) => `${tool} needs permission`,
-  chooseHint: 'up/down or 1-9 to choose · enter to confirm · esc to cancel',
-  denyHint: 'up/down or 1-9 to choose · enter to confirm · esc to deny',
+  chooseHint: 'up/down/tab or 1-9 to choose · enter to confirm · esc to cancel',
+  denyHint: 'up/down/tab or 1-9 to choose · enter to confirm · esc to deny',
+  sendNow: 'send now',
+  editQueued: 'edit',
+  cancelQueued: 'cancel',
   effortTitle: 'Reasoning effort',
   effortDetail: 'low 8k · high 16k · max 32k thinking budget',
   modelTitle: 'Model',
@@ -39,6 +42,10 @@ const EN = {
   noImage: 'no image in the clipboard',
   copied: 'copied to the clipboard',
   nothingToCopy: 'nothing to copy yet',
+  goal: (g) => `goal ${g}`,
+  mcpOk: (ok, n) => `mcp ${ok}/${n}`,
+  mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} failed`,
+  longPaste: (n) => `long paste kept (${n} chars) — GUI would chip this as an attachment`,
 };
 
 const ZH = {
@@ -58,8 +65,11 @@ const ZH = {
   linesHidden: (n) => `… 另有 ${n} 行`,
   truncatedByRuntime: '… 已被 runtime 截断',
   needsPermission: (tool) => `${tool} 需要授权`,
-  chooseHint: '上下键或 1-9 选择 · enter 确认 · esc 取消',
-  denyHint: '上下键或 1-9 选择 · enter 确认 · esc 拒绝',
+  chooseHint: '上下键/tab 或 1-9 选择 · enter 确认 · esc 取消',
+  denyHint: '上下键/tab 或 1-9 选择 · enter 确认 · esc 拒绝',
+  sendNow: '发送',
+  editQueued: '编辑',
+  cancelQueued: '取消',
   effortTitle: '推理强度',
   effortDetail: 'low 8k · high 16k · max 32k 思考预算',
   modelTitle: '模型',
@@ -72,6 +82,10 @@ const ZH = {
   noImage: '剪贴板中没有图片',
   copied: '已复制到剪贴板',
   nothingToCopy: '暂无可复制内容',
+  goal: (g) => `目标 ${g}`,
+  mcpOk: (ok, n) => `mcp ${ok}/${n}`,
+  mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} 失败`,
+  longPaste: (n) => `长粘贴已保留（${n} 字）— GUI 会收成附件`,
 };
 
 /** `auto` and anything unrecognised fall back to English. */

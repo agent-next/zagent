@@ -341,3 +341,83 @@ export function addCommandEntry(state, text) {
   state.entries.push({ kind: 'command', text: sanitizeText(text), done: true });
   return state;
 }
+
+// Fold state for thinking and tool entries. Kept here rather than a new module
+// so the public package files[] list does not have to grow.
+// Collapse cannot un-print committed scrollback; expanding appends the body.
+
+export const COLLAPSED = 'collapsed';
+export const EXPANDED = 'expanded';
+
+export function createFold() {
+  return { thinkingAll: COLLAPSED, override: new Map() };
+}
+
+export function identityKey(entry, index) {
+  return `${index}:${entry?.kind ?? ''}:${entry?.id ?? ''}`;
+}
+
+export function foldStateFor(fold, entry, index) {
+  const key = identityKey(entry, index);
+  if (fold?.override?.has(key)) return fold.override.get(key);
+  if (entry?.kind === 'thinking') return fold?.thinkingAll ?? COLLAPSED;
+  return EXPANDED;
+}
+
+export function setFold(fold, entry, index, state) {
+  fold.override.set(identityKey(entry, index), state);
+  return state;
+}
+
+export function collapse(fold, entry, index) {
+  return setFold(fold, entry, index, COLLAPSED);
+}
+
+export function expand(fold, entry, index) {
+  return setFold(fold, entry, index, EXPANDED);
+}
+
+export function toggleAllThinking(fold) {
+  fold.thinkingAll = fold.thinkingAll === COLLAPSED ? EXPANDED : COLLAPSED;
+  for (const key of [...fold.override.keys()]) {
+    if (key.includes(':thinking:')) fold.override.delete(key);
+  }
+  return fold.thinkingAll;
+}
+
+export function userIndices(entries) {
+  const out = [];
+  (entries ?? []).forEach((entry, i) => { if (entry.kind === 'user') out.push(i); });
+  return out;
+}
+
+export function foldableEntries(entries) {
+  const out = [];
+  (entries ?? []).forEach((entry, i) => {
+    if (entry.kind === 'thinking' || entry.kind === 'tool') out.push([entry, i]);
+  });
+  return out;
+}
+
+/** Foldables belonging to the selected user turn; last turn when index is -1. */
+export function foldablesInTurn(entries, userTurn) {
+  const list = entries ?? [];
+  const users = userIndices(list);
+  if (users.length === 0) return foldableEntries(list);
+  const at = userTurn < 0 ? users.length - 1 : Math.min(Math.max(0, userTurn), users.length - 1);
+  const start = users[at];
+  const end = users[at + 1] ?? list.length;
+  const out = [];
+  for (let i = start; i < end; i++) {
+    const entry = list[i];
+    if (entry.kind === 'thinking' || entry.kind === 'tool') out.push([entry, i]);
+  }
+  return out;
+}
+
+export function stepUserTurn(entries, current, direction) {
+  const users = userIndices(entries);
+  if (users.length === 0) return -1;
+  if (current < 0) return users.length - 1;
+  return Math.min(users.length - 1, Math.max(0, current + (direction < 0 ? -1 : 1)));
+}

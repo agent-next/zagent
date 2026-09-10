@@ -11,15 +11,19 @@
 
 import crypto from 'node:crypto';
 import { createTheme } from './theme.mjs';
-import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn } from './events.mjs';
+import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn,
+  createFold, foldStateFor, collapse as collapseEntry, expand as expandEntry,
+  toggleAllThinking, foldablesInTurn, stepUserTurn,
+} from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
-import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates } from './complete.mjs';
+import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates, skillCandidates, conversationCandidates } from './complete.mjs';
 import { stringsFor } from './strings.mjs';
 import { sanitizeText } from './sanitize.mjs';
+import { listSkills, listConversationsAsync, mcpSummary } from '../driver/catalog.mjs';
 
 const SPINNER_MS = 90;
 const DOUBLE_CTRL_C_MS = 2000;
@@ -57,11 +61,20 @@ export async function runTui(host = {}) {
     chooser: null,             // {title, items, index, pick}
     completionSeq: 0,          // guards against a slow file lookup overwriting a newer one
     queue: [],                 // typed while a turn runs; drained in order when it ends
+    queueItem: 0,              // selected follow-up in the queue list
+    queueAction: 0,            // 0 send now, 1 edit, 2 cancel
+    fold: createFold(),
+    userTurn: -1,              // selection index over user-prompt turns; -1 = none
     history: [],
     historyIndex: -1,
     lastCtrlC: 0,
     abort: null,
+    mcp: null,                 // {connected, failed, total}
+    goal: '',                  // last /goal objective shown in the status line
+    skills: listSkills({ cwd: host.workspaceDirectory || process.cwd() }),
+    conversations: [],
   };
+  void listConversationsAsync({}).then((rows) => { if (!exiting) ui.conversations = rows; }).catch(() => {});
   let exiting = false;
   let escapeTimer = null;
   const keyDecoder = createKeyDecoder();
@@ -78,15 +91,18 @@ export async function runTui(host = {}) {
 
   const draw = () => {
     if (exiting) return;
-    const { commit, live } = composeFrame(state, theme, screen.width);
+    const foldOf = (entry, i) => foldStateFor(ui.fold, entry, i);
+    const { commit, live } = composeFrame(state, theme, screen.width, { str, foldOf });
     const tail = ui.permission
       ? renderPermission(ui.permission.request, ui.permission.selected, theme, screen.width)
       : ui.chooser
       ? renderChooser(ui.chooser, theme, screen.width)
       : renderFooter(state, ui.input.value, theme, screen.width, {
           mode: ui.mode, model: ui.model, effort: ui.effort, busy: ui.busy, queue: ui.queue,
+          queueItem: ui.queueItem, queueAction: ui.queueAction, userTurn: ui.userTurn,
           completion: ui.completion, str,
           spinnerFrame: ui.spinnerFrame, activity: ui.activity,
+          mcp: ui.mcp, goal: ui.goal,
         });
     screen.paint(commit, [...live, ...tail]);
   };
@@ -130,7 +146,13 @@ export async function runTui(host = {}) {
     ui.input = { value: '', cursor: 0 };
     ui.history.push(trimmed);
     ui.historyIndex = ui.history.length;
-    if (ui.busy) { ui.queue.push(trimmed); draw(); return; }
+    if (ui.busy) {
+      ui.queue.push(trimmed);
+      ui.queueItem = ui.queue.length - 1;
+      ui.queueAction = 0;
+      draw();
+      return;
+    }
     void submit(trimmed);
   }
 
@@ -165,7 +187,10 @@ export async function runTui(host = {}) {
       });
       // A slash command that produced a turn (e.g. /goal <objective>) streamed its
       // answer already; only a command with no turnId is pure command output.
-      if (!exiting) applyResult(result, { wasCommand: trimmed.startsWith('/') && !result?.turnId });
+      if (!exiting) {
+        applyResult(result, { wasCommand: trimmed.startsWith('/') && !result?.turnId });
+        latchGoal(trimmed);
+      }
     } catch (error) {
       const message = String(error?.message ?? error);
       if (exiting) return;
@@ -198,9 +223,11 @@ export async function runTui(host = {}) {
       endTurn(state, { reason: 'error' });
       draw();
     }
-    // Drain in order. A turn that was interrupted drops the queue: the user hit
-    // esc to stop, and silently continuing with queued work would defy that.
-    const next = exiting || ui.abortedByUser ? (ui.queue.length = 0, undefined) : ui.queue.shift();
+    // Drain in order. Exiting still drops the queue. An interrupt keeps it so
+    // idle Esc can pull the last follow-up back into the input.
+    const next = exiting ? (ui.queue.length = 0, undefined)
+      : ui.abortedByUser ? undefined
+      : ui.queue.shift();
     ui.abortedByUser = false;
     if (next !== undefined) await submit(next);
   }
@@ -214,6 +241,16 @@ export async function runTui(host = {}) {
    * transcript; only command output needs printing, so turns are excluded by
    * their turnId.
    */
+  function latchGoal(trimmed) {
+    const m = /^\/goal(?:\s+(.*))?$/u.exec(trimmed);
+    if (!m) return;
+    const arg = (m[1] ?? '').trim();
+    if (!arg || arg === 'show') return;
+    if (arg === 'clear') { ui.goal = ''; return; }
+    if (arg === 'pause' || arg === 'resume') return;
+    ui.goal = arg.replace(/\s+/gu, ' ').slice(0, 40);
+  }
+
   function applyResult(result, { wasCommand }) {
     if (!result || typeof result !== 'object') return;
     if (typeof result.mode === 'string') ui.mode = result.mode;
@@ -294,6 +331,18 @@ export async function runTui(host = {}) {
       draw();
       return;
     }
+    if (context.type === 'skill') {
+      const items = rankCandidates(skillCandidates(ui.skills), context.query);
+      ui.completion = items.length ? { type: 'skill', items, index: 0, context } : null;
+      draw();
+      return;
+    }
+    if (context.type === 'conversation') {
+      const items = rankCandidates(conversationCandidates(ui.conversations), context.query);
+      ui.completion = items.length ? { type: 'conversation', items, index: 0, context } : null;
+      draw();
+      return;
+    }
 
     if (typeof host.listWorkspacePathSuggestions !== 'function') return;
     const input = ui.input;
@@ -365,6 +414,45 @@ export async function runTui(host = {}) {
       draw();
       return true;
     }
+    if (kind === 'skill') {
+      const items = skillCandidates(ui.skills);
+      if (!items.length) return false;
+      ui.chooser = { title: '/skill', items: items.map(s => ({ value: s.value, label: `$${s.value}`, note: s.hint ?? '' })),
+        index: 0, pick: (item) => { void submit(`$${item.value}`); } };
+      draw();
+      return true;
+    }
+    if (kind === 'mcp') {
+      const servers = ui.mcpServers && typeof ui.mcpServers === 'object' ? Object.entries(ui.mcpServers) : [];
+      if (!servers.length) return false;
+      ui.chooser = {
+        title: '/mcp',
+        items: servers.map(([name, v]) => ({
+          value: name,
+          label: name,
+          note: v && typeof v === 'object' ? String(v.status ?? '') : '',
+        })),
+        index: 0,
+        pick: (item) => { void submit(`/mcp ${item.value}`); },
+      };
+      draw();
+      return true;
+    }
+    if (kind === 'goal') {
+      ui.chooser = {
+        title: '/goal',
+        items: [
+          { value: 'show', label: 'show', note: ui.goal ? ui.goal : '' },
+          { value: 'pause', label: 'pause', note: '' },
+          { value: 'resume', label: 'resume', note: '' },
+          { value: 'clear', label: 'clear', note: '' },
+        ],
+        index: 0,
+        pick: (item) => { void submit(`/goal ${item.value}`); },
+      };
+      draw();
+      return true;
+    }
     if (kind === 'mode') {
       if (typeof host.setMode !== 'function') return false;
       // Ask the runtime for its own vocabulary rather than hardcoding one.
@@ -409,6 +497,29 @@ export async function runTui(host = {}) {
     }
   }
 
+  function applyQueueAction(index, action) {
+    if (index < 0 || index >= ui.queue.length) return;
+    const text = ui.queue[index];
+    ui.queue.splice(index, 1);
+    ui.queueItem = Math.min(ui.queueItem, Math.max(0, ui.queue.length - 1));
+    if (action === 0) {
+      if (ui.busy) ui.queue.unshift(text);
+      else void submit(text);
+    } else if (action === 1) {
+      ui.input = { value: text, cursor: text.length };
+    }
+    draw();
+  }
+
+  function foldSelectedTurn(mode) {
+    const targets = foldablesInTurn(state.entries, ui.userTurn);
+    if (targets.length === 0) return false;
+    const apply = mode === 'collapsed' ? collapseEntry : expandEntry;
+    for (const [entry, i] of targets) apply(ui.fold, entry, i);
+    draw();
+    return true;
+  }
+
   // --- input ----------------------------------------------------------------
   function onPermissionKey(event) {
     const p = ui.permission;
@@ -421,6 +532,8 @@ export async function runTui(host = {}) {
     switch (event.name) {
       case 'up': p.selected = Math.max(0, p.selected - 1); draw(); break;
       case 'down': p.selected = Math.min(p.options.length - 1, p.selected + 1); draw(); break;
+      case 'tab': p.selected = (p.selected + 1) % p.options.length; draw(); break;
+      case 'shift-tab': p.selected = (p.selected - 1 + p.options.length) % p.options.length; draw(); break;
       case 'enter': p.resolve(p.options[p.selected]?.response); break;
       case 'escape': p.resolve(denyResponse(p.options)); break;
       default: break;
@@ -495,7 +608,22 @@ export async function runTui(host = {}) {
     // Completion owns tab/up/down/enter/escape while it is open.
     if (ui.completion && onCompletionKey(event)) return;
 
-    if (event.name === 'escape') { clearCompletion(); if (ui.busy) interrupt(); return; }
+    if (event.name === 'escape') {
+      clearCompletion();
+      if (ui.busy) { interrupt(); return; }
+      if (ui.queue.length > 0) { applyQueueAction(ui.queue.length - 1, 1); return; }
+      if (ui.userTurn >= 0) { ui.userTurn = -1; draw(); }
+      return;
+    }
+    if (event.name === 'ctrl-e') { toggleAllThinking(ui.fold); draw(); return; }
+    if (event.name === 'shift-up' || event.name === 'shift-down') {
+      ui.userTurn = stepUserTurn(state.entries, ui.userTurn, event.name === 'shift-up' ? -1 : 1);
+      draw();
+      return;
+    }
+    if (ui.userTurn >= 0 && ui.input.value === '' && (event.text === 'h' || event.text === 'l')) {
+      if (foldSelectedTurn(event.text === 'h' ? 'collapsed' : 'expanded')) return;
+    }
     if (event.name === 'ctrl-d') { if (ui.input.value === '' && !ui.busy) exit(); return; }
     if (event.name === 'ctrl-l') { screen.writeRaw('\x1b[2J\x1b[H'); draw(); return; }
     // In developer mode ctrl+o reports the event kinds the reducer had no renderer
@@ -527,10 +655,36 @@ export async function runTui(host = {}) {
         .catch(() => {});
       return;
     }
-    if (event.name === 'tab') { void refreshCompletion(); return; }
-    if (event.name === 'enter') { enqueueOrSubmit(ui.input.value); return; }
+    if (event.name === 'tab') {
+      if (ui.queue.length > 0 && ui.input.value === '') {
+        ui.queueAction = (ui.queueAction + 1) % 3;
+        draw();
+        return;
+      }
+      void refreshCompletion();
+      return;
+    }
+    if (event.name === 'shift-tab' && ui.queue.length > 0 && ui.input.value === '') {
+      ui.queueItem = (ui.queueItem - 1 + ui.queue.length) % ui.queue.length;
+      draw();
+      return;
+    }
+    if (event.name === 'enter') {
+      if (ui.input.value.trim() === '' && ui.queue.length > 0) {
+        applyQueueAction(ui.queueItem, ui.queueAction);
+        return;
+      }
+      enqueueOrSubmit(ui.input.value);
+      return;
+    }
 
     if (event.name === 'up' || event.name === 'down') {
+      if (ui.queue.length > 0 && ui.input.value === '') {
+        const step = event.name === 'up' ? -1 : 1;
+        ui.queueItem = (ui.queueItem + step + ui.queue.length) % ui.queue.length;
+        draw();
+        return;
+      }
       // The runtime keeps input history that OUTLIVES the session; ours died with
       // it. Ask the host first and fall back to the in-memory list.
       const step = event.name === 'up' ? 1 : -1;
@@ -569,6 +723,9 @@ export async function runTui(host = {}) {
       return;
     }
 
+    if (typeof event.text === 'string' && event.text.length >= 2000) {
+      addNotice(state, str.longPaste(event.text.length), 'muted');
+    }
     const before = ui.input;
     ui.input = applyKey(ui.input, event);
     if (ui.input !== before) { draw(); void refreshCompletion(); }
@@ -580,9 +737,11 @@ export async function runTui(host = {}) {
   if (typeof host.listMcpServers === 'function') {
     void Promise.resolve(host.listMcpServers())
       .then((servers) => {
+        ui.mcpServers = servers ?? {};
+        ui.mcp = mcpSummary(servers);
         const broken = Object.entries(servers ?? {})
           .filter(([, v]) => v && typeof v === 'object' && v.status && v.status !== 'connected' && v.status !== 'ready');
-        if (broken.length === 0) return;
+        if (broken.length === 0) { draw(); return; }
         for (const [name, v] of broken.slice(0, 3)) {
           addNotice(state, `mcp ${name}: ${v.status}${v.error ? ` — ${String(v.error).slice(0, 120)}` : ''}`, 'warning');
         }

@@ -18,6 +18,9 @@ export const COMMANDS = [
   ['offpeak [--refresh|--json]', 'campaign time window (exit 0 = open; billing unverified)'],
   ['cron add|list|tick', 'scheduled prompts (heartbeat receipts, no daemon)'],
   ['plugins', 'inspect and manage local plugins'],
+  ['hooks list [--json]', 'list configured ZCode hook events (does not run them)'],
+  ['inspect [--json]', 'dump runtime, config layers, skills, tasks, plugins (secrets redacted)'],
+  ['import [--dry-run|--apply] [--force] [--json]', 'copy Claude Code instructions/commands/skills (no overwrite without --force)'],
 ];
 
 /** The bare verb a user types, e.g. "models [query]" -> "models". */

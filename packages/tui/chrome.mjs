@@ -99,6 +99,14 @@ export function statusFields(state, theme, options = {}) {
 
   const queued = Array.isArray(options.queue) ? options.queue.length : 0;
   if (queued > 0) fields.push(field(str.queued(queued), theme.accent));
+  if (options.goal) fields.push(field(str.goal(options.goal), theme.accent));
+  const mcp = options.mcp;
+  if (mcp && mcp.total > 0) {
+    const text = mcp.failed > 0
+      ? str.mcpFailed(mcp.connected, mcp.total, mcp.failed)
+      : str.mcpOk(mcp.connected, mcp.total);
+    fields.push(field(text, mcp.failed > 0 ? theme.warning : theme.faint));
+  }
 
   const used = turn?.usage?.totalTokens ?? turn?.usage?.inputTokens;
   if (used) fields.push(field(str.tokens(formatTokens(used)), theme.faint));
@@ -119,21 +127,58 @@ export function renderStatus(state, theme, width, options = {}) {
   return [`  ${fields.map(f => f.paint(f.text)).join(theme.faint(' · '))}`];
 }
 
+export const QUEUE_ACTIONS = Object.freeze(['send now', 'edit', 'cancel']);
+
+export function queueActionLabels(str) {
+  const s = str ?? stringsFor();
+  return [s.sendNow, s.editQueued, s.cancelQueued];
+}
+
 /**
  * Messages typed while a turn is running. Showing them (rather than only a count)
  * is what makes queueing trustworthy: you can see exactly what will be sent, in
- * order, and that nothing was swallowed.
+ * order, and that nothing was swallowed. Each row carries [send now][edit][cancel].
  */
-export function renderQueued(queue, theme, width, max = 3) {
+export function renderQueued(queue, theme, width, max = 3, options = {}) {
   const items = Array.isArray(queue) ? queue : [];
   if (items.length === 0) return [];
+  const str = options.str ?? theme.str ?? stringsFor();
+  const labels = queueActionLabels(str);
+  const selected = Math.min(Math.max(0, options.selected | 0), items.length - 1);
+  const action = Math.min(Math.max(0, options.action | 0), labels.length - 1);
+  const chipPlain = labels.map(l => `[${l}]`).join('');
+  const prefix = '  > ';
+  const showChips = widthOf(prefix) + 1 + widthOf(chipPlain) + 4 <= width;
   const lines = [];
-  for (const text of items.slice(0, max)) {
-    lines.push(`  ${theme.faint('>')} ${theme.faint(clip(sanitizeText(text, { keepNewlines: false }).replace(/\s+/gu, ' '), Math.max(8, width - 6)))}`);
+  for (const [offset, text] of items.slice(0, max).entries()) {
+    const body = sanitizeText(text, { keepNewlines: false }).replace(/\s+/gu, ' ');
+    if (!showChips) {
+      lines.push(`  ${theme.faint('>')} ${theme.faint(clip(body, Math.max(8, width - 6)))}`);
+      continue;
+    }
+    const room = Math.max(4, width - widthOf(prefix) - 1 - widthOf(chipPlain));
+    const shown = clip(body, room);
+    const pad = ' '.repeat(Math.max(0, room - widthOf(shown)));
+    const chips = labels.map((label, ai) => {
+      const token = `[${label}]`;
+      return offset === selected && ai === action ? theme.accent(token) : theme.faint(token);
+    }).join('');
+    lines.push(`${prefix}${theme.faint(shown)}${pad} ${chips}`);
   }
   const hidden = items.length - Math.min(items.length, max);
-  if (hidden > 0) lines.push(`  ${theme.faint((theme.str ?? stringsFor()).moreQueued(hidden))}`);
+  if (hidden > 0) lines.push(`  ${theme.faint((theme.str ?? str).moreQueued(hidden))}`);
   return lines;
+}
+
+/** Live peek of a user-prompt turn. Never rewrites committed scrollback. */
+export function renderUserPeek(entries, index, theme, width, str) {
+  const users = (entries ?? []).filter(e => e.kind === 'user');
+  if (!Number.isInteger(index) || index < 0 || users.length === 0) return [];
+  const at = Math.min(index, users.length - 1);
+  const label = `${at + 1}/${users.length}`;
+  const text = sanitizeText(users[at].text, { keepNewlines: false }).replace(/\s+/gu, ' ');
+  const room = Math.max(8, width - widthOf(label) - 6);
+  return [`  ${theme.faint(label)} ${theme.userMark('>')} ${theme.muted(clip(text, room))}`];
 }
 
 /**
@@ -155,7 +200,8 @@ export function renderCompletions(completion, theme, width, max = 6) {
   for (const [offset, item] of items.slice(start, start + max).entries()) {
     const i = start + offset;
     const chosen = i === index;
-    const label = one((completion.type === 'slash' ? '/' : '') + item.value);
+    const prefix = ({ slash: '/', skill: '$', conversation: '#' })[completion.type] ?? '';
+    const label = one(prefix + item.value);
     const detail = one(item.hint ?? (item.kind === 'directory' ? 'dir' : item.kind === 'file' ? '' : ''));
     const hint = detail ? ` ${clip(detail, Math.max(0, width - widthOf(label) - 8))}` : '';
     const text = clip(`${label}${hint}`, Math.max(8, width - 6));
@@ -168,8 +214,11 @@ export function renderCompletions(completion, theme, width, max = 6) {
 
 export function renderFooter(state, value, theme, width, options = {}) {
   return [
+    ...renderUserPeek(state.entries, options.userTurn, theme, width, options.str),
     ...renderCompletions(options.completion, theme, width),
-    ...renderQueued(options.queue, theme, width),
+    ...renderQueued(options.queue, theme, width, 3, {
+      selected: options.queueItem, action: options.queueAction, str: options.str,
+    }),
     ...renderInputBox(value, theme, width, options),
     ...renderStatus(state, theme, width, options),
   ];

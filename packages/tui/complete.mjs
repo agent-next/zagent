@@ -12,7 +12,7 @@
  * What the cursor is sitting in, if anything completable.
  * Slash commands only complete at the very start of the input — mid-line "/" is
  * a path separator far more often than a command.
- * @returns {{type: 'slash'|'file', query: string, start: number}|null}
+ * @returns {{type: 'slash'|'file'|'skill'|'conversation', query: string, start: number}|null}
  */
 export function completionContext(value, cursor) {
   const text = String(value ?? '');
@@ -24,6 +24,13 @@ export function completionContext(value, cursor) {
 
   const file = /(?:^|\s)@(\S*)$/u.exec(head);
   if (file) return { type: 'file', query: file[1], start: at - file[1].length - 1 };
+
+  // Official GUI: `$` skills, `#` past conversations. Same token rules as `@`.
+  const skill = /(?:^|\s)\$(\S*)$/u.exec(head);
+  if (skill) return { type: 'skill', query: skill[1], start: at - skill[1].length - 1 };
+
+  const conv = /(?:^|\s)#(\S*)$/u.exec(head);
+  if (conv) return { type: 'conversation', query: conv[1], start: at - conv[1].length - 1 };
 
   return null;
 }
@@ -67,7 +74,7 @@ function isSubsequence(needle, haystack) {
 export function applyCompletion(input, context, value) {
   const text = String(input?.value ?? '');
   const cursor = Math.max(0, Math.min(input?.cursor ?? text.length, text.length));
-  const prefix = context.type === 'slash' ? '/' : '@';
+  const prefix = ({ slash: '/', file: '@', skill: '$', conversation: '#' })[context.type] ?? '@';
   const replacement = `${prefix}${value}`;
   // A completed slash command wants a space; a completed directory wants to keep
   // completing, so only files get the trailing space — and never a second one
@@ -100,6 +107,32 @@ export function slashCandidates(slashCommands) {
  * live; passing a bare string throws inside the runtime.
  * A plain array is accepted too, so a different runtime build cannot break this.
  */
+export function skillCandidates(skills) {
+  const list = Array.isArray(skills) ? skills : [];
+  return list
+    .map((s) => {
+      if (typeof s === 'string') return { value: s, hint: 'skill' };
+      if (s && typeof s.value === 'string' && s.value) {
+        return { value: s.value, hint: typeof s.hint === 'string' ? s.hint : 'skill' };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+export function conversationCandidates(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list
+    .map((s) => {
+      if (typeof s === 'string') return { value: s };
+      if (s && typeof s.value === 'string' && s.value) {
+        return { value: s.value, hint: typeof s.hint === 'string' ? s.hint : '' };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
 export function fileCandidates(suggestions) {
   const list = Array.isArray(suggestions) ? suggestions
     : Array.isArray(suggestions?.items) ? suggestions.items : [];

@@ -58,9 +58,11 @@ export function composeFrame(state, theme, width, options = {}) {
     for (const entry of state.entries) entry.retired = undefined;
     state.frameWidth = width;
   }
-  for (const entry of state.entries) {
-    if (entry.retired !== undefined && entry.retired === fingerprint(entry)) continue;
-    const rendered = renderEntry(entry, theme, width, options);
+  for (const [i, entry] of state.entries.entries()) {
+    const fold = options.foldOf?.(entry, i);
+    const fp = `${fingerprint(entry)}|${fold ?? ''}`;
+    if (entry.retired !== undefined && entry.retired === fp) continue;
+    const rendered = renderEntry(entry, theme, width, { ...options, fold });
     if (rendered.length === 0) continue;
     // The separator belongs to the entry APPEARING, not to its first stable line:
     // a streaming entry's opening line is live, so keying off committed lines
@@ -79,7 +81,9 @@ export function composeFrame(state, theme, width, options = {}) {
       entry.printed = stable.length;
     }
     if (!settled) live.push(rendered[rendered.length - 1]);
-    else if (entry.printed === rendered.length) entry.retired = fingerprint(entry);
+    // Collapse cannot un-print: if this render is shorter than what we already
+    // committed, retire anyway so we do not re-render every frame.
+    else if ((entry.printed ?? 0) >= rendered.length) entry.retired = fp;
   }
   return { commit, live };
 }

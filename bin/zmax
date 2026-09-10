@@ -36,6 +36,9 @@ const ROUTES = {
   models: ['packages/cli/zmax-models.mjs'],
   help: ['packages/cli/zmax-help.mjs'],
   plugins: ['packages/cli/zmax-plugins.mjs'],
+  hooks: ['packages/cli/zmax-hooks.mjs'],
+  inspect: ['packages/cli/zmax-inspect.mjs', '--experimental-sqlite', '--no-warnings'],
+  import: ['packages/cli/zmax-import.mjs'],
 };
 
 /** Present in the source repo, deliberately not part of this distribution. */

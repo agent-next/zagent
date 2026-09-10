@@ -143,7 +143,7 @@ if (headlessJson) {
   // the only actionable fact — when it resets — buried in the first one. The TUI
   // keeps plain inherited stdio; nothing about its rendering changes.
   const headless = args.includes('-p');
-  const child = spawn(NODE, launch.argv, {
+  const child = spawn(NODE, ['--experimental-sqlite', '--no-warnings', ...launch.argv], {
     cwd: process.cwd(),
     stdio: headless ? ['inherit', 'inherit', 'pipe'] : 'inherit',
   });

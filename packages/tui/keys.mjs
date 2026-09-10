@@ -7,11 +7,13 @@ const NAMED = new Map([
   ['\x1b\r', 'newline'], ['\x1b\n', 'newline'],   // alt+enter: insert, do not submit
   ['\x7f', 'backspace'], ['\b', 'backspace'],
   ['\x03', 'ctrl-c'], ['\x04', 'ctrl-d'], ['\x0c', 'ctrl-l'], ['\x15', 'ctrl-u'],
-  ['\x01', 'home'], ['\x05', 'end'], ['\x17', 'ctrl-w'],
+  ['\x01', 'home'], ['\x05', 'ctrl-e'], ['\x17', 'ctrl-w'],
   ['\x16', 'ctrl-v'], ['\x19', 'ctrl-y'], ['\x0f', 'ctrl-o'],
   ['\x1b', 'escape'],
   ['\x1b[A', 'up'], ['\x1b[B', 'down'], ['\x1b[C', 'right'], ['\x1b[D', 'left'],
   ['\x1bOA', 'up'], ['\x1bOB', 'down'], ['\x1bOC', 'right'], ['\x1bOD', 'left'],
+  ['\x1b[1;2A', 'shift-up'], ['\x1b[1;2B', 'shift-down'],
+  ['\x1b[Z', 'shift-tab'],
   ['\x1b[H', 'home'], ['\x1b[F', 'end'], ['\x1b[1~', 'home'], ['\x1b[4~', 'end'],
   ['\x1b[3~', 'delete'],
 ]);
@@ -121,7 +123,7 @@ export function applyKey(state, event) {
       const { start } = lineBounds(value, cursor);
       return cursor === start ? state : { value, cursor: start };
     }
-    case 'end': {
+    case 'end': case 'ctrl-e': {
       const { end } = lineBounds(value, cursor);
       return cursor === end ? state : { value, cursor: end };
     }

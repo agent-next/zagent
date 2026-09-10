@@ -102,16 +102,19 @@ export function renderEntry(entry, theme, width, options = {}) {
   // Reasoning is context, not the answer: dimmed, capped, and clearly labelled so
   // it can never be mistaken for what the model actually said.
   if (entry.kind === 'thinking') {
-    const cap = options.maxThinkingLines ?? 3;
     const body = wrapText(entry.text.trim(), inner - 2).filter(l => l !== '');
     if (body.length === 0) return [];
+    const str = options.str ?? stringsFor();
+    const lines = [`${theme.thinking(g.bulletPending)} ${theme.thinking(str.thinking)}`];
     // Append-only: always the FIRST lines. Tail-following while streaming
     // contradicted the append-only screen writer — committed lines stayed put
     // while the live view scrolled, so the block rendered with stray gaps and
-    // repeated fragments.
+    // repeated fragments. Collapsed (Grok default) commits the header only;
+    // expanding later appends the body. Undefined fold keeps the historical cap.
+    const cap = options.fold === 'collapsed' ? 0
+      : options.fold === 'expanded' ? body.length
+      : options.maxThinkingLines ?? 3;
     const shown = body.slice(0, cap);
-    const str = options.str ?? stringsFor();
-    const lines = [`${theme.thinking(g.bulletPending)} ${theme.thinking(str.thinking)}`];
     for (const line of shown) lines.push(`  ${theme.faint(line)}`);
     const hidden = body.length - shown.length;
     if (hidden > 0) lines.push(`  ${theme.faint(str.reasoningHidden(hidden))}`);
@@ -152,6 +155,12 @@ export function renderEntry(entry, theme, width, options = {}) {
     const body = String(entry.resultText ?? '').split('\n');
     if (body.at(-1) === '') body.pop();   // a trailing newline, not blank lines inside the output
     if (body.length === 0) return lines;
+    if (options.fold === 'collapsed') {
+      const s2 = options.str ?? stringsFor();
+      const hidden = body.length + (entry.resultDropped ?? 0);
+      if (hidden > 0) lines.push(`${RESULT_INDENT}   ${theme.faint(s2.linesHidden(hidden))}`);
+      return lines;
+    }
     const head2 = body.slice(0, maxResultLines);
     for (const [i, raw] of head2.entries()) {
       const text = clipToWidth(raw, Math.max(4, inner - 5));
