@@ -1,28 +1,64 @@
 #!/usr/bin/env node
-// zquota — coding-plan quota/entitlement panel (B2/B2b). Usage: node bin/zquota [balance|preview|reset] [--json]
-import { billing, resetStatus, quotaError } from '../packages/driver/quota.mjs';
+// Read-only Coding Plan quota and account usage, plus legacy desktop billing.
+import { billing, resetStatus, quotaError, codingPlanStatus, codingPlanUsage } from '../packages/driver/quota.mjs';
 import { normalizeReset, resetLine } from '../packages/driver/reset-shape.mjs';
 const args = process.argv.slice(2);
-const positionals = args.filter(arg => arg !== '--json');
-const which = positionals[0] ?? 'balance';
-const raw = args.includes('--json');
-if (positionals.length > 1 || !['balance', 'preview', 'reset'].includes(which)) {
-  console.error('usage: zagent quota [balance|preview|reset] [--json]');
+let which = 'status', raw = false, days = 7, commandSeen = false, daysSeen = false;
+function usage() {
+  console.error('usage: zagent quota [status|usage [--days 1..30]|balance|preview|reset] [--json]');
   process.exit(2);
 }
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--json' && !raw) raw = true;
+  else if (args[i] === '--days' && !daysSeen) {
+    daysSeen = true;
+    const value = args[++i];
+    if (!/^(?:[1-9]|[12][0-9]|30)$/.test(value ?? '')) usage();
+    days = Number(value);
+  } else if (!commandSeen && ['status', 'usage', 'balance', 'preview', 'reset'].includes(args[i])) {
+    which = args[i]; commandSeen = true;
+  } else usage();
+}
+if (daysSeen && which !== 'usage') usage();
+// Escape server-provided strings before terminal output, as JSON output does.
+const label = value => JSON.stringify(value ?? 'unknown');
 try {
-  const { status, body } = which === 'reset' ? await resetStatus() : await billing(which);
-  const error = quotaError({ status, body });
-  if (error) {
-    console.log(JSON.stringify({ http: status, ...body }, null, 1));
-    console.error(`quota: ${error}`);
-    process.exitCode = 1;
-  } else if (which === 'reset' && !raw) {
-    const reset = normalizeReset(body);
-    console.log(JSON.stringify({ http: status, ...reset }, null, 1));
-    console.log(resetLine(reset));
+  if (which === 'status' || which === 'usage') {
+    const result = which === 'status' ? await codingPlanStatus() : await codingPlanUsage({ days });
+    if (raw) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`${result.source} — account aggregate (${result.observedAt})`);
+      if (which === 'status') {
+        console.log(`Plan: ${label(result.level)}; percentages are server-reported and may be rounded.`);
+        for (const pool of result.pools) {
+          console.log(`${label(pool.type)} [unit=${pool.unit ?? '?'}, number=${pool.number ?? '?'}]: ` +
+            `used ${pool.usedPercent ?? '?'}%, remaining ~${pool.remainingPercent ?? '?'}%; ` +
+            `remaining units ${pool.remaining ?? '?'} / ${pool.limit ?? '?'}; reset ${pool.nextResetAt ?? 'unknown'}`);
+        }
+        console.log('Pool unit/number are raw service codes; missing amounts are unknown.');
+      } else {
+        console.log(`${result.requestedRange.startTime} through ${result.requestedRange.endTime} (${result.timeZone}); current day is partial.`);
+        console.log(`Calls: ${result.calls}; reported tokens: ${result.reportedTokens}`);
+        if (result.models === null) console.log('Model breakdown: unknown');
+        else for (const model of result.models) console.log(`${label(model.model)}: ${model.reportedTokens} reported tokens`);
+        console.log(result.attribution);
+        console.log(result.billing);
+      }
+    }
   } else {
-    console.log(JSON.stringify({ http: status, ...body }, null, 1));
+    const { status, body } = which === 'reset' ? await resetStatus() : await billing(which);
+    const error = quotaError({ status, body });
+    if (error) {
+      console.log(JSON.stringify({ http: status, ...body }, null, 1));
+      console.error(`quota: ${error}`);
+      process.exitCode = 1;
+    } else if (which === 'reset' && !raw) {
+      const reset = normalizeReset(body);
+      console.log(JSON.stringify({ http: status, ...reset }, null, 1));
+      console.log(resetLine(reset));
+    } else {
+      console.log(JSON.stringify({ http: status, ...body }, null, 1));
+    }
   }
 } catch (error) {
   console.error(`quota: ${error.message}`);

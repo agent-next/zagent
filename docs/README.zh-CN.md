@@ -81,13 +81,13 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent onboard` | 首次运行：检查 + live 冒烟 + 引导 |
 | `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
 | `zagent models [query]` | 搜索模型目录 |
-| `zagent quota [balance\|preview\|reset]` | Coding-Plan 额度 |
+| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan 额度 |
 | `zagent sessions` | 终端里的任务库 |
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent cron add\|list\|tick` | 定时 prompt |
-| `zagent offpeak [--refresh\|--json]` | GLM-5.3-Flash 当前是否免费（exit 0 = 是） |
+| `zagent offpeak [--refresh\|--json]` | 活动时间窗口（exit 0 = 开放；实际计费未验证） |
 | `zagent plugins` | 管理本地插件 |
 
 `za` 是 `zagent` 的短别名。
@@ -105,6 +105,12 @@ runtime 发现覆盖 Linux / macOS / Windows（三平台均有单测）。**Linu
 已在代码层支持，正针对各 GUI 安装布局做加固。
 
 ## 隐私
+
+`zagent quota` 查询实时 Z.ai Coding Plan 额度池；`zagent quota usage --days 7 --json`
+查询账户合计调用次数和服务端 token（支持最近 1–30 个新加坡日历日，含尚未结束的当天）。
+token 不等于计费 credits，共享账户的用量无法按 ccz / zagent 归因；缺失额度保持未知，百分比可能取整。
+`ZAI_API_KEY` 显式覆盖查询账户，否则使用 CLI 当前 provider 的 key；仅当 CLI 配置不存在时回退到 ccz key 文件。
+`balance` / `preview` 查询独立的桌面账单，空余额不代表 Coding Plan 用量为零；`reset` 仅读取重置卡状态，不消耗卡。
 
 task / memory / diff / quota 输出可能含私有工作区、prompt 或账户数据。分享日志前请脱敏，切勿提交凭据或配置。
 

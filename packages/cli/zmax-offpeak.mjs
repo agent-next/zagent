@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zagent offpeak — is GLM-5.3-Flash free right now, and if not, when?
+// zagent offpeak — campaign time window; does not verify billing eligibility.
 //
 // packages/driver/offpeak.mjs has implemented this since C1-C5 and ships in the
 // package, but nothing could invoke it: no bin entry, no subcommand. A scheduler
@@ -10,7 +10,7 @@
 //   zagent offpeak --json     machine-readable, for scripts and cron
 //
 // Exit code is the answer, so `zagent offpeak && run-the-batch` works in a shell:
-// 0 when flash is free right now, 1 when it is not.
+// 0 when the configured campaign window is open, 1 otherwise; neither proves cost.
 
 import { defaultWindow, inOffPeak, campaignActive, minutesUntilWindow, routeToFlash,
   fetchWindow, cachedWindow } from '../driver/offpeak.mjs';
@@ -55,13 +55,13 @@ if (asJson) {
   const localSpan = `${localHour(window.startHourSGT)}-${localHour(window.endHourSGT)} local`;
   console.log(`off-peak window: ${span}  (${localSpan})   source: ${window.source}`);
   if (!active) {
-    console.log(`campaign: ENDED ${window.campaignEnd} — flash costs quota at all hours now`);
+    console.log(`campaign: ENDED ${window.campaignEnd} — check current provider billing terms`);
   } else if (open) {
     // Z.ai's published campaign terms, not something zagent measured. Said plainly,
     // because the plan's own rolling usage window is enforced independently of it:
     // a 1308 ("Usage limit reached for 5 hour") was observed DURING an open window
     // on 2026-09-07. Off-peak routing is not a licence to ignore the window.
-    console.log(`status: OPEN — Z.ai's campaign routes GLM-5.3-Flash at no quota cost (their terms, not measured here)`);
+    console.log(`status: OPEN — configured campaign time window; zagent billing eligibility is unverified`);
     console.log(`note: your plan's rolling usage window still applies — off-peak does not lift it`);
     console.log(`campaign runs through ${window.campaignEnd}`);
   } else {

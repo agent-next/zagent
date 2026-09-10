@@ -4,7 +4,7 @@
 // Z.ai's campaign advertises GLM-5.3-Flash via ZCode at no quota cost in this window.
 // That is their published claim, not a measurement: the plan's rolling usage window is
 // enforced independently (a 1308 was observed during an open window, 2026-09-07). Routing
-// eligible mechanical work to flash then is free compute.
+// work to flash in this window does not verify this adapter's billing eligibility.
 
 import os from 'node:os';
 import crypto from 'node:crypto';
@@ -83,10 +83,28 @@ export function cachedWindow() {
 
 // --- C1: off-peak REST client — the 4-call ticket lifecycle ---
 // POST /ticket → create; POST /ticket/status → batch poll; POST /ticket/{id}/settle → settle
-// Auth: Bearer JWT + x-coding-plan-api-key (same dual-token as billing).
+// Auth: desktop JWT + the selected desktop Coding Plan API key, not its OAuth token.
+// This adapter currently supports the personal Z.ai desktop connection only.
+export function offPeakPlanKey({ settings, config, activeProvider }) {
+  const provider = 'builtin:zai-coding-plan';
+  if (activeProvider !== 'zai' || settings?.providerFamilyDomain !== 'zai' ||
+      settings?.modelProviderFamilyModes?.zai !== 'oauth' ||
+      settings?.modelProviderFamilySelectedKeys?.zai !== `coding-plan:${provider}`)
+    throw new Error('Select the personal Z.ai Coding Plan desktop connection for idle tasks');
+  const options = config?.provider?.[provider]?.options;
+  const key = typeof options?.apiKey === 'string' ? options.apiKey.trim() : '';
+  if (typeof options?.baseURL !== 'string' || options.baseURL.replace(/\/$/, '') !== 'https://api.z.ai/api/anthropic' || !/^[\x21-\x7e]+$/.test(key))
+    throw new Error('Selected desktop Coding Plan API key is unavailable or invalid');
+  return key;
+}
 function getCodingPlanKey() {
-  const store = loadCredentialStore();
-  return decryptCredential(store['oauth:zai:access_token']);
+  let settings, config, activeProvider;
+  try {
+    settings = JSON.parse(readFileSync(`${os.homedir()}/.zcode/v2/setting.json`, 'utf8'));
+    config = JSON.parse(readFileSync(`${os.homedir()}/.zcode/v2/config.json`, 'utf8'));
+    activeProvider = decryptCredential(loadCredentialStore()['oauth:active_provider']);
+  } catch { throw new Error('Cannot read the selected desktop Coding Plan connection'); }
+  return offPeakPlanKey({ settings, config, activeProvider });
 }
 export async function offPeakRequest(path, init = {}, { jwt, apiKey } = {}) {
   const r = await fetch(`${BASE}/api/v1/off-peak${path}`, {
@@ -100,7 +118,8 @@ export async function offPeakRequest(path, init = {}, { jwt, apiKey } = {}) {
       ...init.headers,
     },
   });
-  const body = await r.json().catch(() => ({}));
+  let body;
+  try { body = await r.json(); } catch { throw new Error('Invalid off-peak ticket JSON'); }
   return { status: r.status, body: redactDeep(body) };
 }
 
@@ -126,23 +145,46 @@ export function nextDelayMs(pollResponse, errorCount = 0) {
 // --- C3: turn execution via the off-peak synthetic provider ---
 // Routes an Anthropic-format request to {origin}/api/v1/off-peak/anthropic/v1/messages
 // with the offpeak-idle-plan provider identity.
-export async function offPeakTurn(messages, { maxTokens = 4096 } = {}) {
-  const r = await fetch(`${BASE}/api/v1/off-peak/anthropic/v1/messages`, {
+export async function offPeakTurn(messages, { ticketId, maxTokens = 4096,
+  model = 'GLM-5.3-Flash', fetchImpl = fetch, jwt, apiKey } = {}) {
+  if (typeof ticketId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(ticketId))
+    throw new Error('A valid ready off-peak ticket ID is required');
+  if (!Number.isInteger(maxTokens) || maxTokens < 1) throw new Error('maxTokens must be a positive integer');
+  jwt ??= getZcodeJwt();
+  apiKey ??= getCodingPlanKey();
+  let r;
+  try { r = await fetchImpl(`${BASE}/api/v1/off-peak/anthropic/v1/messages`, {
     method: 'POST',
+    redirect: 'error', signal: AbortSignal.timeout(120000),
     headers: {
-      Authorization: `Bearer ${getZcodeJwt()}`,
-      'x-coding-plan-api-key': getCodingPlanKey(),
+      Authorization: `Bearer ${jwt}`,
+      'x-coding-plan-api-key': apiKey,
+      'x-off-peak-ticket-id': ticketId,
+      'x-api-key': jwt,
+      'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ model: 'glm-5.3-flash', max_tokens: maxTokens, messages }),
-  });
-  const body = await r.json().catch(() => ({}));
-  return { status: r.status, body: redactDeep(body) };
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
+  }); } catch { throw new Error('Off-peak inference transport failed'); }
+  let body;
+  try { body = await r.json(); } catch { throw new Error('Invalid off-peak inference JSON'); }
+  // Preserve generated text and numeric token usage; redact only actual credentials.
+  const cleanText = text => [jwt, apiKey].filter(Boolean)
+    .reduce((text, secret) => text.replaceAll(secret, '[REDACTED]'), text);
+  const clean = value => {
+    if (typeof value === 'string') return cleanText(value);
+    if (Array.isArray(value)) return value.map(clean);
+    if (value && typeof value === 'object') return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [cleanText(key), clean(entry)]));
+    return value;
+  };
+  return { status: r.status, body: clean(body) };
 }
 
 // C4: error classification per the dossier's semantics
 export function classifyOffPeakError(status, code) {
-  if (code === 3102 || code === 3001) return { action: 'abort_retake', retry: false };   // ticket expired
+  if (code === 3102) return { action: 'abort_retake', retry: false };                    // ticket expired
+  if (code === 3001) return { action: 'invalid_request', retry: false };                 // live: parameter error
   if (code === 3105 || status === 429) return { action: 'wait', retry: true };            // transient
   if (code === 3103) return { action: 'quota_wait', retry: true };                          // quota exhausted
   if (code === 3101) return { action: 'eligibility_fail', retry: false };                   // not eligible
@@ -156,7 +198,7 @@ export function classifyOffPeakError(status, code) {
 // missing fields). Review r4: a 200 with empty data must be NOT-eligible, not eligible.
 export function gateFromAvailability(avail) {
   const d = avail?.body?.data ?? {};
-  const ok = avail?.status === 200 && d.can_take_number === true;
+  const ok = avail?.status === 200 && (avail.body?.code === undefined || avail.body?.code === 0) && d.can_take_number === true;
   return {
     eligible: ok,
     reasons: ok ? [] : [avail?.status === 200 ? 'no ticket available right now' : `availability check failed (http ${avail?.status ?? 'n/a'})`],
@@ -172,7 +214,7 @@ export async function idleTaskGate() {
 // Pure transitions (testable): idle → queued(taken) → running(polled) → done|failed,
 // driven by poll bodies and the C4 error classifier. Retry policy: only abort_retake
 // and 429 go back to queued (bounded); quota_wait/eligibility park as waiting.
-export const QUEUE_STATES = ['idle', 'queued', 'running', 'waiting', 'done', 'failed'];
+export const QUEUE_STATES = ['idle', 'queued', 'ready', 'running', 'waiting', 'settled', 'done', 'failed'];
 
 export function initialQueueState() { return { state: 'idle', ticketId: null, taskId: null, attempts: 0 }; }
 
@@ -191,7 +233,12 @@ export function onPollResult(s, pollBody) {
   const map = { running: 'running', pending: 'queued', queued: 'queued', processing: 'running',
     done: 'done', completed: 'done', success: 'done', failed: 'failed', error: 'failed',
     cancelled: 'failed', canceled: 'failed', waiting: 'waiting' };
-  const next = map[String(t.status ?? '').toLowerCase()];
+  // Ticket states are not task outcomes: settled does not prove task success.
+  const ticketStates = { queued: 'queued', ready: 'ready', active: 'running', expired: 'failed',
+    not_found: 'failed', settled: 'settled' };
+  const states = t.state !== undefined ? ticketStates : map;
+  const label = String(t.state ?? t.status ?? '').toLowerCase();
+  const next = Object.hasOwn(states, label) ? states[label] : undefined;
   if (!next) return { ...s, error: `poll: unrecognized status '${t.status}' (state preserved)` };
   return { ...s, state: next, error: undefined };
 }

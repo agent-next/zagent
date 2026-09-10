@@ -105,13 +105,13 @@ sent only to your own provider endpoint.
 | `zagent onboard` | First-run: checks + live smoke + guidance |
 | `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |
 | `zagent models [query]` | Search the model catalog |
-| `zagent quota [balance\|preview\|reset]` | Coding-Plan usage |
+| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
 | `zagent sessions` | Your task store, in the terminal |
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent cron add\|list\|tick` | Scheduled prompts |
-| `zagent offpeak [--refresh\|--json]` | Is GLM-5.3-Flash free right now (exit 0 = yes) |
+| `zagent offpeak [--refresh\|--json]` | Campaign time window (exit 0 = open; billing unverified) |
 | `zagent plugins` | Manage local plugins |
 
 `za` is a short alias for `zagent`.
@@ -144,6 +144,16 @@ fully validated;** macOS and Windows are supported at the code level and being h
 every GUI install layout.
 
 ## Privacy
+
+`zagent quota` reads the live Z.ai Coding Plan pools; `zagent quota usage --days 7 --json`
+reads account-wide calls and reported tokens (1–30 Singapore calendar days, including
+the partial current day). Reported tokens are not billed credits, and shared-account
+usage cannot distinguish ccz from zagent. Missing quota amounts remain unknown;
+percentages can be rounded. `ZAI_API_KEY` explicitly overrides the queried account;
+otherwise the selected CLI provider key is used, with the ccz key file as a fallback
+only when CLI configuration is absent. `balance` / `preview` query separate desktop
+billing records; an empty balance is not proof of zero Coding Plan usage. `reset`
+reads reset-card availability without consuming a card.
 
 Task, memory, diff, and quota output can contain private workspace, prompt, or account data.
 Redact before sharing logs, and never commit credentials or config files.
