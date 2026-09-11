@@ -100,6 +100,9 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 
 `za` 是 `zagent` 的短别名。
 
+上下文压缩在交互式 TUI 内通过 `/compact` 完成 —— 活跃会话是进程内的，因此不提供独立的
+`zagent compact` 子命令。
+
 ## 工作原理
 
 zagent 是一个薄的、协议优先的客户端。它按 `ZCODE_RUNTIME`、`zcode-app-cli`、再到各系统的 ZCode

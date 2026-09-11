@@ -124,6 +124,9 @@ sent only to your own provider endpoint.
 
 `za` is a short alias for `zagent`.
 
+Context compaction runs inside the interactive TUI as `/compact` — live sessions are
+process-local, so there is no standalone `zagent compact` command.
+
 ## How it works
 
 zagent is a thin, protocol-first client. It discovers a compatible runtime — `ZCODE_RUNTIME`

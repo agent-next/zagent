@@ -267,6 +267,7 @@ export async function runTui(host = {}) {
     if (typeof result.mode === 'string') ui.mode = result.mode;
     if (typeof result.model === 'string') ui.model = result.model;
     if (typeof result.thoughtLevel === 'string') ui.effort = result.thoughtLevel;   // shown in the footer
+    if (openSelection(result.selection)) return;
     if (!wasCommand) return;
     for (const key of ['response', 'message', 'text', 'output', 'detail']) {
       if (typeof result[key] === 'string' && result[key].trim() !== '') {
@@ -274,6 +275,47 @@ export async function runTui(host = {}) {
         return;
       }
     }
+  }
+
+  /**
+   * A bare /rewind, /fork, /resume, /login or /plugins (and a /goal that would
+   * replace) answers with the kernel's own picker contract, verified in the
+   * runtime's command router:
+   *   selection: { title, prompt, emptyMessage, selectedIndex,
+   *                items: [{ id, command, primary, secondary, meta }] }
+   * Each item's `command` is the follow-up slash to run, so picking one submits
+   * it. The payload used to be dropped, which left these commands printing
+   * "Select a checkpoint" with no way to.
+   */
+  function openSelection(selection) {
+    if (exiting || !selection || typeof selection !== 'object') return false;
+    const items = (Array.isArray(selection.items) ? selection.items : [])
+      .filter(i => i && typeof i === 'object')
+      .map(i => ({
+        value: typeof i.command === 'string' && i.command !== '' ? i.command : i.id,
+        label: typeof i.primary === 'string' && i.primary !== '' ? i.primary : String(i.id ?? i.command ?? ''),
+        note: [i.secondary, i.meta].filter(v => typeof v === 'string' && v !== '').join('  '),
+      }))
+      .filter(i => typeof i.value === 'string' && i.value !== '');
+    if (items.length === 0) {
+      // An empty picker would be a dead modal; say why there is nothing to pick.
+      if (typeof selection.emptyMessage === 'string' && selection.emptyMessage.trim() !== '') {
+        addCommandEntry(state, selection.emptyMessage.trim());
+        return true;
+      }
+      return false;
+    }
+    ui.chooser = {
+      title: typeof selection.title === 'string' && selection.title !== '' ? selection.title : 'select',
+      detail: typeof selection.prompt === 'string' ? selection.prompt : undefined,
+      items,
+      index: Number.isInteger(selection.selectedIndex) ? selection.selectedIndex : 0,
+      // enqueueOrSubmit, not submit: a queued turn may still be draining, and a
+      // pick made while busy must queue rather than silently drop.
+      pick: (item) => { enqueueOrSubmit(item.value); },
+    };
+    draw();
+    return true;
   }
 
   /** Tool arguments are rendered in the prompt; their string values are untrusted. */
