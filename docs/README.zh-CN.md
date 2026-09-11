@@ -91,6 +91,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent plugins` | 管理本地插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
 | `zagent inspect [--json]` | 打印 runtime、配置层、skills、任务、插件（密钥已脱敏） |
+| `$using-zagent` | 随包装的 skill：zagent 是什么、怎么和 GUI 区分、怎么用 |
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | 从 Claude Code 导入说明、commands、skills |
 
 `za` 是 `zagent` 的短别名。

@@ -19,7 +19,8 @@ export const allowed = file => ['package.json', 'package-lock.json', 'VERSION', 
   'bin/zmax', 'bin/zcodes', 'bin/zquota',
   // This script itself: the exported package's `npm test` runs it, so it ships.
   'scripts/verify-public-package.mjs'].includes(file)
-  || /^packages\/(driver|cli|tui)\/[\w-]+\.mjs$/.test(file);
+  || /^packages\/(driver|cli|tui)\/[\w-]+\.mjs$/.test(file)
+  || /^skills\/[\w-]+\/SKILL\.md$/.test(file);
 
 // These name the INTERNAL filenames (zmax-*, zmaxd*), which were deliberately not
 // renamed when the product became zagent. A rename-time find/replace turned them

@@ -7,7 +7,12 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import os from 'node:os';
+
+export function bundledSkillsRoot() {
+  return join(fileURLToPath(new URL('../..', import.meta.url)), 'skills');
+}
 
 function isDir(p) {
   try { return statSync(p).isDirectory(); } catch { return false; }
@@ -33,6 +38,7 @@ export function listSkills({ home = os.homedir(), cwd = process.cwd() } = {}) {
     join(home, '.zcode', 'skills'),
     join(cwd, '.zcode', 'skills'),
     join(cwd, '.claude', 'skills'),
+    bundledSkillsRoot(),
   ];
   const seen = new Set();
   const out = [];
