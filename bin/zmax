@@ -39,6 +39,9 @@ const ROUTES = {
   hooks: ['packages/cli/zmax-hooks.mjs'],
   inspect: ['packages/cli/zmax-inspect.mjs', '--experimental-sqlite', '--no-warnings'],
   import: ['packages/cli/zmax-import.mjs'],
+  goal: ['packages/cli/zmax-goal.mjs', '--experimental-sqlite', '--no-warnings'],
+  subagents: ['packages/cli/zmax-subagents.mjs', '--experimental-sqlite', '--no-warnings'],
+  remote: ['packages/cli/zmax-remote.mjs'],
 };
 
 /** Present in the source repo, deliberately not part of this distribution. */

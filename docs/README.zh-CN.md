@@ -93,6 +93,9 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent inspect [--json]` | 打印 runtime、配置层、skills、任务、插件（密钥已脱敏） |
 | `$using-zagent` | 随包装的 skill：zagent 是什么、怎么和 GUI 区分、怎么用 |
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | 从 Claude Code 导入说明、commands、skills |
+| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | 显示或控制当前会话目标 |
+| `zagent subagents [--session id] [--json]` | 列出运行中与已结束的子会话 |
+| `zagent remote [status\|connect] [--json]` | 本机 relay 设备 id / last ack（D1/D2；不提供第二设备控制） |
 
 `za` 是 `zagent` 的短别名。
 

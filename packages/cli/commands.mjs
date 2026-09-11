@@ -21,6 +21,9 @@ export const COMMANDS = [
   ['hooks list [--json]', 'list configured ZCode hook events (does not run them)'],
   ['inspect [--json]', 'dump runtime, config layers, skills, tasks, plugins (secrets redacted)'],
   ['import [--dry-run|--apply] [--force] [--json]', 'copy Claude Code instructions/commands/skills (no overwrite without --force)'],
+  ['goal [show|set <text>|pause|resume|clear] [--session id] [--json]', 'show or control the current session objective'],
+  ['subagents [--session id] [--json]', 'list running and ended child session ids'],
+  ['remote [status|connect] [--json]', 'this-host relay device id / last ack (no second-device control)'],
 ];
 
 /** The bare verb a user types, e.g. "models [query]" -> "models". */
