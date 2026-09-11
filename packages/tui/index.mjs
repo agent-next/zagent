@@ -16,7 +16,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
   toggleAllThinking, foldablesInTurn, stepUserTurn,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
-import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser } from './chrome.mjs';
+import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, readContextMeter } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
@@ -81,6 +81,15 @@ export async function runTui(host = {}) {
   const keyDecoder = createKeyDecoder();
 
   const clearCompletion = () => { ui.completionSeq += 1; ui.completion = null; };
+
+  // The official context meter rides usage.delta / snapshot.projection events
+  // and snapshot-bearing command replies (/goal, /model). Latched straight off
+  // the envelope so the status line shows it even for event types the reducer
+  // only counts as unhandled; partial sightings merge.
+  const latchMeter = (source) => {
+    const meter = readContextMeter(source);
+    if (meter) state.projection = { ...state.projection, ...meter };
+  };
 
   screen.writeRaw(renderBanner(theme, screen.width, {
     version: host.version, workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
@@ -183,7 +192,7 @@ export async function runTui(host = {}) {
         delivery: 'start_turn',
         inputId: `input_${crypto.randomUUID()}`,
         queryId: `query_${crypto.randomUUID()}`,
-        onEvent: (event) => { if (!exiting && !abort.signal.aborted) { applyEvent(state, event); draw(); } },
+        onEvent: (event) => { if (!exiting && !abort.signal.aborted) { applyEvent(state, event); latchMeter(event); draw(); } },
         requestPermission: (request, context) => askPermission(request, context),
       });
       // A slash command that produced a turn (e.g. /goal <objective>) streamed its
@@ -254,6 +263,7 @@ export async function runTui(host = {}) {
 
   function applyResult(result, { wasCommand }) {
     if (!result || typeof result !== 'object') return;
+    latchMeter(result);
     if (typeof result.mode === 'string') ui.mode = result.mode;
     if (typeof result.model === 'string') ui.model = result.model;
     if (typeof result.thoughtLevel === 'string') ui.effort = result.thoughtLevel;   // shown in the footer

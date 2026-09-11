@@ -23,6 +23,7 @@ export const COMMANDS = [
   ['import [--dry-run|--apply] [--force] [--json]', 'copy Claude Code instructions/commands/skills (no overwrite without --force)'],
   ['goal [show|set <text>|pause|resume|clear] [--session id] [--json]', 'show or control the current session objective'],
   ['subagents [--session id] [--json]', 'list running and ended child session ids'],
+  ['usage [--session id] [--json]', 'session token totals + context baseline breakdown'],
   ['remote [status|connect] [--json]', 'this-host relay device id / last ack (no second-device control)'],
 ];
 

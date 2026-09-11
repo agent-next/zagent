@@ -119,6 +119,7 @@ sent only to your own provider endpoint.
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | Import Claude Code instructions, commands, and skills |
 | `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
 | `zagent subagents [--session id] [--json]` | List running and ended child session ids |
+| `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
 | `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
 
 `za` is a short alias for `zagent`.

@@ -78,6 +78,27 @@ export function renderInputBox(value, theme, width, options = {}) {
 // auto session fell through to the generic fallback.
 const MODE_MARK = { plan: '=', build: '>>', edit: '~', yolo: '!!', auto: '@' };
 
+/**
+ * The official context meter {contextUsed, contextWindow} — the same pair the
+ * GUI's meter shows — rides usage.delta and snapshot.projection events and
+ * snapshot-bearing command replies (/goal, /model), at different nesting depths
+ * depending on the surface. Returns whichever half is present: callers merge, so
+ * the window can arrive before the used count. Junk-safe: non-finite fields are
+ * ignored rather than painted as 0.
+ */
+export function readContextMeter(source) {
+  const payload = source?.payload ?? source?.params ?? source;
+  if (!payload || typeof payload !== 'object') return null;
+  const proj = payload.snapshot?.projection ?? payload.projection
+    ?? source?.snapshot?.projection ?? source?.projection ?? {};
+  const used = payload.contextUsed ?? proj.contextUsed;
+  const window = payload.contextWindow ?? proj.contextWindow;
+  const out = {};
+  if (Number.isFinite(used) && used >= 0) out.contextUsed = used;
+  if (Number.isFinite(window) && window > 0) out.contextWindow = window;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 export function statusFields(state, theme, options = {}) {
   const turn = state.turn;
   const str = options.str ?? stringsFor();
@@ -108,6 +129,14 @@ export function statusFields(state, theme, options = {}) {
     fields.push(field(text, mcp.failed > 0 ? theme.warning : theme.faint));
   }
 
+  const ctx = state.projection;
+  if (Number.isFinite(ctx?.contextUsed) && Number.isFinite(ctx?.contextWindow) && ctx.contextWindow > 0) {
+    // A host-supplied str may predate the key; the format is locale-free anyway.
+    const meter = typeof str.context === 'function'
+      ? str.context(formatTokens(ctx.contextUsed), formatTokens(ctx.contextWindow))
+      : `${formatTokens(ctx.contextUsed)}/${formatTokens(ctx.contextWindow)}`;
+    fields.push(field(meter, theme.faint));
+  }
   const used = turn?.usage?.totalTokens ?? turn?.usage?.inputTokens;
   if (used) fields.push(field(str.tokens(formatTokens(used)), theme.faint));
   if (turn?.retries > 0) fields.push(field(str.retries(turn.retries), theme.warning));

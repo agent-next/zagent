@@ -27,6 +27,13 @@ export function createTranscript() {
     messageSource: new Map(),
     /** Message id of the stream currently open; model_complete carries none of its own. */
     currentMessageId: null,
+    /**
+     * toolCallIds of in-flight Agent tool calls — the kernel spawns child
+     * sessions through a tool_use named "Agent" (foreground-subagents mock;
+     * child sessions are sess_subagent_*) and child model calls carry
+     * querySource 'subagent'. Running children = Agent calls not yet resulted.
+     */
+    subagents: new Set(),
   };
 }
 
@@ -229,14 +236,18 @@ export function applyEvent(state, event) {
       break;
     }
 
-    case 'tool_call_scheduled':
-      state.entries.push({
+    case 'tool_call_scheduled': {
+      const tool = {
         kind: 'tool', id: str(p.toolCallId), name: str(p.toolName, 'tool'),
         input: sanitizeInput(p.input), display: p.display ?? null,
         status: 'scheduled', resultText: '', resultDropped: 0, durationMs: null, truncated: false,
-      });
+      };
+      state.entries.push(tool);
+      // A call with no id can never be matched to its result — untrackable.
+      if (tool.name === 'Agent' && tool.id) state.subagents.add(tool.id);
       if (state.turn) state.turn.toolCalls += 1;
       break;
+    }
 
     case 'tool_call_started': {
       const tool = findTool(state, str(p.toolCallId));
@@ -245,6 +256,7 @@ export function applyEvent(state, event) {
     }
 
     case 'tool_call_result': {
+      state.subagents.delete(str(p.toolCallId));
       const tool = findTool(state, str(p.toolCallId));
       const result = p.result ?? {};
       if (tool) {
@@ -326,9 +338,17 @@ export function endTurn(state, { reason = 'ended' } = {}) {
   if (state.currentMessageId !== null && isMainTurn(state.messageSource.get(state.currentMessageId))) {
     state.messageSource.delete(state.currentMessageId);
   }
+  // Unfinished Agent calls were force-retired above; from the parent's view
+  // those children are over — a thrown turn must not leave a phantom count.
+  if (state.subagents?.size) { state.subagents.clear(); changed = true; }
   state.currentMessageId = null;
   state.querySource = 'main_turn';
   return changed;
+}
+
+/** In-flight Agent tool calls — the running child-session count. */
+export function getSubagentCount(state) {
+  return state?.subagents?.size ?? 0;
 }
 
 export function addNotice(state, text, level = 'muted') {
