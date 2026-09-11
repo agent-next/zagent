@@ -10,12 +10,18 @@ import { findRuntime } from '../driver/runtime.mjs';
 import { listSkills, listConversationsAsync } from '../driver/catalog.mjs';
 import { inspectWiki } from '../driver/repo-wiki.mjs';
 
-const SECRET = /(^|[^a-z])(api[_-]?key|token|secret|password|authorization|credential|jwt)$/iu;
+// Key match is boundary-anchored: normalize camelCase/kebab to snake first so
+// accessToken, client-secret and CLIENT_SECRET all hit the same suffix list.
+// Bare `key` is a suffix: privateKey/signingKey are secrets; "monkey" and
+// "keyboard" still pass because their boundary is a letter, not a separator.
+const SECRET_SUFFIX = /(^|_)(api_?key|token|secret|password|passwd|authorization|credential|jwt|key)$/;
+const isSecretKey = (k) => SECRET_SUFFIX.test(
+  String(k).replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/-/g, '_').toLowerCase());
 const redact = (v) => {
   if (Array.isArray(v)) return v.map(redact);
   if (v && typeof v === 'object') {
     const out = {};
-    for (const [k, val] of Object.entries(v)) out[k] = SECRET.test(k) ? '[redacted]' : redact(val);
+    for (const [k, val] of Object.entries(v)) out[k] = isSecretKey(k) ? '[redacted]' : redact(val);
     return out;
   }
   return v;

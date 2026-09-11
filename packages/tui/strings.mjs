@@ -46,6 +46,7 @@ const EN = {
   goal: (g) => `goal ${g}`,
   mcpOk: (ok, n) => `mcp ${ok}/${n}`,
   mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} failed`,
+  agents: (n) => `agents ${n}`,
   longPaste: (n) => `long paste kept (${n} chars) — GUI would chip this as an attachment`,
 };
 
@@ -87,6 +88,7 @@ const ZH = {
   goal: (g) => `目标 ${g}`,
   mcpOk: (ok, n) => `mcp ${ok}/${n}`,
   mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} 失败`,
+  agents: (n) => `子代理 ${n}`,
   longPaste: (n) => `长粘贴已保留（${n} 字）— GUI 会收成附件`,
 };
 

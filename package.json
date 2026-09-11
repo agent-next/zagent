@@ -1,6 +1,6 @@
 {
   "name": "zagent",
-  "version": "0.0.201",
+  "version": "0.0.202",
   "description": "Unofficial terminal client for a separately installed ZCode runtime.",
   "type": "module",
   "license": "MIT",

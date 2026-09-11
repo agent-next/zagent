@@ -11,13 +11,22 @@ export { DEFAULT_RUNTIME } from './runtime.mjs';
 
 // Server->client requests the runtime expects answered. session/requestRuntimePreferences is
 // sent during session/create; empty result = "use your defaults" (verified 2026-09-03).
+// interaction/requestUserInput covers BOTH elicitation and plan approval — the kernel sends
+// params.schema.interaction === 'plan_approval' on the same method, and its result schema is
+// {action:'accept'|'decline'|'cancel', content?, reason?}. Headless default = decline: the
+// kernel maps it to a clean deny ("AskUserQuestion was declined" / plan denied), so CLI
+// callers get a structured answer instead of a -32601 protocol error — and a plan is never
+// auto-approved. Callers wanting a real prompt or auto-answer override via requestHandlers.
 // interaction/requestPermission is NOT defaulted here: a missing handler replies -32601,
 // which the runtime treats as "deny" and silently disables tools — callers that want
 // auto-allow (bench) or a UI prompt pass their own via the requestHandlers option.
-const DEFAULT_REQUEST_HANDLERS = { 'session/requestRuntimePreferences': () => ({
-  // Mirror of GUI setting.json defaults (desktop 3.10.2); fields verified via Zod feedback 2026-09-03.
-  nativeSearchEnhancementsEnabled: true, memoryEnabled: true,
-}) };
+const DEFAULT_REQUEST_HANDLERS = {
+  'session/requestRuntimePreferences': () => ({
+    // Mirror of GUI setting.json defaults (desktop 3.10.2); fields verified via Zod feedback 2026-09-03.
+    nativeSearchEnhancementsEnabled: true, memoryEnabled: true,
+  }),
+  'interaction/requestUserInput': () => ({ action: 'decline', reason: 'no interactive user available' }),
+};
 
 export class ZCodeProtocolClient {
   constructor({ runtime, cwd = process.cwd(), nodeBin = process.execPath, onNotify, requestHandlers } = {}) {

@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import { createTheme } from './theme.mjs';
 import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn,
   createFold, foldStateFor, collapse as collapseEntry, expand as expandEntry,
-  toggleAllThinking, foldablesInTurn, stepUserTurn,
+  toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, readContextMeter } from './chrome.mjs';
@@ -112,7 +112,7 @@ export async function runTui(host = {}) {
           queueItem: ui.queueItem, queueAction: ui.queueAction, userTurn: ui.userTurn,
           completion: ui.completion, str,
           spinnerFrame: ui.spinnerFrame, activity: ui.activity,
-          mcp: ui.mcp, goal: ui.goal,
+          mcp: ui.mcp, goal: ui.goal, agents: getSubagentCount(state),
         });
     screen.paint(commit, [...live, ...tail]);
   };

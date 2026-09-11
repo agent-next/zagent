@@ -118,6 +118,13 @@ export function statusFields(state, theme, options = {}) {
     if (options.effort) fields.push(field(options.effort, theme.faint));
   }
 
+  // In-flight Agent tool calls — the count is turn-scoped live activity, so it
+  // sits with the spinner rather than the session fields below.
+  const agents = Number.isFinite(options.agents) ? options.agents : 0;
+  if (agents > 0) {
+    // A host-supplied str may predate the key; the format is locale-free anyway.
+    fields.push(field(typeof str.agents === 'function' ? str.agents(agents) : `agents ${agents}`, theme.accent));
+  }
   const queued = Array.isArray(options.queue) ? options.queue.length : 0;
   if (queued > 0) fields.push(field(str.queued(queued), theme.accent));
   if (options.goal) fields.push(field(str.goal(options.goal), theme.accent));
