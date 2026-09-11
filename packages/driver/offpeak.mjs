@@ -145,6 +145,25 @@ export function nextDelayMs(pollResponse, errorCount = 0) {
 // --- C3: turn execution via the off-peak synthetic provider ---
 // Routes an Anthropic-format request to {origin}/api/v1/off-peak/anthropic/v1/messages
 // with the offpeak-idle-plan provider identity.
+// Kernel ClientRequestSigningV4Signer treats this path as isUnsignedModelRequestPath
+// and sendUnsigned(); do not attach X-Client-Sig / PoW headers.
+function offPeakTurnHeaders({ jwt, apiKey, ticketId }) {
+  let mid;
+  try { mid = deviceMid(); } catch { /* kernel omits X-Device-Mid when unknown */ }
+  return {
+    ...identityHeaders('3.11.2'),
+    'x-os-version': os.release(),
+    'x-request-id': crypto.randomUUID(),
+    'X-ZCode-Agent': 'glm',
+    ...mid ? { 'x-device-mid': mid } : {},
+    Authorization: `Bearer ${jwt}`,
+    'x-coding-plan-api-key': apiKey,
+    'x-off-peak-ticket-id': ticketId,
+    'x-api-key': jwt,
+    'anthropic-version': '2023-06-01',
+    'Content-Type': 'application/json',
+  };
+}
 export async function offPeakTurn(messages, { ticketId, maxTokens = 4096,
   model = 'GLM-5.3-Flash', fetchImpl = fetch, jwt, apiKey } = {}) {
   if (typeof ticketId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(ticketId))
@@ -156,14 +175,7 @@ export async function offPeakTurn(messages, { ticketId, maxTokens = 4096,
   try { r = await fetchImpl(`${BASE}/api/v1/off-peak/anthropic/v1/messages`, {
     method: 'POST',
     redirect: 'error', signal: AbortSignal.timeout(120000),
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'x-coding-plan-api-key': apiKey,
-      'x-off-peak-ticket-id': ticketId,
-      'x-api-key': jwt,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
+    headers: offPeakTurnHeaders({ jwt, apiKey, ticketId }),
     body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
   }); } catch { throw new Error('Off-peak inference transport failed'); }
   let body;
@@ -184,7 +196,10 @@ export async function offPeakTurn(messages, { ticketId, maxTokens = 4096,
 // C4: error classification per the dossier's semantics
 export function classifyOffPeakError(status, code) {
   if (code === 3102) return { action: 'abort_retake', retry: false };                    // ticket expired
-  if (code === 3001) return { action: 'invalid_request', retry: false };                 // live: parameter error
+  // Live HTTP 400 "parameter error". Kernel isUnsignedModelRequestPath includes
+  // /api/v1/off-peak/anthropic/v1/messages and sendUnsigned() strips X-Client-*.
+  // GUI resolveOffPeakFailureDecision maps 3001 to ticketExpired (same as 3102).
+  if (code === 3001) return { action: 'invalid_request', retry: false };
   if (code === 3105 || status === 429) return { action: 'wait', retry: true };            // transient
   if (code === 3103) return { action: 'quota_wait', retry: true };                          // quota exhausted
   if (code === 3101) return { action: 'eligibility_fail', retry: false };                   // not eligible

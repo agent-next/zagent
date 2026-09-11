@@ -18,6 +18,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
 import { createScreen, composeFrame } from './screen.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
+import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates, skillCandidates, conversationCandidates } from './complete.mjs';
@@ -285,12 +286,16 @@ export async function runTui(host = {}) {
   function askPermission(request, context) {
     const options = permissionOptions(request);
     if (exiting || context?.abortSignal?.aborted) return Promise.resolve(denyResponse(options));
+    const remembered = lookupGrant(request);
+    if (remembered) return Promise.resolve(remembered);
     return new Promise((resolve) => {
       const onAbort = () => settle(denyResponse(options));
       const settle = (response) => {
         if (ui.permission?.resolve !== settle) return;
         ui.permission = null;
         context?.abortSignal?.removeEventListener?.('abort', onAbort);
+        const option = options.find((o) => o.response === response);
+        if (option) rememberGrant(request, option);
         draw();
         resolve(response);
       };

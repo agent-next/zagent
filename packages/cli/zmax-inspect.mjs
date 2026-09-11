@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // `zagent inspect` — one dump of what the official GUI Settings pages show:
-// runtime, config layers, skills, MCP-ish config, task store, AGENTS.md.
+// runtime, config layers, skills, MCP-ish config, task store, AGENTS.md, repo-wiki.
 // Credentials are redacted. This is the CLI equivalent of Grok's /inspect.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { findRuntime } from '../driver/runtime.mjs';
 import { listSkills, listConversationsAsync } from '../driver/catalog.mjs';
+import { inspectWiki } from '../driver/repo-wiki.mjs';
 
 const SECRET = /(^|[^a-z])(api[_-]?key|token|secret|password|authorization|credential|jwt)$/iu;
 const redact = (v) => {
@@ -55,6 +56,7 @@ const report = {
     if (!existsSync(dir)) return [];
     try { return readdirSync(dir).filter(n => !n.startsWith('.')); } catch { return []; }
   })(),
+  wiki: inspectWiki({ home, cwd }),
 };
 
 if (json) {
@@ -70,4 +72,5 @@ line('AGENTS.md', [report.instructions.user, report.instructions.workspace].filt
 line('skills', report.skills.length ? `${report.skills.length}: ${report.skills.slice(0, 12).join(', ')}${report.skills.length > 12 ? '…' : ''}` : '(none)');
 line('tasks', report.conversations.length ? `${report.conversations.length} recent` : '(none / no sqlite)');
 line('plugins', report.plugins.length ? report.plugins.join(', ') : '(none)');
+line('wiki', report.wiki ? (report.wiki.title ? `${report.wiki.title} · ${report.wiki.path}` : report.wiki.path) : '(none)');
 process.exit(rt ? 0 : 1);

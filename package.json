@@ -1,6 +1,6 @@
 {
   "name": "zagent",
-  "version": "0.0.196",
+  "version": "0.0.197",
   "description": "Unofficial terminal client for a separately installed ZCode runtime.",
   "type": "module",
   "license": "MIT",
@@ -57,6 +57,7 @@
     "packages/driver/provider-errors.mjs",
     "packages/driver/providers.mjs",
     "packages/driver/quota.mjs",
+    "packages/driver/repo-wiki.mjs",
     "packages/driver/reset-shape.mjs",
     "packages/driver/rewind.mjs",
     "packages/driver/runtime-info.mjs",
