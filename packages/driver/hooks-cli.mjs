@@ -2,10 +2,9 @@
 // protocol are from https://zcode.z.ai/en/docs/hooks (fetched 2026-09-10):
 //   user     ~/.zcode/cli/config.json   (hooks.enabled + hooks.events)
 //   plugin   <plugin>/hooks/hooks.json  (auto-discovered; manifest.hooks also)
-//   legacy   <cwd>/.agents/settings.json and <cwd>/.claude/settings.json
-//            (read-only display, not executed)
 //   project  <cwd>/.zcode/config.json and <cwd>/zcode.json
 //            (ignored as a whole: config_project_hooks_ignored)
+// Kernel does not read .claude/settings.json or .agents/settings.json.
 // Event names come from the files. This module never invents events and never
 // executes hook scripts.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -270,14 +269,6 @@ export function listHooks({ home = os.homedir(), cwd = process.cwd() } = {}) {
   pushFileSource(sources, {
     kind: 'project', file: path.join(cwd, 'zcode.json'),
     executed: false, reason: 'config_project_hooks_ignored',
-  });
-  pushFileSource(sources, {
-    kind: 'legacy', file: path.join(cwd, '.agents', 'settings.json'),
-    executed: false, reason: 'read-only display, not executed',
-  });
-  pushFileSource(sources, {
-    kind: 'legacy', file: path.join(cwd, '.claude', 'settings.json'),
-    executed: false, reason: 'read-only display, not executed',
   });
 
   return { sources, events: collectUnique(sources) };

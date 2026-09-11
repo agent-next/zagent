@@ -126,7 +126,7 @@ export function planImport({
     },
     {
       id: 'workspace-commands', label: '.claude/commands', kind: 'command',
-      from: path.join(cwd, '.claude', 'commands'), to: path.join(home, '.zcode', 'commands'),
+      from: path.join(cwd, '.claude', 'commands'), to: path.join(cwd, '.zcode', 'commands'),
     },
     {
       id: 'user-skills', label: '~/.claude/skills', kind: 'skill',
