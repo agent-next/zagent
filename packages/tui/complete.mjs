@@ -96,6 +96,11 @@ export function slashCandidates(slashCommands) {
       // The runtime's usage line already says how to call it; the summary says why.
       hint: typeof c.summary === 'string' ? c.summary : '',
       usage: typeof c.usage === 'string' ? c.usage : `/${c.name}`,
+      // Merged-palette metadata (zagent client commands): aliases make "/q" an
+      // exact match on Enter; group keeps the palette ordered.
+      aliases: Array.isArray(c.aliases) ? c.aliases : [],
+      group: typeof c.group === 'string' ? c.group : '',
+      source: typeof c.source === 'string' ? c.source : '',
     }));
 }
 

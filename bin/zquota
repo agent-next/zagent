@@ -27,16 +27,51 @@ try {
     const result = which === 'status' ? await codingPlanStatus() : await codingPlanUsage({ days });
     if (raw) console.log(JSON.stringify(result, null, 2));
     else {
-      console.log(`${result.source} — account aggregate (${result.observedAt})`);
       if (which === 'status') {
-        console.log(`Plan: ${label(result.level)}; percentages are server-reported and may be rounded.`);
-        for (const pool of result.pools) {
-          console.log(`${label(pool.type)} [unit=${pool.unit ?? '?'}, number=${pool.number ?? '?'}]: ` +
-            `used ${pool.usedPercent ?? '?'}%, remaining ~${pool.remainingPercent ?? '?'}%; ` +
-            `remaining units ${pool.remaining ?? '?'} / ${pool.limit ?? '?'}; reset ${pool.nextResetAt ?? 'unknown'}`);
+        const pools = result.pools ?? [];
+        // Pool identities are service codes; the two a reader actually asks about
+        // are the rolling 5-hour window (TOKENS_LIMIT/CREDIT_LIMIT, unit 3,
+        // number 5) and the monthly tool-call allowance (TIME_LIMIT, unit 5).
+        const fiveHour = pools.find((p) => (p?.type === 'TOKENS_LIMIT' || p?.type === 'CREDIT_LIMIT') && p?.unit === 3 && p?.number === 5);
+        const monthly = pools.find((p) => p?.type === 'TIME_LIMIT' && p?.unit === 5);
+        const others = pools.filter((p) => p !== fiveHour && p !== monthly);
+        if (typeof result.level === 'string' && result.level) console.log(`Plan: ${label(result.level)}`);
+        const now = Date.now();
+        const resetIn = (iso) => {
+          const ms = Date.parse(iso ?? '');
+          if (!Number.isFinite(ms)) return null;
+          const mins = Math.round((ms - now) / 60000);
+          if (mins <= 0) return 'pending'; // the service has not rolled the window yet
+          const h = Math.floor(mins / 60), m = mins % 60;
+          return h ? `${h}h ${m}m` : `${m}m`;
+        };
+        const clockUtc = (iso) => {
+          const d = new Date(iso);
+          return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`;
+        };
+        const monthDay = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+        const count = (n) => Number(n).toLocaleString('en-US');
+        if (!fiveHour || fiveHour.usedPercent == null) {
+          console.log('5-hour window: not reported');
+        } else {
+          const within = resetIn(fiveHour.nextResetAt);
+          console.log(`5-hour window: ${fiveHour.usedPercent}% used` +
+            (within === 'pending' ? ' · reset pending'
+              : within ? ` · resets ${clockUtc(fiveHour.nextResetAt)} (in ${within})` : ''));
         }
-        console.log('Pool unit/number are raw service codes; missing amounts are unknown.');
+        if (!monthly) {
+          console.log('Monthly tool calls: not reported');
+        } else {
+          const counts = monthly.remaining != null && monthly.limit != null
+            ? `${count(monthly.remaining)} of ${count(monthly.limit)} left`
+            : monthly.usedPercent != null ? `${monthly.usedPercent}% used` : 'not reported';
+          const resetMs = Date.parse(monthly.nextResetAt ?? '');
+          console.log(`Monthly tool calls: ${counts}` +
+            (Number.isFinite(resetMs) ? ` · resets ${monthDay(resetMs)}` : ''));
+        }
+        if (others.length) console.log('Other plan limits also reported — see zagent quota --json.');
       } else {
+        console.log(`${result.source} — account aggregate (${result.observedAt})`);
         console.log(`${result.requestedRange.startTime} through ${result.requestedRange.endTime} (${result.timeZone}); current day is partial.`);
         console.log(`Calls: ${result.calls}; reported tokens: ${result.reportedTokens}`);
         if (result.models === null) console.log('Model breakdown: unknown');

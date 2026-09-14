@@ -64,7 +64,7 @@ $ zagent
 | **A real TUI** | Streaming output, tool calls, permission prompts, model/effort pickers, slash commands, `@`-file completion. Wide-character correct (CJK, emoji), and every rendered string is sanitised — no ANSI or bidi injection from model output. |
 | **Headless too** | `zagent -p "…" --json` for scripts, CI and pipelines. Real exit codes: a failed turn fails, a typo'd command fails. |
 | **Your plan, your machine** | Runs on your own GLM Coding Plan and your own installed runtime. Nothing bundled, nothing phoned home. |
-| **The rest of the product** | Quota, sessions, per-turn diffs, memory, scheduled prompts, plugins, and off-peak routing — all from the CLI. |
+| **The rest of the product** | Quota, sessions, per-turn diffs, memory, scheduled prompts, and plugins — all from the CLI. |
 | **Cross-platform** | Runtime discovery on Linux, macOS and Windows. |
 
 ## Quick start
@@ -111,7 +111,7 @@ sent only to your own provider endpoint.
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent cron add\|list\|tick` | Scheduled prompts |
-| `zagent offpeak [--refresh\|--json]` | Campaign time window (exit 0 = open; billing unverified) |
+| `zagent offpeak [--refresh\|--json]` | Campaign time-window check (billing not verified) |
 | `zagent plugins` | Manage local plugins |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--json]` | Dump runtime, config, skills, tasks, plugins (secrets redacted) |
@@ -130,7 +130,7 @@ process-local, so there is no standalone `zagent compact` command.
 ## How it works
 
 zagent is a thin, protocol-first client. It discovers a compatible runtime — `ZCODE_RUNTIME`
-first, then `zcode-app-cli`, then the ZCode desktop bundle per OS — and drives it over its native
+first, then the ZCode desktop bundle per OS, then `zcode-app-cli` — and drives it over its native
 protocol.
 
 The interactive TUI is zagent's own (`packages/tui`). The ZCode runtime imports a `@zcode/tui`

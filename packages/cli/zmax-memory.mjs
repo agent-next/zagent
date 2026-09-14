@@ -34,6 +34,6 @@ if (cmd === 'index') {
 } else { // show (default)
   let m; try { m = loadProjectMemory(cwd); }
   catch (e) { console.error(`memory read failed: ${e.message}`); process.exit(2); } // r10 #4: IO errors ≠ 'no memory'
-  if (!m) { console.error(`no memory for ${cwd}`); process.exit(1); }
+  if (!m) { console.log(`No memory for ${cwd}. Add one with: zagent memory append "…"`); process.exit(0); }
   console.log(m);
 }

@@ -71,7 +71,7 @@ if (json) {
 }
 
 const line = (k, v) => process.stdout.write(`${k.padEnd(14)} ${v}\n`);
-line('runtime', report.runtime?.entry ?? '(not found)');
+line('runtime', report.runtime ? `${report.runtime.entry}${report.runtime.version ? ` · ${report.runtime.version}` : ''}` : '(not found)');
 line('cli config', report.config.cli ?? '(missing)');
 line('v2 config', report.config.v2 ?? '(missing)');
 line('AGENTS.md', [report.instructions.user, report.instructions.workspace].filter(Boolean).join(' · ') || '(none)');

@@ -45,7 +45,7 @@ runtime 会 import 这个模块,而 Z.ai 从未发布它。所以在每一台装
 | **真正的 TUI** | 流式输出、工具调用、权限确认、模型/effort 选择器、斜杠命令、`@` 文件补全。宽字符正确(中日韩、emoji),且每一段渲染文本都做过消毒 —— 模型输出无法注入 ANSI 或 bidi 控制符。 |
 | **也能无头跑** | `zagent -p "…" --json` 适合脚本 / CI / 流水线。退出码是真的:一轮失败就是失败,命令打错就是错。 |
 | **你的套餐、你的机器** | 跑在你自己的 GLM Coding Plan 与已安装 runtime 上,不打包、不回传。 |
-| **产品的其余部分** | 额度、会话、每轮 diff、memory、定时 prompt、插件、off-peak 路由 —— 全在 CLI 里。 |
+| **产品的其余部分** | 额度、会话、每轮 diff、memory、定时 prompt、插件 —— 全在 CLI 里。 |
 | **跨平台** | 在 Linux / macOS / Windows 上自动发现 runtime。 |
 
 ## 快速上手
@@ -59,8 +59,8 @@ zagent                         # 交互式 TUI
 
 ### 环境
 - **Node.js ≥ 22.15**（Node 23 需 ≥ 23.5）
-- 一个 **GLM Coding Plan**，以及你自己安装的 **ZCode runtime**——第三方 `zcode-app-cli`（交互 TUI 必需）
-  或 ZCode desktop bundle（无头）。
+- 一个 **GLM Coding Plan**，以及你自己安装的 **ZCode runtime**——ZCode 桌面端或第三方
+  `zcode-app-cli` 均可，无头与交互都能用（zagent 自带 TUI，不依赖第三方包）。
 
 ### 认证——你的 GLM Coding Plan
 zagent 跑在**你的 GLM Coding Plan 订阅之上，而不是按量计费的 API key。** 提供一次你的 Coding Plan
@@ -87,7 +87,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent cron add\|list\|tick` | 定时 prompt |
-| `zagent offpeak [--refresh\|--json]` | 活动时间窗口（exit 0 = 开放；实际计费未验证） |
+| `zagent offpeak [--refresh\|--json]` | 活动时间窗口检查（计费未验证） |
 | `zagent plugins` | 管理本地插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
 | `zagent inspect [--json]` | 打印 runtime、配置层、skills、任务、插件（密钥已脱敏） |
@@ -105,8 +105,8 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 
 ## 工作原理
 
-zagent 是一个薄的、协议优先的客户端。它按 `ZCODE_RUNTIME`、`zcode-app-cli`、再到各系统的 ZCode
-desktop bundle 顺序发现兼容 runtime，并通过其原生协议驱动它。它**不分发**任何 runtime 二进制，使用
+zagent 是一个薄的、协议优先的客户端。它按 `ZCODE_RUNTIME`、各系统的 ZCode
+desktop bundle、再到 `zcode-app-cli` 的顺序发现兼容 runtime，并通过其原生协议驱动它。它**不分发**任何 runtime 二进制，使用
 **你的** Coding Plan；运行会以你的权限执行工具并可能产生真实请求，请只在可信工作区使用并审查改动。
 若未自动发现：`export ZCODE_RUNTIME=/绝对路径/runtime-entry.cjs`。
 

@@ -6,6 +6,7 @@
 // a field we never saw, or saw once, must not be able to kill the UI mid-turn.
 
 import { sanitizeText } from './sanitize.mjs';
+import { explainProviderError, EXHAUSTED, RETRYABLE } from '../driver/provider-errors.mjs';
 
 /** Envelope every runtime event shares: {id, sessionId, turnId, type, timestamp, traceId, sequenceNumber, payload}. */
 
@@ -14,6 +15,14 @@ export function createTranscript() {
     title: '',
     entries: [],
     turn: null,
+    /** When this TUI session opened — /status elapsed time. */
+    startedAt: Date.now(),
+    /** Latched from the event envelope; /status, /diff, /export need it. */
+    sessionId: null,
+    /** Sum of turn_complete usage payloads; /usage and /status read it. */
+    totals: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cacheCreationTokens: 0 },
+    /** Last model_complete contextUsageBreakdown; /context prints it. */
+    contextBreakdown: null,
     /** Event types seen that we have no renderer for — surfaced by /debug, never silently dropped. */
     unhandled: new Map(),
     /**
@@ -135,6 +144,8 @@ export function addUserEntry(state, text) {
 export function applyEvent(state, event) {
   const type = str(event?.type, '(untyped)');
   const p = event?.payload ?? {};
+  // The session id rides on the envelope; latch the first non-empty one.
+  if (!state.sessionId) state.sessionId = str(event?.sessionId) || null;
   switch (type) {
     case 'turn_started':
       state.turn = {
@@ -221,6 +232,9 @@ export function applyEvent(state, event) {
       entry.stopReason = str(p.stopReason) || undefined;
       const thought = (id == null ? undefined : findEntry(state, 'thinking', id)) ?? lastOpen(state, 'thinking');
       if (thought) thought.done = true;
+      if (p.contextUsageBreakdown && typeof p.contextUsageBreakdown === 'object') {
+        state.contextBreakdown = p.contextUsageBreakdown;
+      }
       state.currentMessageId = null;
       break;
     }
@@ -230,8 +244,7 @@ export function applyEvent(state, event) {
       const attempt = num(p.attempt, 0);
       if (attempt > 1 && state.turn) {
         state.turn.retries = attempt - 1;
-        state.entries.push({ kind: 'notice', level: 'warning',
-          text: `network retry ${attempt - 1}/${Math.max(0, num(p.maxAttempts, 0) - 1)}` });
+        state.entries.push({ kind: 'notice', level: 'warning', text: retryNotice(p, attempt) });
       }
       break;
     }
@@ -283,6 +296,12 @@ export function applyEvent(state, event) {
         state.turn.durationMs = num(p.duration, Date.now() - state.turn.startedAt);
         state.turn.active = false;
         state.turn.endedBy = 'complete';
+      }
+      if (p.usage && typeof p.usage === 'object') {
+        for (const k of Object.keys(state.totals)) {
+          const v = p.usage[k];
+          if (Number.isFinite(v)) state.totals[k] += v;
+        }
       }
       break;
 
@@ -354,6 +373,37 @@ export function getSubagentCount(state) {
 export function addNotice(state, text, level = 'muted') {
   state.entries.push({ kind: 'notice', level, text: sanitizeText(text) });
   return state;
+}
+
+/**
+ * The retry notice text for a model_network_status payload. Every retry says
+ * "retry n/m"; where the payload carries the provider error, a rate limit
+ * (HTTP 429 / code 1302) and the Coding Plan window (code 1308) are named, so
+ * the reader knows whether waiting seconds or waiting for the reset will help.
+ * Classification needs a carried status/code or an explicit "[code]" /
+ * "Rate limit" phrase — a bare "429" substring also matches an ECONNREFUSED
+ * port, and code 1113 (insufficient balance) is not the 5-hour window.
+ * Unknown payloads keep the generic wording.
+ */
+export function retryNotice(p, attempt) {
+  const n = attempt - 1;
+  const m = Math.max(0, num(p?.maxAttempts, 0) - 1);
+  const errText = [p?.error?.message ?? p?.error, p?.message, p?.reason, p?.lastError, p?.detail]
+    .filter(v => typeof v === 'string').join(' ');
+  const code = num(p?.code ?? p?.statusCode ?? p?.error?.code, 0);
+  const explained = explainProviderError(errText);
+  const kind = code === 1308 || explained?.code === 1308 ? EXHAUSTED
+    : code === 1302 || code === 429 || explained?.kind === RETRYABLE
+      || /\bhttp\s+429\b|\[1302\]|rate limit/i.test(errText) ? RETRYABLE
+    : null;
+  if (kind === EXHAUSTED) {
+    const resetAt = explained?.reset?.at;
+    const stamp = Number.isFinite(resetAt)
+      ? ` · resets ${new Date(resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+    return `5-hour window used up${stamp}`;
+  }
+  if (kind === RETRYABLE) return `rate limited · retry ${n}/${m}`;
+  return `network retry ${n}/${m}`;
 }
 
 /** Slash-command output is runtime text, and equally untrusted. */

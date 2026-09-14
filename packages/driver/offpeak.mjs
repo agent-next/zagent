@@ -107,17 +107,31 @@ function getCodingPlanKey() {
   return offPeakPlanKey({ settings, config, activeProvider });
 }
 export async function offPeakRequest(path, init = {}, { jwt, apiKey } = {}) {
-  const r = await fetch(`${BASE}/api/v1/off-peak${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${jwt ?? getZcodeJwt()}`,
-      'x-coding-plan-api-key': apiKey ?? getCodingPlanKey(),
-      'Content-Type': 'application/json',
-      'user-agent': 'ZCode/3.11.2', 'x-platform': `${process.platform}-${process.arch}`,
-      ...identityHeaders('3.11.2'), 'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(),
-      ...init.headers,
-    },
-  });
+  // Resolve credentials before the transport boundary so a missing desktop
+  // connection surfaces as its own error, not as an unknown transport failure.
+  jwt ??= getZcodeJwt();
+  apiKey ??= getCodingPlanKey();
+  const mid = deviceMid();
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/v1/off-peak${path}`, {
+      ...init,
+      // Desktop-credentialed calls refuse redirects (a cross-origin hop would
+      // carry the JWT, the Coding-Plan key and the device MID) and stay bounded.
+      redirect: 'error', signal: AbortSignal.timeout(15000),
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        'x-coding-plan-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'user-agent': 'ZCode/3.11.2', 'x-platform': `${process.platform}-${process.arch}`,
+        ...identityHeaders('3.11.2'), 'x-device-mid': mid, 'x-request-id': crypto.randomUUID(),
+        ...init.headers,
+      },
+    });
+  } catch {
+    // Transport errors may contain request headers; never expose their text.
+    throw new Error('Off-peak ticket transport failed; the result is unknown');
+  }
   let body;
   try { body = await r.json(); } catch { throw new Error('Invalid off-peak ticket JSON'); }
   return { status: r.status, body: redactDeep(body) };

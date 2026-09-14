@@ -55,6 +55,16 @@ export function npmInvocation({ platform = process.platform, env = process.env,
   return { command: 'npm', args: [] };
 }
 
+// `zagent inspect --json` must emit a parseable report even in a prefix with no
+// runtime: the gate checks the shape, not a found runtime.
+export function inspectReport(report) {
+  assert(report && typeof report === 'object' && !Array.isArray(report),
+    'inspect --json must print a JSON object');
+  for (const key of ['runtime', 'config', 'skills'])
+    assert(Object.hasOwn(report, key), `inspect --json report missing key: ${key}`);
+  return report;
+}
+
 export function installedInvocation(entry, args, platform = process.platform, env = process.env) {
   if (platform !== 'win32') return { command: entry, args, env: {} };
   // Only fixed smoke-test verbs/flags enter cmd.exe. Pass the path through an
@@ -121,10 +131,13 @@ const run = (cmd, args, cwd = fixture, expected = 0, invocation = {}) => {
     const invocation = installedInvocation(bins[name], args);
     return run(invocation.command, invocation.args, fixture, expected, invocation);
   };
-  for (const name of Object.keys(bins)) assert.equal(cli(name, ['--version']).trim(), pkg.version);
+  for (const name of Object.keys(bins))
+    assert.equal(cli(name, ['--version']).trim().split('\n')[0], `zagent ${pkg.version}`);
   assert.match(cli('zagent', ['--help']), /headless/);
   assert.match(cli('za', ['help']), /doctor/);
   assert.match(cli('zagent', ['doctor'], 1), /NOT FOUND/);
+  assert.equal(inspectReport(JSON.parse(cli('zagent', ['inspect', '--json'], 1))).runtime, null,
+    'a fresh prefix must not find a runtime');
   for (const command of ['telegram', 'feishu', 'wechat', 'compact', 'dcompact', 'plugin-validate'])
     cli('zagent', [command], 2);
   assert(!existsSync(path.join(profile, '.zcode')), 'offline smoke must not create a user runtime profile');
@@ -138,8 +151,8 @@ const run = (cmd, args, cwd = fixture, expected = 0, invocation = {}) => {
     sourceDirty: status.status === 0 ? Boolean(status.stdout.trim()) : null,
     sha256, integrity: packed.integrity, fileCount: files.length,
     checks: ['payload allowlist', 'real tarball installation', 'version', 'help aliases',
-      'missing runtime fails closed', 'preview commands unavailable', 'no runtime profile writes',
-      'supported driver import', 'shipped module syntax'],
+      'missing runtime fails closed', 'inspect --json report', 'preview commands unavailable',
+      'no runtime profile writes', 'supported driver import', 'shipped module syntax'],
     liveRuntimeTested: false, files }, null, 2));
 } finally {
   rmSync(fixture, { recursive: true, force: true });

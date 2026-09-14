@@ -8,7 +8,7 @@
 // desktop-only install used to die with "Cannot find package '@zcode/tui'" and interactive
 // use required the third-party zcode-app-cli. Set ZAGENT_TUI=runtime to hand off to
 // whatever TUI the runtime itself vendors, or =auto to prefer the runtime's when present.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 const NODE = process.execPath; // eslint-disable-line
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import os from 'node:os';
@@ -59,6 +59,15 @@ function ensureConfig() { // same shape kingsword09's launcher creates; ours add
   return file;
 }
 
+/** Best-effort kernel version (`node <entry> --version`); '' when unknown. */
+const kernelVersion = (entry) => {
+  try {
+    const r = spawnSync(process.execPath, [entry, '--version'], { encoding: 'utf8', timeout: 5000 });
+    const m = String(r.stdout ?? '').match(/(\d+\.\d+[\w.-]*)/);
+    return r.status === 0 && m ? m[1] : '';
+  } catch { return ''; }
+};
+
 const args = process.argv.slice(2);
 const rt = findRuntime();
 if (args[0] === 'doctor' || !rt) {
@@ -81,7 +90,11 @@ if (args[0] === 'doctor' || !rt) {
       if (c.model?.main && c.model?.main === c.model?.lite) warnings.push(`model.main == model.lite (${c.model.main}) — main should be the full model, lite the fast one`);
     } catch { invalidConfig = true; }
   }
-  console.log(rt ? `runtime: ${rt.kind} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  // rt.version is the installed product version; the kernel's own --version is
+  // its internal string, so it is only a fallback and stays labeled.
+  let rtVersion = rt?.version;
+  if (rt && !rtVersion) { const k = kernelVersion(rt.entry); rtVersion = k ? `(kernel ${k})` : null; }
+  console.log(rt ? `runtime: ${rt.kind}${rtVersion ? ` ${rtVersion}` : ''} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
   // Before zagent shipped its own TUI, doctor exited 0 on a desktop-only install while
   // the headline command (`zagent`) died with "Cannot find package '@zcode/tui'". A gate
   // that reports healthy for a configuration whose primary path crashes is a defect.
@@ -89,9 +102,9 @@ if (args[0] === 'doctor' || !rt) {
     // Ask the launcher rather than re-deriving its rule: a hand-copied verdict
     // would keep reporting healthy after the launcher's rule changed.
     const launch = buildLaunchArgs({ entry: rt.entry, args: [], preference: tuiPreference() });
-    const source = launch.tui === 'zagent' ? 'zagent (built in)'
+    const source = launch.tui === 'zagent' ? 'built in'
       : launch.ships ? 'runtime-provided' : 'NONE';
-    console.log(`interactive TUI: ${source}${source === 'NONE'
+    console.log(`TUI: ${source}${source === 'NONE'
       ? ' — ZAGENT_TUI=runtime is set but this runtime ships no @zcode/tui; unset it' : ''}`);
     if (source === 'NONE') invalidConfig = true; // interactive use is broken; do not exit 0
   }
@@ -113,7 +126,10 @@ if (args[0] === 'doctor' || !rt) {
   if (fixes.length) console.log(`fixed: ${fixes.join(', ')}`);
   process.exit(rt && !invalidConfig && (existsSync(cfg) || haveKey) ? 0 : 1); // doctor must fail when the diagnosis is unhealthy
 }
-ensureConfig();
+// login/logout are kernel passthroughs (see bin/zmax): they manage the OAuth
+// credential a user picks INSTEAD of the API key, so they must not die on the
+// "no GLM Coding Plan credential" check ensureConfig performs first.
+if (args[0] !== 'login' && args[0] !== 'logout') ensureConfig();
 // Headless JSON runs retry on empty/error-envelope output (product-level parity with
 // harnesses that retry internally; 2 of 3 gate-verdict failures were 429 envelopes).
 const headlessJson = args.includes('-p') && args.includes('--json');

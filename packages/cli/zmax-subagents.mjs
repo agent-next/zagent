@@ -3,17 +3,37 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { listSubagents } from '../driver/session-control.mjs';
-import { openTasksDb, listTasks } from '../driver/tasks-index.mjs';
+import { openTasksDb } from '../driver/tasks-index.mjs';
+import { NOT_RUNNING, isNotRunning } from './session-errors.mjs';
 
-export function recentSessionId({ home } = {}) {
+export function recentSession({ home } = {}) {
   try {
     const db = openTasksDb({ home, readOnly: true });
     try {
-      const id = listTasks(db)[0]?.task_id;
-      return typeof id === 'string' && id.trim() ? id : null;
+      const row = db.prepare('SELECT task_id, created_at, updated_at FROM tasks WHERE deleted = 0 AND archived = 0 ORDER BY updated_at DESC LIMIT 1').get();
+      return typeof row?.task_id === 'string' && row.task_id.trim()
+        ? { id: row.task_id, startedAt: Number.isFinite(row.created_at) ? row.created_at : null }
+        : null;
     } finally { db.close(); }
   } catch { return null; }
 }
+
+export function recentSessionId({ home } = {}) {
+  return recentSession({ home })?.id ?? null;
+}
+
+const agoWords = (ms) => {
+  const mins = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
+// A tasks-index row proves a session existed, not that it still runs: sessions
+// live inside the process that owns them, so a stale id answers "not found".
 
 export const USAGE = 'usage: zagent subagents [--session <id>] [--json]';
 
@@ -82,8 +102,16 @@ export async function runSubagents(argv, opts = {}) {
     stderr.write(`${parsed.error}\n`);
     return 2;
   }
-  const sessionId = parsed.session
-    ?? (opts.resolveSession ? await opts.resolveSession() : recentSessionId({ home: opts.home }));
+  let sessionId = parsed.session;
+  if (!sessionId) {
+    const resolved = opts.resolveSession ? await opts.resolveSession() : recentSession({ home: opts.home });
+    const id = typeof resolved === 'string' ? resolved : resolved?.id;
+    const startedAt = typeof resolved === 'object' && resolved ? resolved.startedAt : null;
+    if (typeof id === 'string' && id.trim()) {
+      sessionId = id;
+      stderr.write(`using latest CLI session ${sessionId}${startedAt ? `, started ${agoWords(startedAt)}` : ''}\n`);
+    }
+  }
   if (typeof sessionId !== 'string' || !sessionId.trim()) {
     stderr.write('subagents: no session (pass --session <id> or run a task first)\n');
     return 2;
@@ -114,6 +142,15 @@ export async function runSubagents(argv, opts = {}) {
     }
     return 0;
   } catch (e) {
+    if (isNotRunning(e)) {
+      if (parsed.json) {
+        stderr.write(`${NOT_RUNNING}\n`);
+        stdout.write(`${JSON.stringify({ sessionId, running: false }, null, 2)}\n`);
+      } else {
+        stdout.write(`${NOT_RUNNING}\n`);
+      }
+      return 0;
+    }
     stderr.write(`subagents: ${e?.message ?? e}\n`);
     return 1;
   } finally {

@@ -266,8 +266,16 @@ export function renderBanner(theme, width, info = {}) {
   // version, workspace and branch are host-supplied; a branch name or a directory
   // name is attacker-controllable in a cloned repository.
   const one = (v) => sanitizeText(v, { keepNewlines: false });
-  const version = info.version ? theme.faint(` runtime ${one(info.version)}`) : '';
-  const lines = [`${theme.accent(g.assistant)} ${theme.accent(theme.strong('zagent'))}${version}`];
+  // Three honest parts: the zagent package version, what the runtime reports
+  // about itself (its own version, else its kind), then the model. The kernel's
+  // internal version used to be painted AS zagent's — "zagent runtime 0.16.5"
+  // while zagent itself was 0.0.202.
+  const tail = [
+    info.version ? ` ${one(info.version)}` : '',
+    info.runtime ? ` · runtime ${one(info.runtime)}` : '',
+    info.model ? ` · ${one(info.model)}` : '',
+  ].join('');
+  const lines = [`${theme.accent(g.assistant)} ${theme.accent(theme.strong('zagent'))}${theme.faint(clip(tail, Math.max(0, width - 8)))}`];
   if (info.workspace) {
     const branch = info.branch ? theme.faint(` · ${one(info.branch)}`) : '';
     lines.push(`  ${theme.muted(clip(one(info.workspace), Math.max(10, width - 4)))}${branch}`);

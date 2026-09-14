@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { commandFor, formatRow } from '../packages/cli/commands.mjs';
+import { findRuntime } from '../packages/driver/runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [command, ...rest] = process.argv.slice(2);
@@ -56,8 +57,25 @@ const run = (script, nodeArgs = [], args = []) => {
   process.exit(r.status ?? (r.signal ? 1 : 0));
 };
 
-if (command === '--version' || command === '-V' || command === 'version') {
-  process.stdout.write(`${JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version}\n`);
+/** Best-effort kernel version (`node <entry> --version`); '' when unknown. */
+const kernelVersion = (entry) => {
+  try {
+    const r = spawnSync(process.execPath, [entry, '--version'], { encoding: 'utf8', timeout: 5000 });
+    const m = String(r.stdout ?? '').match(/(\d+\.\d+[\w.-]*)/);
+    return r.status === 0 && m ? m[1] : '';
+  } catch { return ''; }
+};
+
+if (command === '--version' || command === '-V' || command === '-v' || command === 'version') {
+  process.stdout.write(`zagent ${JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version}\n`);
+  const rt = findRuntime();
+  if (rt) {
+    // rt.version is the installed product version; the kernel's own --version
+    // is its internal string, so it is only a fallback and stays labeled.
+    let v = rt.version;
+    if (!v) { const k = kernelVersion(rt.entry); v = k ? `(kernel ${k})` : null; }
+    process.stdout.write(`runtime: ${rt.kind}${v ? ` ${v}` : ''} (${rt.entry})\n`);
+  }
   process.exit(0);
 }
 if (command === '--help' || command === '-h') run('packages/cli/zmax-help.mjs');
@@ -91,5 +109,31 @@ if (Object.hasOwn(ROUTES, command)) {
   const args = sep === -1 ? rest : [...rest.slice(0, sep), ...rest.slice(sep + 1)];
   run(script, nodeArgs, args);
 }
-// Everything else, including no arguments at all, is the main entry.
+// Commands forwarded to packages/cli/zmax.mjs. 'doctor' is implemented there;
+// 'login'/'logout'/'app-server' are kernel subcommands we deliberately expose
+// unchanged ('app-server' is a headless entry — tui-launch.mjs isInteractive).
+// Anything else that names a command gets OUR error — a typo used to reach the
+// kernel and come back as "zcode 0.16.5 / Usage: zcode [command]", the wrong
+// product's usage text on stderr for the right product's mistake.
+const MAIN_ENTRY_COMMANDS = new Set(['doctor', 'login', 'logout', 'app-server']);
+if (command && !command.startsWith('-') && !MAIN_ENTRY_COMMANDS.has(command)) {
+  console.error(`zagent: unknown command '${command}'`);
+  console.error("Run 'zagent help' for the command list.");
+  process.exit(2);
+}
+// Option-led invocations packages/cli/zmax.mjs understands — the kernel entry
+// flags it and tui-launch.mjs treat as theirs: -p/--print/--prompt (headless),
+// --cwd (forwarded verbatim), --json (headless JSON). `--capabilities` is NOT
+// here: it only exists on the doctor path, so a bare one is still a typo.
+// Any other leading-dash token is a typo (`--verison`, `--bogus`): answer it
+// here, exit 2, and never let the kernel print its own usage text for our
+// product's mistake.
+const KNOWN_OPTIONS = new Set(['-p', '--print', '--prompt', '--cwd', '--json']);
+if (command && command.startsWith('-') && !KNOWN_OPTIONS.has(command)) {
+  console.error(`zagent: unknown option '${command}'${command === '--capabilities' ? " — did you mean 'zagent doctor --capabilities'?" : ''}`);
+  console.error("Run 'zagent help' for the command list.");
+  process.exit(2);
+}
+// What remains: no arguments (interactive TUI), the entry flags above, and the
+// routed allowlists.
 run('packages/cli/zmax.mjs', [], process.argv.slice(2));

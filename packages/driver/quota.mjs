@@ -36,17 +36,25 @@ export function identityHeaders(appVersion) {
     'x-client-timezone': Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
 }
+// Desktop-credentialed calls refuse redirects (a cross-origin hop would carry the
+// JWT/OAuth token and device MID) and are bounded like the monitor call.
+async function desktopFetch(url, headers) {
+  try {
+    return await fetch(url, { headers, redirect: 'error', signal: AbortSignal.timeout(15000) });
+  } catch {
+    // Transport errors may contain request headers; never expose their text.
+    throw new Error('Desktop quota transport failed; the result is unknown');
+  }
+}
 export async function billing(path, { jwt, appVersion = '3.10.2' } = {}) {
   const plat = `${process.platform}-${process.arch}`;
   // Query shapes as used by the desktop: balance takes ONLY app_version; preview adds platform.
   const qs = path.startsWith('balance') ? `?app_version=${appVersion}`
     : path.startsWith('preview') ? `?app_version=${appVersion}&platform=${plat}` : '';
-  const r = await fetch(`${BASE}/api/v1/zcode-plan/billing/${path}${qs}`, {
-    headers: {
-      Authorization: `Bearer ${jwt ?? getZcodeJwt()}`, ...identityHeaders(appVersion),
-      'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(),
-      'x-os-version': os.release(),
-    },
+  const r = await desktopFetch(`${BASE}/api/v1/zcode-plan/billing/${path}${qs}`, {
+    Authorization: `Bearer ${jwt ?? getZcodeJwt()}`, ...identityHeaders(appVersion),
+    'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(),
+    'x-os-version': os.release(),
   });
   const body = await r.json().catch(() => ({}));
   return { status: r.status, body: redactDeep(body) };
@@ -57,10 +65,10 @@ export async function billing(path, { jwt, appVersion = '3.10.2' } = {}) {
 export async function resetStatus({ appVersion = '3.10.2' } = {}) {
   const store = loadCredentialStore();
   const oauth = decryptCredential(store['oauth:zai:access_token']);
-  const r = await fetch(`${BASE}/api/v1/coding-plan/reset/status`, {
-    headers: { Authorization: `Bearer ${getZcodeJwt()}`, 'x-bigmodel-authorization': oauth,
-      'bigmodel-target-type': 'PERSONAL', ...identityHeaders(appVersion),
-      'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(), 'x-os-version': os.release() },
+  const r = await desktopFetch(`${BASE}/api/v1/coding-plan/reset/status`, {
+    Authorization: `Bearer ${getZcodeJwt()}`, 'x-bigmodel-authorization': oauth,
+    'bigmodel-target-type': 'PERSONAL', ...identityHeaders(appVersion),
+    'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(), 'x-os-version': os.release(),
   });
   const body = await r.json().catch(() => ({}));
   return { status: r.status, body: redactDeep(body) };

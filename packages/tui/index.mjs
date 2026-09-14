@@ -22,6 +22,7 @@ import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates, skillCandidates, conversationCandidates } from './complete.mjs';
+import { mergeCommands, CLIENT_COMMANDS, matchClientCommand, zagentVersion, runtimeLabel } from './commands.mjs';
 import { stringsFor } from './strings.mjs';
 import { sanitizeText } from './sanitize.mjs';
 import { listSkills, listConversationsAsync, mcpSummary } from '../driver/catalog.mjs';
@@ -36,7 +37,9 @@ export async function runTui(host = {}) {
   const stdout = host.stdout ?? process.stdout;
   const stdin = host.stdin ?? process.stdin;
   const state = createTranscript();
-  const theme = createTheme({
+  // `let`: /theme repaints the live chrome without a restart. Committed
+  // scrollback keeps its old palette — it cannot be repainted by design.
+  let theme = createTheme({
     enabled: host.noColor !== true && stdout.isTTY !== false,
     colorScheme: host.theme === 'light' ? 'light' : 'dark',
     ascii: process.env.ZAGENT_ASCII === '1',
@@ -91,8 +94,15 @@ export async function runTui(host = {}) {
     if (meter) state.projection = { ...state.projection, ...meter };
   };
 
+  // The honest version line: zagent's own package version, then the installed
+  // runtime's product version — findRuntime() resolves it (desktop-bundle
+  // 3.11.2, zcode-app-cli 3.10.2-19); the kernel's internal string is only ever
+  // shown labelled. host.version was painted as the runtime version before, so
+  // the banner lied on every startup.
+  const packageVersion = zagentVersion();
   screen.writeRaw(renderBanner(theme, screen.width, {
-    version: host.version, workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
+    version: packageVersion, runtime: runtimeLabel(host), model: ui.model,
+    workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
   }).join('\n') + '\n');
 
   if (host.loginRequired === true) {
@@ -135,6 +145,83 @@ export async function runTui(host = {}) {
   const isQuit = (t) => QUIT.has(t.toLowerCase());
   const quit = () => { exit(); resolveRun?.(); };
 
+  // --- client slash commands --------------------------------------------------
+  // ONE palette: the kernel's host.slashCommands merged with zagent's own.
+  // Kernel commands still go through submitPrompt verbatim; client commands run
+  // here, against local state — /exit never reached the runtime ("Unknown
+  // command") and there was no way to leave without two ctrl+c.
+  const merged = mergeCommands(host.slashCommands, CLIENT_COMMANDS);
+
+  function openChooser({ title, detail, items, index = 0, pick, cancel, yn }) {
+    if (exiting || !Array.isArray(items) || items.length === 0) return false;
+    ui.chooser = { title, detail, items, index, pick, cancel, yn };
+    draw();
+    return true;
+  }
+
+  // The inline y/N confirm /undo and /update share. 'no' is the default so a
+  // stray Enter can never trigger the action.
+  function askConfirm(question) {
+    if (exiting || ui.chooser || ui.permission) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      ui.chooser = {
+        title: question, yn: true, index: 1, hint: 'y / n — default: no',
+        items: [{ value: 'y', label: 'yes' }, { value: 'n', label: 'no' }],
+        pick: (item) => resolve(item.value === 'y'),
+        cancel: () => resolve(false),
+      };
+      draw();
+    });
+  }
+
+  const applyTheme = (scheme) => {
+    // 'auto' follows the runtime's own setting; the terminal's preference is not
+    // observable, so auto resolves through host.theme.
+    theme = createTheme({
+      enabled: host.noColor !== true && stdout.isTTY !== false,
+      colorScheme: scheme === 'auto' ? (host.theme === 'light' ? 'light' : 'dark') : scheme,
+      ascii: process.env.ZAGENT_ASCII === '1',
+    });
+    draw();
+  };
+
+  const setMode = async (mode) => {
+    if (typeof host.setMode === 'function') {
+      try { const r = await host.setMode(mode); ui.mode = r?.mode ?? mode; }
+      catch (e) { addNotice(state, `could not switch mode: ${String(e?.message ?? e)}`, 'error'); }
+      draw();
+      return true;
+    }
+    // Older hosts without setMode: the kernel still understands '/mode <x>'.
+    enqueueOrSubmit(`/mode ${mode}`);
+    return false;
+  };
+
+  const cmdCtx = {
+    host, state, ui, str,
+    env: process.env,
+    version: packageVersion,
+    commands: merged,
+    workspace: host.workspaceDirectory ?? process.cwd(),
+    cwd: host.workspaceDirectory ?? process.cwd(),
+    home: undefined,                       // drivers default to os.homedir()
+    deps: null,                            // test seams: { exec, codingPlanStatus }
+    print: (text) => addCommandEntry(state, text),
+    notice: (text, level) => addNotice(state, text, level),
+    draw, quit,
+    interrupt: () => interrupt(),           // lazy: `interrupt` is declared below
+    send: enqueueOrSubmit,
+    openPicker, choose: openChooser, confirm: askConfirm,
+    setTheme: applyTheme, setMode,
+    clearView: () => {
+      // Same visual as ctrl-l, plus the entries are gone for good. Committed
+      // scrollback cannot be un-painted, so a screen clear is all "clear" means.
+      state.entries.length = 0;
+      state.printedAny = false;
+      screen.writeRaw('\x1b[2J\x1b[H');
+    },
+  };
+
   function enqueueOrSubmit(text) {
     if (exiting) return;
     clearCompletion();
@@ -144,6 +231,24 @@ export async function runTui(host = {}) {
     // typing /exit while a turn runs is asking to leave now, not after it finishes.
     // That is exactly the state they are in when a turn has hung.
     if (isQuit(trimmed)) { quit(); return; }
+    // A zagent command runs HERE — never submitted to the runtime, never queued:
+    // /stop and /status must work mid-turn, and /exit already left above.
+    const client = matchClientCommand(trimmed);
+    if (client) {
+      ui.input = { value: '', cursor: 0 };
+      ui.history.push(trimmed);
+      ui.historyIndex = ui.history.length;
+      addUserEntry(state, trimmed);
+      draw();
+      void Promise.resolve(client.command.run(cmdCtx, client.args))
+        .then(() => { if (!exiting) draw(); })
+        .catch((e) => {
+          if (exiting) return;
+          addNotice(state, `${client.command.name}: ${String(e?.message ?? e).slice(0, 200)}`, 'error');
+          draw();
+        });
+      return;
+    }
     // A bare /effort, /model or /mode is a request to choose, not a command to run.
     const picker = pickerFor(trimmed);
     if (picker && !ui.busy) {
@@ -372,9 +477,10 @@ export async function runTui(host = {}) {
   }
 
   // --- completion -----------------------------------------------------------
-  // Both sources are the runtime's own: host.slashCommands (20, with usage and
-  // summary) and host.listWorkspacePathSuggestions.
-  const commands = slashCandidates(host.slashCommands);
+  // The palette is the merged list built above: kernel commands plus zagent's
+  // client commands, group-ordered. Files still come from
+  // host.listWorkspacePathSuggestions.
+  const commands = slashCandidates(merged);
 
   async function refreshCompletion() {
     const seq = ++ui.completionSeq;
@@ -438,8 +544,20 @@ export async function runTui(host = {}) {
         c.index = (c.index + 1) % c.items.length; draw(); return true;
       case 'up':
         c.index = (c.index - 1 + c.items.length) % c.items.length; draw(); return true;
-      case 'enter':
+      case 'enter': {
+        // A command typed in full must RUN, not accept the highlighted
+        // suggestion: "/exit" used to be un-runnable because Enter only ever
+        // completed to the palette's own candidate. An exact match on a name
+        // or alias falls through to the submit path. Match the FULL merged
+        // list, not the filtered rows: "/q" filters /exit out of the popup
+        // (ranking scores names, not aliases) but is still an exact alias.
+        const q = c.type === 'slash' ? c.context?.query : null;
+        if (q != null && commands.some(i => i.value === q || (i.aliases ?? []).includes(q))) {
+          clearCompletion();
+          return false;
+        }
         return acceptCompletion();
+      }
       case 'escape':
         clearCompletion(); draw(); return true;
       default:
@@ -540,6 +658,14 @@ export async function runTui(host = {}) {
   function onChooserKey(event) {
     const c = ui.chooser;
     const close = () => { ui.chooser = null; draw(); };
+    // The y/N confirm answers on the letter itself; digits are for the
+    // numbered pickers the kernel sends.
+    if (c.yn && event.text && /^[yn]$/i.test(event.text)) {
+      const yes = event.text.toLowerCase() === 'y';
+      close();
+      void c.pick(yes ? c.items[0] : c.items[1]);
+      return true;
+    }
     if (event.text && /^[1-9]$/.test(event.text)) {
       const item = c.items[Number(event.text) - 1];
       if (item) { close(); void c.pick(item); }
@@ -549,7 +675,8 @@ export async function runTui(host = {}) {
       case 'up': c.index = (c.index - 1 + c.items.length) % c.items.length; draw(); return true;
       case 'down': case 'tab': c.index = (c.index + 1) % c.items.length; draw(); return true;
       case 'enter': { const item = c.items[c.index]; close(); if (item) void c.pick(item); return true; }
-      case 'escape': case 'ctrl-c': close(); return true;
+      // Esc/ctrl-c declines: pickers without a cancel callback close silently.
+      case 'escape': case 'ctrl-c': close(); void c.cancel?.(); return true;
       default: return true;                    // the chooser is modal
     }
   }

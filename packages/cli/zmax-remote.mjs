@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const NOTE = 'D1/D2 this-host device registration and last heartbeat ack only. Second-device remote control is not available.';
+const NOTE = 'This-host relay registration and last heartbeat only. Remote control from a second device is not available yet.';
 const USAGE = 'usage: zagent remote [status|connect] [--json] [--live]';
 
 function readJson(file) {
@@ -57,7 +57,7 @@ export function connectDeniedReason(env = process.env, { live = false } = {}) {
     return 'live websocket connect is blocked in CI/test (would hang the gate)';
   }
   if (!live && env.ZAGENT_REMOTE_CONNECT !== '1') {
-    return 'live websocket connect is opt-in: pass --live (D3 second-device control is not available)';
+    return 'live websocket connect is opt-in: pass --live (remote control from a second device is not available yet)';
   }
   return null;
 }
@@ -67,11 +67,10 @@ function printStatus(report, asJson) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
-  const line = (k, v) => process.stdout.write(`${k.padEnd(14)} ${v}\n`);
-  line('remote', report.registered ? `registered${report.source ? ` (${report.source})` : ''}` : 'not registered');
-  line('device', report.deviceSid ?? '(none)');
-  line('last ack', report.lastAck ? new Date(report.lastAck).toISOString() : '(none)');
-  line('control', 'this-host D1/D2 status only; second-device hop is not available');
+  // No device identifier in human output — the sid is a credential-adjacent
+  // value that stays in --json where scripts can use it deliberately.
+  const heartbeat = report.lastAck ? new Date(report.lastAck).toISOString() : 'none';
+  process.stdout.write(`Relay: ${report.registered ? 'registered' : 'not registered'} · last heartbeat: ${heartbeat} · remote control from a second device is not available yet.\n`);
 }
 
 async function runConnect({ asJson, live, env }) {

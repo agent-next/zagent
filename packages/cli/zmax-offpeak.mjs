@@ -53,23 +53,19 @@ if (asJson) {
 } else {
   const span = `${String(window.startHourSGT).padStart(2, '0')}:00-${String(window.endHourSGT).padStart(2, '0')}:00 SGT`;
   const localSpan = `${localHour(window.startHourSGT)}-${localHour(window.endHourSGT)} local`;
-  console.log(`off-peak window: ${span}  (${localSpan})   source: ${window.source}`);
+  console.log(`off-peak window: ${localSpan} (${span})`);
   if (!active) {
-    console.log(`campaign: ENDED ${window.campaignEnd} — check current provider billing terms`);
+    console.log(`status: closed — campaign ended ${window.campaignEnd}`);
   } else if (open) {
-    // Z.ai's published campaign terms, not something zagent measured. Said plainly,
-    // because the plan's own rolling usage window is enforced independently of it:
-    // a 1308 ("Usage limit reached for 5 hour") was observed DURING an open window
-    // on 2026-09-07. Off-peak routing is not a licence to ignore the window.
-    console.log(`status: OPEN — configured campaign time window; zagent billing eligibility is unverified`);
-    console.log(`note: your plan's rolling usage window still applies — off-peak does not lift it`);
-    console.log(`campaign runs through ${window.campaignEnd}`);
+    console.log(`status: open — campaign ends ${window.campaignEnd}`);
   } else {
-    console.log(`status: closed — opens in ${humanDuration(untilOpen)}`);
-    console.log(`campaign runs through ${window.campaignEnd}`);
+    console.log(`status: closed — opens in ${humanDuration(untilOpen)} · campaign ends ${window.campaignEnd}`);
   }
-  if (window.allowedModels?.length) console.log(`allowed models: ${window.allowedModels.join(', ')}`);
-  console.log(`routing now: ${route.flash ? 'flash' : 'main'} — ${route.reason}`);
+  // Z.ai's published campaign terms, not something zagent measured. Said plainly,
+  // because the plan's own rolling usage window is enforced independently of it:
+  // a 1308 ("Usage limit reached for 5 hour") was observed DURING an open window
+  // on 2026-09-07. Off-peak routing is not a licence to ignore the window.
+  console.log('Billing for this window is not verified by zagent.');
 }
 
 // The exit code is the useful part in a script; a closed window is not an error
