@@ -20,6 +20,7 @@ import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
 import { provisionStandaloneAccounts } from '../driver/account-provider.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine } from '../driver/doctor.mjs';
+import { checkLatest, compareVersions, installedVersion, passiveCheckAllowed } from '../driver/update-check.mjs';
 
 // G1 (ux-inventory §1/§9): every top CLI keeps a new user inside the product with
 // 2-3 sign-in paths; zagent printed one line and exited 1. The card is also what
@@ -182,6 +183,17 @@ if (args[0] === 'doctor' || !rt) {
     if (typeof pending?.fileName === 'string' && pending.fileName)
       warnings.push(`desktop update pending: ${pending.fileName} (applies on next desktop launch)`);
   } catch { /* no staged update */ }
+  // Self-update hint: the same registry answer `zagent update` uses, TTL-cached
+  // so a doctor run pays at most one npm round-trip per window. Skipped in the
+  // test sandbox/CI (a spawned npm would escape the offline gate) and silent on
+  // offline machines — an unreachable registry is not a defect.
+  if (args[0] === 'doctor' && passiveCheckAllowed()) {
+    try {
+      const self = checkLatest({ timeoutMs: 3000 });
+      if (self.latest && compareVersions(self.latest, installedVersion()) === 1)
+        warnings.push(`zagent ${installedVersion()} is outdated — npm has ${self.latest}; run 'zagent update'`);
+    } catch { /* best-effort hint */ }
+  }
   // Before zagent shipped its own TUI, doctor exited 0 on a desktop-only install while
   // the headline command (`zagent`) died with "Cannot find package '@zcode/tui'". A gate
   // that reports healthy for a configuration whose primary path crashes is a defect.

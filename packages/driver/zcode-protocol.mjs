@@ -3,12 +3,16 @@
 // handshake preamble; session/create requires workspace:{workspaceKey,workspacePath};
 // errors are JSON-RPC-style codes (-32601 method, -32602 invalid params with Zod detail).
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
 import { findRuntime, kernelEnv } from './runtime.mjs';
 import { readToolPolicy } from './offpeak.mjs';
 import { explainProviderError } from './provider-errors.mjs';
+import { pushAccountConfig } from './account-config.mjs';
+import { configuredKeyFor, configuredAccountKeys } from './account-provider.mjs';
 export { DEFAULT_RUNTIME } from './runtime.mjs';
 
 // Server->client requests the runtime expects answered. session/requestRuntimePreferences is
@@ -28,12 +32,35 @@ const DEFAULT_REQUEST_HANDLERS = {
     nativeSearchEnhancementsEnabled: true, memoryEnabled: true,
   }),
   'interaction/requestUserInput': () => ({ action: 'decline', reason: 'no interactive user available' }),
+  // 3.12.x: the kernel asks the host for request auth before every
+  // provider-backed attempt (connectivity test, model request). VVt result is a
+  // strict union: {headersApplied:true, requestAuth:{apiKey?, headers?}} |
+  // {headersApplied:false, errorMessage?}. For zhipu-account providers the auth
+  // is the configured sibling plan key — the same mapping the account-config
+  // push and the standalone provisioner use. Fail-closed when unresolvable.
+  'interaction/requestProviderRuntimeHeaders': params => {
+    const access = params?.accountAccess;
+    if (access?.type !== 'zhipu-account')
+      return { headersApplied: false, errorMessage: 'no headless runtime auth for this provider kind' };
+    try {
+      const providerMap = JSON.parse(readFileSync(
+        path.join(process.env.ZCODE_DATA_BASE_DIR?.trim() || os.homedir(),
+          '.zcode', 'v2', 'config.json'), 'utf8'))?.provider;
+      const apiKey = configuredKeyFor(configuredAccountKeys(providerMap), access.accountType, access.mode);
+      return apiKey
+        ? { headersApplied: true, requestAuth: { apiKey } }
+        : { headersApplied: false, errorMessage: `no configured key for ${access.accountType}:${access.mode}` };
+    } catch {
+      return { headersApplied: false, errorMessage: 'provider config unreadable' };
+    }
+  },
 };
 
 export class ZCodeProtocolClient {
   constructor({ runtime, cwd = process.cwd(), nodeBin = process.execPath, onNotify, requestHandlers } = {}) {
     runtime ??= findRuntime({ cwd })?.entry;
     if (!runtime) throw new Error('ZCode runtime not found; set ZCODE_RUNTIME or install zcode-app-cli / ZCode desktop');
+    this.runtime = runtime;
     this.child = spawn(nodeBin, [runtime, 'app-server', '--stdio'], { cwd, env: kernelEnv(runtime), stdio: ['pipe', 'pipe', 'inherit'] });
     this.buf = ''; this.decoder = new StringDecoder('utf8'); this.pending = new Map(); this.nextId = 1; this.onNotify = onNotify ?? (() => {});
     this.requestHandlers = { ...DEFAULT_REQUEST_HANDLERS, ...(requestHandlers ?? {}) };
@@ -103,6 +130,12 @@ export class ZCodeProtocolClient {
       this.pending.set(String(id), { resolve: v => { clearTimeout(t); this._readyOk?.(); resolve(v); }, reject: e => { clearTimeout(t); reject(e); } });
       this.child.stdin.write(JSON.stringify({ id, method, ...(params !== undefined ? { params } : {}) }) + '\n');
     });
+  }
+  // 3.12.x app-servers boot with an EMPTY provider registry — the GUI fills it
+  // via provider/updateAccountConfig. Callers that need provider-backed RPCs
+  // (models test, daemons) await this once; it is memoized and never rejects.
+  syncAccountConfig(opts) {
+    return this._accountSync ??= this.ready.then(() => pushAccountConfig(this, opts), () => ({ pushed: false, reason: 'runtime not ready' }));
   }
   listSessions() { return this.call('session/list'); }
   createSession(workspacePath) {

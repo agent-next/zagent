@@ -44,6 +44,7 @@ const ROUTES = {
   subagents: ['packages/cli/zmax-subagents.mjs', '--experimental-sqlite', '--no-warnings'],
   usage: ['packages/cli/zmax-usage.mjs', '--experimental-sqlite', '--no-warnings'],
   remote: ['packages/cli/zmax-remote.mjs'],
+  update: ['packages/cli/zmax-update.mjs'],
 };
 
 /** Present in the source repo, deliberately not part of this distribution. */

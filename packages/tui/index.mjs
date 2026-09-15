@@ -79,6 +79,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     lastCtrlC: 0,
     abort: null,
     mcp: null,                 // {connected, failed, total}
+    workflows: new Map(),      // runId -> {kind, status}; fed by subscribeWorkflowEvents
     goal: '',                  // last /goal objective shown in the status line
     skills: listSkills({ cwd: host.workspaceDirectory || process.cwd() }),
     conversations: [],
@@ -99,6 +100,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   if (seededWindow !== null) state.projection = { ...state.projection, contextWindow: seededWindow };
   let exiting = false;
   let escapeTimer = null;
+  let unsubscribeWorkflow = null;
   const keyDecoder = createKeyDecoder();
 
   const clearCompletion = () => { ui.completionSeq += 1; ui.completion = null; };
@@ -233,6 +235,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
     draw, quit,
     interrupt: () => interrupt(),           // lazy: `interrupt` is declared below
     send: enqueueOrSubmit,
+    // Straight to the runtime, skipping client dispatch: /workflow forwards its
+    // non-stop forms through this — ctx.send would match the client command
+    // again and recurse.
+    sendRuntime: (text) => enqueueOrSubmit(text, { trusted: true, runtime: true }),
     openPicker, choose: openChooser, confirm: askConfirm,
     setTheme: applyTheme, setMode,
     clearView: () => {
@@ -244,7 +250,13 @@ export async function runTui(host = {}, { deps = null } = {}) {
     },
   };
 
-  function enqueueOrSubmit(text, { trusted = false } = {}) {
+  // A command a client command forwards to the runtime (e.g. a non-stop
+  // /workflow) was already echoed and history-recorded by the client dispatch —
+  // doing either again on submit shows the line twice. Counted, not boolean, so
+  // a busy queue and repeated identical forwards stay exact.
+  const forwarded = new Map();
+
+  function enqueueOrSubmit(text, { trusted = false, runtime = false } = {}) {
     if (exiting) return;
     clearCompletion();
     let trimmed = sanitizeText(text).trim();
@@ -258,7 +270,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     if (isQuit(trimmed)) { quit(); return; }
     // A zagent command runs HERE — never submitted to the runtime, never queued:
     // /stop and /status must work mid-turn, and /exit already left above.
-    const client = matchClientCommand(trimmed);
+    const client = runtime ? null : matchClientCommand(trimmed);
     if (client) {
       ui.input = { value: '', cursor: 0 };
       ui.history.push(trimmed);
@@ -305,8 +317,12 @@ export async function runTui(host = {}, { deps = null } = {}) {
       }
     }
     ui.input = { value: '', cursor: 0 };
-    ui.history.push(trimmed);
-    ui.historyIndex = ui.history.length;
+    if (runtime) {
+      forwarded.set(trimmed, (forwarded.get(trimmed) ?? 0) + 1);
+    } else {
+      ui.history.push(trimmed);
+      ui.historyIndex = ui.history.length;
+    }
     if (ui.busy) {
       ui.queue.push(trimmed);
       ui.queueItem = ui.queue.length - 1;
@@ -324,7 +340,17 @@ export async function runTui(host = {}, { deps = null } = {}) {
     if (trimmed === '' || ui.busy) return;
     // History is recorded once, by enqueueOrSubmit. Recording it here too made a
     // drained queue re-append every message (queue [a,b] -> history a,b,a,b).
-    addUserEntry(state, trimmed);
+    const fwd = forwarded.get(trimmed) ?? 0;
+    if (fwd > 0) forwarded.set(trimmed, fwd - 1);
+    else addUserEntry(state, trimmed);
+    // Kernel session-switch commands change which session later envelopes
+    // describe; until a main-turn model_request re-latches the real one, a
+    // stale id would aim /rename, /archive and /delete at the session the user
+    // just left. /resume <id> adopts its target; the rest go unknown-but-safe.
+    const sessionSwitch = /^\/(new|resume|fork|rewind)\b(?:\s+(\S+))?/.exec(trimmed);
+    if (sessionSwitch) {
+      state.sessionId = sessionSwitch[1] === 'resume' && sessionSwitch[2] ? sessionSwitch[2] : null;
+    }
     ui.busy = true;
     ui.activity = trimmed.startsWith('/') ? 'running command' : 'working';
     const abort = new AbortController();
@@ -810,6 +836,8 @@ export async function runTui(host = {}, { deps = null } = {}) {
     denyPendingPermission();
     stopSpinner();
     clearTimeout(escapeTimer);
+    try { unsubscribeWorkflow?.(); } catch {}
+    unsubscribeWorkflow = null;
     stdin.removeListener?.('data', onData);
     stdin.removeListener?.('end', finish);
     stdout.removeListener?.('resize', draw);
@@ -1005,6 +1033,38 @@ export async function runTui(host = {}, { deps = null } = {}) {
         draw();
       })
       .catch(() => {});
+  }
+
+  // The kernel's workflow channel (C1 re-probe; the same wrappers verified in
+  // the installed 3.12.1 kernel): host.subscribeWorkflowEvents registers the
+  // callback on a Set and returns the unsubscribe. Each event is the in-memory
+  // {kind, message?, nodeId?, payload?, phase?, runId, timestamp, type} object —
+  // the same one the store persists. The five run-level lifecycle types get one
+  // transcript line each; the other 23 only update the tracker /workflow stop
+  // reads. A host may omit the member entirely — the runTuiCommand builder
+  // spreads it conditionally.
+  const WORKFLOW_STATUS = {
+    run_started: 'running', run_completed: 'completed', run_failed: 'failed',
+    run_cancelled: 'cancelled', workflow_paused: 'paused',
+  };
+  const WORKFLOW_VERB = { running: 'started', completed: 'completed', failed: 'failed', cancelled: 'cancelled', paused: 'paused' };
+  if (typeof host.subscribeWorkflowEvents === 'function') {
+    try {
+      unsubscribeWorkflow = host.subscribeWorkflowEvents((event) => {
+        if (exiting || !event || typeof event !== 'object' || typeof event.runId !== 'string') return;
+        const status = WORKFLOW_STATUS[event.type];
+        const prev = ui.workflows.get(event.runId);
+        // A run emitting work events that we never saw start is alive; any
+        // non-terminal label keeps it stoppable.
+        ui.workflows.set(event.runId, { kind: event.kind ?? prev?.kind, status: status ?? prev?.status ?? 'running' });
+        if (status === undefined) return;
+        const runId = sanitizeText(event.runId, { keepNewlines: false });
+        const why = status === 'failed' && typeof event.message === 'string' && event.message !== ''
+          ? ` — ${sanitizeText(event.message, { keepNewlines: false }).slice(0, 120)}` : '';
+        addNotice(state, `workflow ${runId} ${WORKFLOW_VERB[status]}${why}`, status === 'failed' ? 'warning' : 'muted');
+        draw();
+      });
+    } catch {}
   }
 
   // G4: the plan window on the home screen — the other top CLIs surface quota

@@ -308,6 +308,14 @@ export function applyEvent(state, event) {
     // Latches which query the next stream belongs to; nothing is drawn.
     case 'model_request':
       state.querySource = str(p.querySource, 'main_turn');
+      // The envelope sessionId is the ACTIVE session's, and the kernel's /new,
+      // /resume and /fork all change it — a first-set latch keeps pointing
+      // /rename & friends at the session the user left. Only a main-turn
+      // request may refresh it: subagent calls multiplex onto this stream
+      // carrying their own sess_subagent_* envelopes.
+      if (isMainTurn(state.querySource) && str(event?.sessionId)) {
+        state.sessionId = str(event.sessionId);
+      }
       break;
 
     // Seen live but carrying nothing the transcript renders. Counted, not drawn.

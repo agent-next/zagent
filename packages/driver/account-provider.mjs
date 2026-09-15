@@ -30,10 +30,23 @@ export const accountIdentity = apiKey =>
 // GUI carries one plan key for both account types and the server decides which
 // the account actually is; the apiKey is what authenticates either way.
 const CODING_MODES = new Set(['individual-coding-plan', 'team-coding-plan']);
-function configuredKeyFor(configured, family, mode) {
+export function configuredKeyFor(configured, family, mode) {
   if (CODING_MODES.has(mode)) return configured[`builtin:${family}-coding-plan`];
   if (mode === 'start-plan') return configured[`builtin:${family}-start-plan`];
   return null; // off-peak and unknown modes have no configured-key counterpart
+}
+
+// config.json provider map -> {id: apiKey} for providers that can authenticate:
+// enabled, not system-disabled, with a non-empty options.apiKey. Shared by the
+// credential provisioner and the app-server account-config push.
+export function configuredAccountKeys(providerMap) {
+  const configured = {};
+  for (const [id, p] of Object.entries(providerMap ?? {})) {
+    const key = p?.options?.apiKey;
+    if (p?.enabled !== false && !p?.systemDisabledReason && typeof key === 'string' && key.trim())
+      configured[id] = key.trim();
+  }
+  return configured;
 }
 
 /**
@@ -56,14 +69,10 @@ export function provisionStandaloneAccounts({
     rules = JSON.parse(read(builtinPath))?.config?.providerConfigRules?.providerRules ?? [];
   } catch { result.reason = 'builtin provider config unreadable'; return result; }
 
-  const configured = {};
+  let configured = {};
   try {
-    const providers = JSON.parse(read(path.join(home, '.zcode', 'v2', 'config.json')))?.provider ?? {};
-    for (const [id, p] of Object.entries(providers)) {
-      const key = p?.options?.apiKey;
-      if (p?.enabled !== false && !p?.systemDisabledReason && typeof key === 'string' && key.trim())
-        configured[id] = key.trim();
-    }
+    const providers = JSON.parse(read(path.join(home, '.zcode', 'v2', 'config.json')))?.provider;
+    configured = configuredAccountKeys(providers);
   } catch { /* a missing config.json just means nothing is configured */ }
   if (!Object.keys(configured).length) { result.reason = 'no configured provider keys'; return result; }
 

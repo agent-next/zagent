@@ -22,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sessionDiffArtifacts, renderDiff, undoPreview, undoApply } from '../driver/diffs.mjs';
+import { openTasksDb, findTask, updateTask, tasksDbPath } from '../driver/tasks-index.mjs';
 import { loadGlobalMemory, loadProjectMemory } from '../driver/memory.mjs';
 import { codingPlanStatus } from '../driver/quota.mjs';
 import { listHooks, formatHooksText } from '../driver/hooks-cli.mjs';
@@ -310,6 +311,22 @@ export function exportMarkdown(state) {
   return lines.join('\n');
 }
 
+/**
+ * The /workflows panel host.stopWorkflow returns: uOe builds
+ * {detail?, runs, selectedRunId?, title: '/workflows', updatedAt} — list rows
+ * carry {runId, kind, status}. Unknown/absent fields are rendered, never guessed.
+ */
+export function renderWorkflowPanel(panel) {
+  const runs = (Array.isArray(panel?.runs) ? panel.runs : []).filter(r => r && typeof r === 'object');
+  const lines = [typeof panel?.title === 'string' && panel.title !== '' ? panel.title : '/workflows'];
+  if (typeof panel?.detail === 'string' && panel.detail !== '') lines.push(`  ${panel.detail}`);
+  for (const r of runs) {
+    lines.push(`  ${r.runId ?? '?'} — ${r.kind ?? 'workflow'} · ${r.status ?? 'unknown'}`);
+  }
+  if (runs.length === 0) lines.push('  (no runs reported)');
+  return lines.join('\n');
+}
+
 /** Tool-call ids belonging to the most recent turn — what /undo may revert. */
 export function lastTurnToolCallIds(state) {
   const start = state?.turn?.entryStart;
@@ -363,6 +380,39 @@ export function isNewerVersion(latest, current) {
 }
 
 const readCurrent = (p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
+
+// G10: /rename /archive /delete — `zagent task`'s session-record surface inside
+// the TUI (codex/claude/opencode all manage sessions without leaving it). The
+// store is the runtime's own tasks-index.sqlite: only ever UPDATEd, never
+// created — a missing file means there is nothing to manage yet.
+function taskTarget(ctx, idArg) {
+  const self = !String(idArg ?? '').trim();
+  const id = self ? ctx.state.sessionId : String(idArg).trim();
+  if (!id) return { error: 'no session yet — its record appears after the first turn' };
+  const home = ctx.home ?? os.homedir();
+  if (!existsSync(tasksDbPath({ home }))) return { error: 'no task store yet' };
+  let db;
+  const fail = (error) => { try { db?.close(); } catch {} return { error }; };
+  try {
+    db = openTasksDb({ home });
+    // The store's task_id IS the session id: for the current session only an
+    // exact row counts — a suffix hit is by definition a different record.
+    const hits = self
+      ? db.prepare('SELECT workspace_key, task_id FROM tasks WHERE task_id = ? AND deleted = 0').all(id)
+      : findTask(db, id);
+    // (workspace_key, task_id) is the PK, so an exact id can live under several
+    // workspaces; this workspace's row wins over an arbitrary first.
+    const task = hits.length === 1 ? hits[0] : (hits.find(h => h.workspace_key === ctx.workspace) ?? null);
+    if (task) return { db, task };
+    if (hits.length > 1) return fail(`ambiguous id '${id}'`);
+    if (self) return fail('this session has no task record yet');
+    const n = db.prepare('SELECT COUNT(*) c FROM tasks WHERE task_id LIKE ? AND deleted = 0')
+      .get(`%${id}`)?.c ?? 0;
+    return fail(n > 1 ? `ambiguous id '${id}'` : `no task '${id}'`);
+  } catch (e) {
+    return fail(`task store unreadable: ${String(e?.message ?? e).slice(0, 120)}`);
+  }
+}
 
 // --- the client command table ----------------------------------------------------
 
@@ -540,6 +590,46 @@ export const CLIENT_COMMANDS = [
     },
   },
   {
+    name: 'rename', group: 'Session',
+    summary: "rename this session's record (/rename <new title>)",
+    run(ctx, args) {
+      const title = String(args ?? '').trim();
+      if (!title) return ctx.notice('usage: /rename <new title>', 'faint');
+      const t = taskTarget(ctx, '');
+      if (t.error) return ctx.notice(t.error, 'warning');
+      try {
+        updateTask(t.db, t.task, { title });
+        ctx.print(`renamed ${t.task.task_id} → ${title}`);
+      } finally { t.db.close(); }
+    },
+  },
+  {
+    name: 'archive', group: 'Session',
+    summary: 'archive a session record (/archive [taskId] — default: this session)',
+    run(ctx, args) {
+      const t = taskTarget(ctx, args);
+      if (t.error) return ctx.notice(t.error, 'warning');
+      try {
+        updateTask(t.db, t.task, { archived: true });
+        ctx.print(`archived ${t.task.task_id}`);
+      } finally { t.db.close(); }
+    },
+  },
+  {
+    name: 'delete', group: 'Session',
+    summary: 'soft-delete a session record (/delete [taskId] — default: this session)',
+    async run(ctx, args) {
+      const t = taskTarget(ctx, args);
+      if (t.error) return ctx.notice(t.error, 'warning');
+      const yes = await ctx.confirm(`delete the record for ${t.task.task_id}?`);
+      if (!yes) { t.db.close(); return ctx.notice('left unchanged', 'faint'); }
+      try {
+        updateTask(t.db, t.task, { deleted: true });
+        ctx.print(`deleted ${t.task.task_id}`);
+      } finally { t.db.close(); }
+    },
+  },
+  {
     name: 'doctor', group: 'zagent',
     summary: 'runtime/config/credential diagnosis (same checks as `zagent doctor`)',
     run(ctx) {
@@ -622,6 +712,60 @@ export const CLIENT_COMMANDS = [
         lines.push(`  ${id}${what ? ` — ${what.slice(0, 60)}` : ''}`);
       }
       ctx.print(lines.join('\n'));
+    },
+  },
+  {
+    // The kernel owns /workflow; this client entry exists only to add the
+    // `stop` subcommand the kernel command has no flag for. Every other form
+    // is forwarded verbatim through ctx.sendRuntime — ctx.send would re-enter
+    // this same client dispatch and recurse.
+    name: 'workflow', group: 'Tools',
+    summary: 'run a workflow (kernel); /workflow stop <runId> cancels one',
+    async run(ctx, args) {
+      const m = /^stop(?:\s+(\S[\s\S]*)?)?$/.exec(String(args ?? '').trim());
+      if (!m) {
+        const bare = String(args ?? '').trim();
+        ctx.sendRuntime(bare === '' ? '/workflow' : `/workflow ${bare}`);
+        return;
+      }
+      const TERMINAL = ['completed', 'failed', 'cancelled'];
+      const tracked = ctx.ui?.workflows instanceof Map ? ctx.ui.workflows : new Map();
+      const stoppable = [...tracked].filter(([, w]) => !TERMINAL.includes(w?.status));
+      const stopRun = async (runId) => {
+        if (typeof ctx.host?.stopWorkflow !== 'function') {
+          ctx.notice('workflow stop is not available in this runtime', 'warning');
+          return;
+        }
+        try {
+          ctx.print(renderWorkflowPanel(await ctx.host.stopWorkflow({ runId })));
+          const w = tracked.get(runId);
+          if (w) w.status = 'cancelled';
+        } catch (e) {
+          ctx.notice(`workflow stop failed: ${String(e?.message ?? e).slice(0, 200)}`, 'error');
+        }
+      };
+      const arg = String(m[1] ?? '').trim();
+      if (arg === '') {
+        if (stoppable.length === 0) return ctx.notice('usage: /workflow stop <runId>', 'warning');
+        return ctx.choose({
+          title: 'stop workflow',
+          items: stoppable.map(([runId, w]) => ({ value: runId, label: runId, note: w?.kind ?? '' })),
+          pick: (item) => { void stopRun(item.value); },
+        });
+      }
+      // runIds are long; a unique tracked prefix resolves so nobody types one.
+      if (!tracked.has(arg)) {
+        const matches = [...tracked.keys()].filter(id => id.startsWith(arg));
+        if (matches.length === 1) return stopRun(matches[0]);
+        if (matches.length > 1) {
+          return ctx.notice(`ambiguous runId '${arg}' — ${matches.length} tracked runs match`, 'warning');
+        }
+      }
+      const known = tracked.get(arg);
+      if (known && TERMINAL.includes(known?.status)) {
+        return ctx.notice(`workflow ${arg} already ${known.status}`, 'warning');
+      }
+      return stopRun(arg);
     },
   },
   {

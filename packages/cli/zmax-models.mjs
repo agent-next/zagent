@@ -28,13 +28,21 @@ if (process.argv[2] === 'test') {
     process.exit(2);
   }
   // The registry mirror: provider id -> configured model ids (config.json keeps
-  // models as a map keyed by id).
-  const configured = (() => {
+  // models as a map keyed by id). Disabled/system-disabled providers are not
+  // usable carriers — the push marks them unentitled — so they are tracked
+  // separately for a clear diagnostic instead of a kernel provider_not_found.
+  const { configured, disabled } = (() => {
     try {
-      const cfg = JSON.parse(readFileSync(`${os.homedir()}/.zcode/v2/config.json`, 'utf8'));
-      return Object.fromEntries(Object.entries(cfg?.provider ?? {})
-        .map(([id, p]) => [id, Object.keys(p?.models ?? {})]));
-    } catch { return {}; }
+      const cfgPath = path.join(process.env.ZCODE_DATA_BASE_DIR?.trim() || os.homedir(),
+        '.zcode', 'v2', 'config.json');
+      const providers = JSON.parse(readFileSync(cfgPath, 'utf8'))?.provider ?? {};
+      const configured = {}, disabled = new Set();
+      for (const [id, p] of Object.entries(providers)) {
+        if (p?.enabled === false || p?.systemDisabledReason) disabled.add(id);
+        else configured[id] = Object.keys(p?.models ?? {});
+      }
+      return { configured, disabled };
+    } catch { return { configured: {}, disabled: new Set() }; }
   })();
   const fail = (msg, modelId) => {
     if (asJson) console.log(JSON.stringify({ ok: false, providerId: null, modelId, error: msg }, null, 2));
@@ -44,6 +52,23 @@ if (process.argv[2] === 'test') {
   const carriers = m => Object.entries(configured)
     .filter(([, models]) => models.some(x => x.toLowerCase() === m.toLowerCase()))
     .map(([id, models]) => [id, models.find(x => x.toLowerCase() === m.toLowerCase())]);
+  // `builtin:<family>-coding-plan`/`-start-plan` config keys are CLI-side; the
+  // registry holds the account rules they entitle (account:<family>-*). Map a
+  // configured builtin key to its primary account provider id — a coding-plan
+  // key covers both individual and team rules (same key, same endpoint), so
+  // individual is the representative test target.
+  const accountIdFor = pid => {
+    const m = /^builtin:([a-z0-9][a-z0-9-]*)-(coding-plan|start-plan)$/.exec(pid);
+    if (!m) return null;
+    const rules = loadCatalog()?.config?.providerConfigRules?.providerRules ?? [];
+    const modes = m[2] === 'coding-plan' ? ['individual-coding-plan', 'team-coding-plan'] : ['start-plan'];
+    for (const mode of modes) {
+      const hit = rules.find(r => r?.config?.access?.type === 'zhipu-account'
+        && r.config.access.accountType === m[1] && r.config.access.mode === mode);
+      if (hit?.providerId) return hit.providerId;
+    }
+    return null;
+  };
   const sel = positional[0];
   const slash = sel.indexOf('/');
   let providerId, modelId;
@@ -58,6 +83,17 @@ if (process.argv[2] === 'test') {
       // Canonical model id: the kernel's getModel is exact-match, and
       // config.json keys carry the canonical casing (GLM-5.3, not glm-5.3).
       modelId = configured[providerId].find(m => m.toLowerCase() === modelId.toLowerCase()) ?? modelId;
+      // The registry knows account:* ids, not builtin:* config keys.
+      const accountId = accountIdFor(providerId);
+      if (accountId) {
+        if (!asJson) console.error(`note: '${providerId}' tests as registry provider '${accountId}'`);
+        providerId = accountId;
+      }
+    } else if (disabled.has(providerId)) {
+      fail(`provider '${providerId}' is disabled in the CLI config`, modelId);
+    } else if (providerId.startsWith('account:')) {
+      // Registry-native ids (the account-config push): the kernel resolves them
+      // against its rebuilt registry — never remap through configured carriers.
     } else {
       // `zagent models` prints catalog/rule ids (account:…); the app-server
       // registry only knows configured keys. Remap through the model's carriers
@@ -90,6 +126,13 @@ if (process.argv[2] === 'test') {
   try {
     client = new ZCodeProtocolClient({ cwd: process.cwd() });
     await client.ready;
+    // The registry is GUI-pushed (provider/updateAccountConfig); a headless
+    // spawn is empty until this best-effort sync lands (no-op pre-3.12.x). An
+    // unexpected push failure is surfaced — silent would masquerade as the
+    // empty-registry provider_not_found this push exists to prevent.
+    const sync = await client.syncAccountConfig();
+    if (sync?.pushed === false && sync.benign === false)
+      console.error(`note: account-config push failed (${sync.reason}); continuing`);
     const key = path.normalize(process.cwd());
     // Success is an empty result — the kernel's handler only throws.
     await client.call('provider/testModelConnectivity', {

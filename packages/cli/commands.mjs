@@ -14,6 +14,7 @@ export const COMMANDS = [
   ['-p "…" [--json] [options]', 'run one headless prompt and print the answer (-p --help lists options)', 'Run'],
   ['onboard', 'check your setup and run one test prompt', 'Set up'],
   ['doctor [--fix]', 'diagnose the runtime, config, and API key', 'Set up'],
+  ['update [--check] [--json]', 'update zagent itself to the latest npm release', 'Set up'],
   ['models [query|test <provider/model|model> [--json]]', 'list providers, search the catalog, or test a model connection', 'Set up'],
   ['quota [status|usage [--days 1..30]|balance|preview|reset] [--json]', 'Coding Plan quota and account usage', 'Account'],
   ['remote [status|connect] [--json]', 'whether this device is registered for remote control (not available yet)', 'Account'],

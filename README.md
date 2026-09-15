@@ -107,6 +107,7 @@ sent only to your own provider endpoint.
 | `zagent` | Interactive TUI |
 | `zagent onboard` | First-run: checks + live smoke + guidance |
 | `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |
+| `zagent update [--check]` | Update zagent itself from npm |
 | `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
 | `zagent sessions` | Your task store, in the terminal |
