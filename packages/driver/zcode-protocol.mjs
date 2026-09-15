@@ -8,6 +8,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 import { findRuntime, kernelEnv } from './runtime.mjs';
 import { readToolPolicy } from './offpeak.mjs';
+import { explainProviderError } from './provider-errors.mjs';
 export { DEFAULT_RUNTIME } from './runtime.mjs';
 
 // Server->client requests the runtime expects answered. session/requestRuntimePreferences is
@@ -181,7 +182,7 @@ export async function runTurn(client, sessionId, prompt, { timeoutMs = 120000, o
     });
     const expired = new Promise(resolve => { timer = setTimeout(() => resolve({ ended: 'timeout' }), timeoutMs); });
     const running = (async () => {
-      const response = await client.call('session/send', { sessionId, content: prompt });
+      const response = await client.call('session/send', { sessionId, content: prompt }, timeoutMs);
       if (!active) return;
       sendResult = response;
       turnId = sendResult?.turnId ?? lifecycle.find(([kind, params]) =>
@@ -209,10 +210,13 @@ export async function runTurn(client, sessionId, prompt, { timeoutMs = 120000, o
 // 2) NEVER retry on provider quota errors (1302/429 without retry-after).
 // 3) Surface MCP protocol-version mismatches with a clear diagnostic.
 
-const QUOTA_ERROR_CODES = new Set([1302, 1113]); // z.ai insufficient-balance / rate-limit
+const QUOTA_ERROR_CODES = new Set([1302, 1113, 1308]); // z.ai rate-limit / insufficient-balance / window exhausted
 
 export function isQuotaError(err) {
-  return QUOTA_ERROR_CODES.has(err?.code) || err?.code === 'PROVIDER_BUSINESS_ERROR';
+  if (QUOTA_ERROR_CODES.has(err?.code) || err?.code === 'PROVIDER_BUSINESS_ERROR') return true;
+  // Real rejections carry the JSON-RPC code (-32000) — the provider's
+  // `[code][msg][reqid]` signature rides in the message text.
+  return QUOTA_ERROR_CODES.has(explainProviderError(err?.message)?.code);
 }
 
 // Wrap a model-call attempt with the retry policy. `attempt` receives no args and
@@ -244,23 +248,40 @@ export function mcpVersionDiagnostic(serverName, requested, negotiated) {
 // The 15s system-prompt send is the dominant cold-start cost. Reusing a session for
 // multiple turns (same workspace) eliminates it — the cache is keyed by workspace path.
 const sessionCache = new Map(); // workspacePath -> { client, sessionId, lastUsed }
+export { sessionCache }; // tests seed it directly — the fresh-create path spawns a real runtime
 
-export async function warmTurn(workspacePath, prompt, opts = {}) {
+async function openClient(workspacePath) {
+  const client = new ZCodeProtocolClient({ cwd: workspacePath });
+  await client.ready;
+  return client;
+}
+
+export async function warmTurn(workspacePath, prompt, { connect = openClient, ...opts } = {}) {
   const cached = sessionCache.get(workspacePath);
   if (cached && Date.now() - cached.lastUsed < 5 * 60_000) { // 5min TTL
     try {
       cached.lastUsed = Date.now();
       return await runTurn(cached.client, cached.sessionId, prompt, opts);
-    } catch { // stale session — fall through to fresh create
+    } catch (e) {
+      // A provider quota error is not session staleness — never replay the prompt.
+      // Nor is "another turn is already active": a concurrent warmTurn owns that client.
+      if (isQuotaError(e) || /another turn is already active/.test(e?.message ?? '')) throw e;
       sessionCache.delete(workspacePath);
+      try { cached.client.close(); } catch {} // an evicted client must not leak its runtime child
     }
   }
-  const client = new ZCodeProtocolClient({ cwd: workspacePath });
-  await client.ready;
+  const client = await connect(workspacePath);
   const created = await client.createSession(workspacePath);
-  const sessionId = created.session?.sessionId ?? created.sessionId;
+  const sessionId = sessionSid(created);
   sessionCache.set(workspacePath, { client, sessionId, lastUsed: Date.now() });
-  return await runTurn(client, sessionId, prompt, opts);
+  try {
+    return await runTurn(client, sessionId, prompt, opts);
+  } catch (e) {
+    if (isQuotaError(e)) throw e; // the session is fine — the account window is dead
+    sessionCache.delete(workspacePath);
+    try { client.close(); } catch {} // a failed first turn must not leave a live child cached
+    throw e;
+  }
 }
 
 export function cachedSessionCount() { return sessionCache.size; }

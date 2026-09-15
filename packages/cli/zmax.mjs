@@ -17,6 +17,7 @@ import os from 'node:os';
 import { findRuntime, kernelEnv } from '../driver/runtime.mjs';
 import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs';
 import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
+import { provisionStandaloneAccounts } from '../driver/account-provider.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 
 // G1 (ux-inventory §1/§9): every top CLI keeps a new user inside the product with
@@ -253,6 +254,11 @@ if (headlessJson) {
   // the only actionable fact — when it resets — buried in the first one. The TUI
   // keeps plain inherited stdio; nothing about its rendering changes.
   const headless = args.includes('-p');
+  // The kernel TUI resolves providers in standalone mode: it reads only the
+  // `account-provider:*` credential records, which a pre-3.12.1 store lacks —
+  // the "No model access configured" wall. Provision them from configured plan
+  // keys before spawn (best-effort; never blocks the launch).
+  if (!headless) { try { provisionStandaloneAccounts({ env: kernelEnv(rt.entry) }); } catch {} }
   const child = spawn(NODE, ['--experimental-sqlite', '--no-warnings', ...launch.argv], {
     cwd: process.cwd(),
     env: kernelEnv(rt.entry),

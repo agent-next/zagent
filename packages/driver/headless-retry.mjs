@@ -4,6 +4,22 @@
 // retries 429s internally (up to 6-11 provider attempts) — three full process restarts
 // would amplify to 18-33 provider attempts and replay tool side effects (r5 #5).
 import { spawnSync } from 'node:child_process';
+import { EXHAUSTED, explainProviderError } from './provider-errors.mjs';
+
+const EXHAUSTED_CODES = new Set([1308, 1113]);
+
+// A quota-window error (1308/1113) is deterministic until the reset: an outer
+// retry just replays a guaranteed-dead turn against the same exhausted window.
+// Accepts either raw text or a parsed error object (numeric `code` survives when
+// the message text drops the bracketed signature).
+const exhausted = e => {
+  const hit = e && typeof e === 'object'
+    ? EXHAUSTED_CODES.has(Number(e.code)) || explainProviderError(e.message ?? JSON.stringify(e))?.kind === EXHAUSTED
+    : explainProviderError(e)?.kind === EXHAUSTED;
+  return hit
+    ? { retry: false, terminal: true, reason: 'provider quota window exhausted — retrying cannot succeed before the reset' }
+    : null;
+};
 
 export function decideRetry(stdout, exitCode, spawnError, { jsonMode = true } = {}) {
   if (spawnError) return { retry: false, terminal: true, reason: `spawn ${spawnError}` }; // r5 #6: ENOENT etc are deterministic — never retried
@@ -12,8 +28,8 @@ export function decideRetry(stdout, exitCode, spawnError, { jsonMode = true } = 
   if (jsonMode && text.startsWith('{')) {
     let j = null;
     try { j = JSON.parse(text); } catch { return { retry: true, reason: 'malformed JSON envelope' }; } // r5 #2: --json route fails closed
-    if (j && typeof j === 'object' && j.error != null) return { retry: true, reason: 'error envelope' }; // r5 #3: null is not an error
-    if (j && typeof j === 'object' && j.isError === true) return { retry: true, reason: 'isError envelope' };
+    if (j && typeof j === 'object' && j.error != null) return exhausted(j.error) ?? { retry: true, reason: 'error envelope' }; // r5 #3: null is not an error
+    if (j && typeof j === 'object' && j.isError === true) return exhausted(text) ?? { retry: true, reason: 'isError envelope' };
   }
   return { retry: false, reason: null };
 }
@@ -26,6 +42,9 @@ export function runHeadlessWithRetry(cmd, args, { cwd, env, maxAttempts = 2, bac
     // timeout surfaces as spawn error ETIMEDOUT — terminal, never retried.
     const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', maxBuffer, timeout: attemptTimeoutMs });
     const verdict = decideRetry(r.stdout, r.status, r.error?.code);
+    // The kernel reports plan-window exhaustion on stderr — decideRetry only sees
+    // stdout. An EXHAUSTED-class signature there makes the retry unwinnable too.
+    if (verdict.retry) Object.assign(verdict, exhausted(String(r.stderr ?? '')) ?? {});
     last = r; lastVerdict = verdict;
     onAttempt?.(attempt, verdict, r.status, (r.stdout ?? '').length);
     // r5 #1/#5: spawn errors terminal; retry only transient shapes, ONE extra attempt
