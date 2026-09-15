@@ -103,7 +103,7 @@ sent only to your own provider endpoint.
 
 | Command | What it does |
 |---|---|
-| `zagent -p "…" [--json]` | Headless one-shot (retry-safe) |
+| `zagent -p "…" [--json] [options]` | Headless one-shot (retry-safe; `zagent -p --help` lists options) |
 | `zagent` | Interactive TUI |
 | `zagent onboard` | First-run: checks + live smoke + guidance |
 | `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |

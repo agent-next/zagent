@@ -33,7 +33,7 @@ const DOUBLE_CTRL_C_MS = 2000;
 /** The most conservative choice the runtime offered, for every path that must refuse. */
 const denyResponse = (options) => options.at(-1)?.response ?? { decision: 'deny' };
 
-export async function runTui(host = {}) {
+export async function runTui(host = {}, { deps = null } = {}) {
   const stdout = host.stdout ?? process.stdout;
   const stdin = host.stdin ?? process.stdin;
   const state = createTranscript();
@@ -205,7 +205,7 @@ export async function runTui(host = {}) {
     workspace: host.workspaceDirectory ?? process.cwd(),
     cwd: host.workspaceDirectory ?? process.cwd(),
     home: undefined,                       // drivers default to os.homedir()
-    deps: null,                            // test seams: { exec, codingPlanStatus }
+    deps,                                  // test seams: { exec, codingPlanStatus }
     print: (text) => addCommandEntry(state, text),
     notice: (text, level) => addNotice(state, text, level),
     draw, quit,

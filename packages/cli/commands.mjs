@@ -11,7 +11,7 @@ export const GROUPS = ['Run', 'Set up', 'Account', 'Project', 'Extend', 'Debug']
 
 export const COMMANDS = [
   ['(default)', 'start the interactive terminal UI', 'Run'],
-  ['-p "…" [--json]', 'run one headless prompt and print the answer', 'Run'],
+  ['-p "…" [--json] [options]', 'run one headless prompt and print the answer (-p --help lists options)', 'Run'],
   ['onboard', 'check your setup and run one test prompt', 'Set up'],
   ['doctor [--fix]', 'diagnose the runtime, config, and API key', 'Set up'],
   ['models [query]', 'list providers or search the model catalog', 'Set up'],
@@ -31,6 +31,44 @@ export const COMMANDS = [
   ['import [--dry-run|--apply] [--force] [--json]', 'import Claude Code instructions, commands, and skills', 'Extend'],
   ['inspect [--storage] [--json]', 'dump runtime/config/skills; --storage = ~/.zcode category sizes (read-only)', 'Debug'],
   ['--version', 'print the zagent version', 'Debug'],
+];
+
+// Leading-position options the dispatcher forwards to the runtime. The set is
+// the kernel's own parseArgs table plus its manually pre-parsed flags —
+// identical on 3.11.2 and 3.12.1 — verified by executing each against both
+// builds (2026-09-15). The official --help lists six options its parser rejects
+// outright: --print, --max-turns, --allowed-tools, --permission-mode,
+// --settings, --allow-main-worktree-yolo. They are NOT here: accepting them
+// would forward a guaranteed "Unknown option" that ends in the kernel's own
+// usage text — the wrong product's answer for our product's surface.
+export const ENTRY_FLAGS = new Set([
+  '-p', '--prompt', '--json', '--output-format', '--no-color', '--no-browser',
+  '--browser-use', '--browser-executable', '--attach', '--cwd', '--locale',
+  '--resume', '--target', '--target-replace', '-c', '--continue',
+  '-f', '--force', '--force-mcs', '--mode', '--verbose', '--stdio', '--surface',
+  '--disallowedTools', '--disallowed-tools',
+]);
+
+// The headless rows `zagent -p --help` prints. Only options a headless prompt
+// can meaningfully take are listed; login's --no-browser and the server-side
+// --stdio are forwarded but not headless documentation.
+export const HEADLESS_OPTIONS = [
+  ['-p, --prompt <text>', 'run one headless prompt'],
+  ['--attach <path>', 'attach a local file to the prompt; repeat for more'],
+  ['--mode <build|edit|plan|yolo>', 'permission mode (default yolo for --prompt)'],
+  ['--disallowed-tools <tools…>', 'comma/space-separated tool denylist (alias --disallowedTools)'],
+  ['-c, --continue', 'continue the latest session for this directory'],
+  ['--resume <sess_…>', 'resume a persisted session by id'],
+  ['--target <text> [--target-replace]', 'run or replace the session goal (not with -p)'],
+  ['--json', 'print the machine-readable result'],
+  ['--output-format <text|json|stream-json>', 'output shape; stream-json emits one event per line'],
+  ['--cwd <path>', 'run from the given directory'],
+  ['--locale <en-US|zh-CN|auto>', 'UI locale'],
+  ['--browser-use headless [--browser-executable <path>]', 'Browser Use backend'],
+  ['--surface <terminal|desktop>', 'presentation surface'],
+  ['--force-mcs', 'force mid-conversation system projection (Anthropic providers)'],
+  ['--no-color', 'disable ANSI colors'],
+  ['--verbose', 'print extra diagnostic detail'],
 ];
 
 /** The bare verb a user types, e.g. "models [query]" -> "models". */

@@ -15,7 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFor, formatRow } from '../packages/cli/commands.mjs';
+import { commandFor, formatRow, ENTRY_FLAGS, HEADLESS_OPTIONS } from '../packages/cli/commands.mjs';
 import { findRuntime } from '../packages/driver/runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -95,7 +95,24 @@ const HELP_FLAGS = new Set(['--help', '-h']);
 // `zagent memory append -- --help` appends the text, as POSIX users expect.
 const sep = rest.indexOf('--');
 const flagArgs = sep === -1 ? rest : rest.slice(0, sep);
+// `zagent -p --help` (or any entry flag + --help) prints the verified headless
+// option list: forwarding it would show the kernel's own usage, which names the
+// wrong product and documents flags its parser rejects. A literal "--help" can
+// therefore never be an entry flag's VALUE in leading position (`--prompt
+// --help` prints this help) — the `--` separator escapes that, same tradeoff
+// the free-text subcommands make above.
+const headlessHelp = () => {
+  console.log(formatRow(commandFor('-p')).trimStart());
+  console.log('\noptions forwarded to the runtime (verified against its parser):');
+  for (const [sig, desc] of HEADLESS_OPTIONS) console.log(`  ${sig.padEnd(48)} ${desc}`);
+  console.log('\nnot implemented by the runtime despite its own --help:');
+  console.log('  --print --max-turns --allowed-tools --permission-mode --settings --allow-main-worktree-yolo');
+};
+// The kernel's parser (node parseArgs) also takes `--flag=value`; match the
+// option name only, so `zagent --mode=plan -p "…"` forwards like `--mode plan`.
+const entryFlag = (token) => ENTRY_FLAGS.has(token?.split('=')[0]);
 if (flagArgs.some(a => HELP_FLAGS.has(a))) {
+  if (entryFlag(command)) { headlessHelp(); process.exit(0); }
   const row = commandFor(command);
   if (row) {
     console.log(formatRow(row).trimStart());
@@ -122,14 +139,14 @@ if (command && !command.startsWith('-') && !MAIN_ENTRY_COMMANDS.has(command)) {
   process.exit(2);
 }
 // Option-led invocations packages/cli/zmax.mjs understands — the kernel entry
-// flags it and tui-launch.mjs treat as theirs: -p/--print/--prompt (headless),
-// --cwd (forwarded verbatim), --json (headless JSON). `--capabilities` is NOT
-// here: it only exists on the doctor path, so a bare one is still a typo.
-// Any other leading-dash token is a typo (`--verison`, `--bogus`): answer it
-// here, exit 2, and never let the kernel print its own usage text for our
+// flags it and tui-launch.mjs treat as theirs, so `zagent --mode plan -p "…"`
+// reaches the runtime exactly like `zcode` would. ENTRY_FLAGS is the kernel's
+// own parser table, verified by execution (see commands.mjs). `--capabilities`
+// is NOT there: it only exists on the doctor path, so a bare one is still a
+// typo. Any other leading-dash token is a typo (`--verison`, `--bogus`): answer
+// it here, exit 2, and never let the kernel print its own usage text for our
 // product's mistake.
-const KNOWN_OPTIONS = new Set(['-p', '--print', '--prompt', '--cwd', '--json']);
-if (command && command.startsWith('-') && !KNOWN_OPTIONS.has(command)) {
+if (command && command.startsWith('-') && !entryFlag(command)) {
   console.error(`zagent: unknown option '${command}'${command === '--capabilities' ? " — did you mean 'zagent doctor --capabilities'?" : ''}`);
   console.error("Run 'zagent help' for the command list.");
   process.exit(2);

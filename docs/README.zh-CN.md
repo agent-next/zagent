@@ -76,7 +76,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 
 | 命令 | 作用 |
 |---|---|
-| `zagent -p "…" [--json]` | 无头一次性执行（可重试） |
+| `zagent -p "…" [--json] [options]` | 无头一次性执行（可重试；选项见 `zagent -p --help`） |
 | `zagent` | 交互式 TUI |
 | `zagent onboard` | 首次运行：检查 + live 冒烟 + 引导 |
 | `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
