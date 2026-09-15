@@ -29,7 +29,7 @@ export const COMMANDS = [
   ['plugins', 'inspect and manage local plugins', 'Extend'],
   ['hooks list [--json]', 'list configured hook events', 'Extend'],
   ['import [--dry-run|--apply] [--force] [--json]', 'import Claude Code instructions, commands, and skills', 'Extend'],
-  ['inspect [--json]', 'dump runtime, config, skills, tasks, and plugins (secrets redacted)', 'Debug'],
+  ['inspect [--storage] [--json]', 'dump runtime/config/skills; --storage = ~/.zcode category sizes (read-only)', 'Debug'],
   ['--version', 'print the zagent version', 'Debug'],
 ];
 

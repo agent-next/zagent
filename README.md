@@ -117,7 +117,7 @@ sent only to your own provider endpoint.
 | `zagent offpeak [--refresh\|--json]` | Campaign time-window check (billing not verified) |
 | `zagent plugins` | Manage local plugins |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
-| `zagent inspect [--json]` | Dump runtime, config, skills, tasks, plugins (secrets redacted) |
+| `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |
 | `$using-zagent` | Bundled skill: what zagent is, how to tell it from the GUI, how to drive it |
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | Import Claude Code instructions, commands, and skills |
 | `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |

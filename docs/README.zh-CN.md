@@ -90,7 +90,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent offpeak [--refresh\|--json]` | 活动时间窗口检查（计费未验证） |
 | `zagent plugins` | 管理本地插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
-| `zagent inspect [--json]` | 打印 runtime、配置层、skills、任务、插件（密钥已脱敏） |
+| `zagent inspect [--storage] [--json]` | 打印 runtime/配置/skills；`--storage` = ~/.zcode 分类体积（只读） |
 | `$using-zagent` | 随包装的 skill：zagent 是什么、怎么和 GUI 区分、怎么用 |
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | 从 Claude Code 导入说明、commands、skills |
 | `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | 显示或控制当前会话目标 |
