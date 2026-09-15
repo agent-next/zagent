@@ -12,24 +12,40 @@ import { spawn, spawnSync } from 'node:child_process';
 import os from 'node:os';
 
 const BOUNDS = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]]; // m h dom mon dow (dow 7 == 0 == Sunday)
+const MONTH_NAMES = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+const DOW_NAMES = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 
 export function jobsPath({ home = os.homedir() } = {}) { return `${home}/.zcode/cli/automations.json`; }
 
 // Strict single-field parser -> predicate, or null when malformed (r7 #4).
+// Standard 5-field grammar per field: '*', '*/n', atoms, 'a-b' ranges, 'a-b/n'
+// stepped ranges, and comma lists of those. Month/dow also take names
+// (JAN..DEC, SUN..SAT, case-insensitive). dow 7 aliases 0 (r7 #2).
 function fieldMatcher(field, i) {
   const [lo, hi] = BOUNDS[i];
-  const norm = v => (i === 4 && v === 7) ? 0 : v; // dow 7 == Sunday (r7 #2)
-  if (field === '*') return () => true;
-  const step = field.match(/^\*\/(\d+)$/);
-  if (step) { const n = +step[1]; if (n <= 0) return null;
-    return v => (v - lo) % n === 0; } // anchor at the field's own lower bound (r7 #3)
-  if (/^\d+(,\d+)*$/.test(field)) {
-    const lits = field.split(',').map(Number);
-    if (lits.some(v => v < lo || v > hi)) return null;
-    const set = new Set(lits.map(norm));
-    return v => set.has(norm(v));
+  const names = i === 3 ? MONTH_NAMES : i === 4 ? DOW_NAMES : null;
+  const atom = s => /^\d+$/.test(s) ? +s : (names?.[s.toLowerCase()] ?? null);
+  // On dow, raw value 7 aliases Sunday: a range reaching 7 must also match 0.
+  const inRange = (v, a, b, n) => (v >= a && v <= b && (n == null || (v - a) % n === 0)) ||
+    (i === 4 && v === 0 && 7 >= a && 7 <= b && (n == null || (7 - a) % n === 0));
+  const matchers = [];
+  for (const el of String(field).split(',')) {
+    if (el === '*') { matchers.push(() => true); continue; }
+    const stepAll = el.match(/^\*\/(\d+)$/);
+    if (stepAll) {
+      const n = +stepAll[1]; if (n <= 0) return null;
+      matchers.push(v => (v - lo) % n === 0); continue; // anchor at the field's own lower bound (r7 #3)
+    }
+    const m = el.match(/^([A-Za-z]+|\d+)(?:-([A-Za-z]+|\d+))?(?:\/(\d+))?$/);
+    if (!m) return null;
+    const a = atom(m[1]);
+    const b = m[2] === undefined ? a : atom(m[2]);
+    const n = m[3] === undefined ? null : +m[3];
+    if (a == null || b == null || a > b || a < lo || b > hi || n === 0) return null;
+    if (n != null && m[2] === undefined) return null; // 'a/n' is not standard cron — steps are */n or a-b/n
+    matchers.push(v => inRange(v, a, b, n));
   }
-  return null;
+  return v => matchers.some(f => f(v));
 }
 
 export function parseCron(cron) { // -> predicate or null (shared by matching AND validation)
@@ -44,14 +60,13 @@ export function cronMatches(cron, d) {
   if (!m) return false;
   const [mi, h, dom, mon, dow] = m;
   if (!mi(d.getMinutes()) || !h(d.getHours()) || !mon(d.getMonth() + 1)) return false;
-  const domR = String(cron).trim().split(/\s+/)[2] !== '*';
-  const dowR = String(cron).trim().split(/\s+/)[4] !== '*';
+  const domStar = String(cron).trim().split(/\s+/)[2] === '*';
+  const dowStar = String(cron).trim().split(/\s+/)[4] === '*';
   const domOk = dom(d.getDate()), dowOk = dow(d.getDay());
-  // Standard cron: both restricted -> OR; one restricted -> that one (r7 #1)
-  if (domR && dowR) return domOk || dowOk;
-  if (domR) return domOk;
-  if (dowR) return dowOk;
-  return true;
+  // Standard cron: only a literal '*' is unrestricted — '*/n' still constrains
+  // the day. Both restricted -> OR; a starred side -> AND with the other (r7 #1)
+  if (domStar || dowStar) return domOk && dowOk;
+  return domOk || dowOk;
 }
 
 export function loadJobs({ home = os.homedir() } = {}) {

@@ -15,7 +15,7 @@ const beat = line => { try { appendFileSync(HEARTBEAT, `${new Date().toISOString
 if (cmd === 'add') {
   const [id, cron, ...prompt] = rest;
   if (!id || !cron || !prompt.length || !parseCron(cron)) { // strict shared parser (r7 #4)
-    console.error('usage: zagent cron add <id> <5-field-cron> <prompt...>  (cron: m h dom mon dow; *, */n, lists; ranges 0-59 0-23 1-31 1-12 0-7)');
+    console.error('usage: zagent cron add <id> <5-field-cron> <prompt...>  (cron: m h dom mon dow — *, lists a,b, ranges a-b, steps */n or a-b/n, names JAN..DEC SUN..SAT; bounds 0-59 0-23 1-31 1-12 0-7)');
     process.exit(2);
   }
   const added = mutateJobs(jobs => {

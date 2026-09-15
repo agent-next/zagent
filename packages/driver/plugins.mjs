@@ -95,6 +95,9 @@ import { defaultUnzipCmd } from './extract.mjs';
 /** The official marketplace, as the runtime itself records it. */
 export const OFFICIAL_MARKETPLACE_URL = 'https://cdn-zcode.z.ai/zcode/official-plugin/marketplace.json';
 
+/** The only host plugin artifacts may come from — the runtime's own CDN. */
+export const OFFICIAL_CDN_HOST = 'cdn-zcode.z.ai';
+
 /**
  * Refresh a marketplace catalog from its source of truth.
  *
@@ -118,7 +121,7 @@ export async function fetchMarketplace({ marketplaceId = 'zcode-plugins-official
   } catch { /* no record: the official default stands */ }
 
   const parsed = (() => { try { return new URL(url); } catch { return null; } })();
-  if (!parsed || parsed.protocol !== 'https:' || parsed.hostname !== 'cdn-zcode.z.ai')
+  if (!parsed || parsed.protocol !== 'https:' || parsed.hostname !== OFFICIAL_CDN_HOST)
     throw new Error(`marketplace refresh: refusing a non-official source (${url})`);
 
   const r = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
@@ -139,7 +142,7 @@ export async function fetchMarketplace({ marketplaceId = 'zcode-plugins-official
 }
 
 export async function installPlugin({ name, marketplaceJson, marketplaceId = 'zcode-plugins-official', home = os.homedir(),
-  fetchImpl = fetch, renameImpl = renameSync,
+  fetchImpl = fetch, renameImpl = renameSync, allowedHosts = [OFFICIAL_CDN_HOST], timeoutMs = 30000,
   unzipCmd = defaultUnzipCmd() } = {}) {
   const validSegment = value => typeof value === 'string' && value.length > 0 &&
     value !== '.' && value !== '..' && !/[\/\\\0:]/.test(value) && !path.isAbsolute(value);
@@ -148,7 +151,21 @@ export async function installPlugin({ name, marketplaceJson, marketplaceId = 'zc
   if (!entry?.source?.url || !entry.source.sha256) throw new Error(`install: no verifiable source for '${name}' (need url+sha256)`);
   const version = String(entry.source.url).match(/\/plugins\/[^/]+\/([^/]+)\/plugin\.zip$/)?.[1];
   if (!validSegment(version)) throw new Error('install: invalid marketplace version');
-  const r = await fetchImpl(entry.source.url);
+  // The source URL is marketplace-controlled input: pin it to https on the
+  // allowlisted registry host(s) BEFORE fetching, or a poisoned catalog turns
+  // install into a fetch-and-unpack of attacker-chosen bytes.
+  const source = (() => { try { return new URL(entry.source.url); } catch { return null; } })();
+  if (!source || source.protocol !== 'https:')
+    throw new Error(`install: refusing non-https plugin source '${entry.source.url}'`);
+  if (!allowedHosts.includes(source.hostname))
+    throw new Error(`install: '${source.hostname}' is not an allowed plugin source host (${allowedHosts.join(', ')})`);
+  // Fail closed on a stalled download: race the fetch against the budget even
+  // when the fetch impl ignores the abort signal (a hang must not stall forever).
+  let timer;
+  const r = await Promise.race([
+    fetchImpl(entry.source.url, { signal: AbortSignal.timeout(timeoutMs) }),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`install: download timed out after ${timeoutMs}ms`)), timeoutMs); }),
+  ]).finally(() => clearTimeout(timer));
   if (!r.ok) throw new Error(`install: download failed http ${r.status}`);
   const buf = Buffer.from(await r.arrayBuffer());
   const sha = createHash('sha256').update(buf).digest('hex');
