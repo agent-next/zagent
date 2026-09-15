@@ -19,6 +19,7 @@ import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs'
 import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
 import { provisionStandaloneAccounts } from '../driver/account-provider.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
+import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine } from '../driver/doctor.mjs';
 
 // G1 (ux-inventory §1/§9): every top CLI keeps a new user inside the product with
 // 2-3 sign-in paths; zagent printed one line and exited 1. The card is also what
@@ -151,6 +152,7 @@ if (args[0] === 'doctor' || !rt) {
   const fixes = [];
   const warnings = [];
   let invalidConfig = false;
+  let cfgJson = null;
   if (rt && (args[1] === 'fix' || args.includes('--fix')) && !existsSync(cfg) && haveKey) {
     ensureConfig(); fixes.push('config created');
   }
@@ -163,6 +165,7 @@ if (args[0] === 'doctor' || !rt) {
       if (!providerId || !Object.hasOwn(c.provider ?? {}, providerId) || !selected || typeof selected !== 'object' || Array.isArray(selected))
         throw new Error('config must select a configured provider/model');
       if (c.model?.main && c.model?.main === c.model?.lite) warnings.push(`model.main == model.lite (${c.model.main}) — main should be the full model, lite the fast one`);
+      cfgJson = c;
     } catch { invalidConfig = true; }
   }
   // rt.version is the installed product version; the kernel's own --version is
@@ -170,6 +173,7 @@ if (args[0] === 'doctor' || !rt) {
   let rtVersion = rt?.version;
   if (rt && !rtVersion) { const k = kernelVersion(rt.entry); rtVersion = k ? `(kernel ${k})` : null; }
   console.log(rt ? `runtime: ${rt.kind}${rtVersion ? ` ${rtVersion}` : ''} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  console.log(nodeLine());
   // The desktop's own updater stages the next build under its cache dir; a
   // pending update-info.json means the GUI swaps versions on next launch —
   // surface it read-only so doctor explains a sudden runtime change.
@@ -204,7 +208,19 @@ if (args[0] === 'doctor' || !rt) {
     } catch (e) { console.error(`capabilities: probe failed (${String(e?.message ?? e).slice(0, 80)})`); }
     finally { try { c?.close(); } catch {} } // r1: spawned runtime always terminated
   }
-  console.log(`config: ${invalidConfig ? 'INVALID CONFIG — repair the JSON object manually; existing file preserved' : existsSync(cfg) ? 'present' : !rt ? 'blocked: no runtime found (fix runtime first)' : haveKey ? 'will be created on first run (doctor --fix to do it now)' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'}`);
+  console.log(`config: ${invalidConfig ? 'INVALID CONFIG — repair the JSON object manually; existing file preserved' : existsSync(cfg) ? 'present' : !rt ? 'blocked: no runtime found (fix runtime first)' : haveKey ? 'will be created on first run (doctor --fix to do it now)' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'} (${cfg})`);
+  // G8 depth lines: which credential will actually be used, what extensions are
+  // configured, and whether the machine itself is healthy — all read-only.
+  const cred = doctorCredential({ config: cfgJson, hasConfig: existsSync(cfg) });
+  console.log(`credential: ${cred ?? 'NONE'}`);
+  if (!cred && existsSync(cfg)) warnings.push('no Coding Plan credential in any source — turns will stop at the sign-in card');
+  const ext = extensionCounts({ config: cfgJson });
+  console.log(`plugins: ${ext.plugins} installed`);
+  console.log(hooksLine(ext));
+  console.log(`mcp: ${ext.mcp} configured`);
+  const disk = diskLine();
+  if (disk) console.log(disk);
+  console.log(logDirLine());
   for (const w of warnings) console.log(`warn: ${w}`);
   if (fixes.length) console.log(`fixed: ${fixes.join(', ')}`);
   process.exit(rt && !invalidConfig && (existsSync(cfg) || haveKey) ? 0 : 1); // doctor must fail when the diagnosis is unhealthy

@@ -25,6 +25,7 @@ import { sessionDiffArtifacts, renderDiff, undoPreview, undoApply } from '../dri
 import { loadGlobalMemory, loadProjectMemory } from '../driver/memory.mjs';
 import { codingPlanStatus } from '../driver/quota.mjs';
 import { listHooks, formatHooksText } from '../driver/hooks-cli.mjs';
+import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine } from '../driver/doctor.mjs';
 import { findRuntime } from '../driver/runtime.mjs';
 import { formatDuration, formatTokens } from './render.mjs';
 
@@ -248,10 +249,12 @@ export function doctorLines({ env = process.env, home = os.homedir(), cwd = proc
   const lines = [];
   const rt = safeRuntime();
   lines.push(rt ? `runtime: ${rt.kind} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  lines.push(nodeLine());
   lines.push('interactive TUI: zagent (built in)');
   const cfg = path.join(home, '.zcode', 'cli', 'config.json');
+  let cfgJson = null;
   if (!exists(cfg)) {
-    lines.push('config: missing — created on first run');
+    lines.push(`config: missing — created on first run (${cfg})`);
   } else {
     let state = 'present';
     try {
@@ -261,30 +264,31 @@ export function doctorLines({ env = process.env, home = os.homedir(), cwd = proc
       const selected = providerId ? c?.provider?.[providerId] : null;
       if (!providerId || !selected || typeof selected !== 'object' || Array.isArray(selected)) {
         state = 'INVALID CONFIG — repair the JSON object manually; existing file preserved';
-      }
+      } else { cfgJson = c; }
       if (c?.model?.main && c.model.main === c.model?.lite) {
         lines.push(`warn: model.main == model.lite (${c.model.main}) — main should be the full model, lite the fast one`);
       }
     } catch { state = 'INVALID CONFIG — unreadable JSON; existing file preserved'; }
-    lines.push(`config: ${state}`);
+    lines.push(`config: ${state} (${cfg})`);
   }
-  const cred = credentialSource({ env, home, exists });
-  lines.push(`credential: ${cred ? `present (${cred})` : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'}`);
+  const cred = doctorCredential({ env, home, config: cfgJson, hasConfig: exists(cfg), exists });
+  lines.push(`credential: ${cred ?? 'NONE'}`);
+  const ext = extensionCounts({ home, cwd, config: cfgJson });
+  lines.push(`plugins: ${ext.plugins} installed`);
+  lines.push(hooksLine(ext));
+  lines.push(`mcp: ${ext.mcp} configured`);
+  const disk = diskLine(home);
+  if (disk) lines.push(disk);
+  lines.push(logDirLine(home, exists));
   return lines;
 }
 
 /** Where the Coding Plan credential comes from; null when there is none. */
 export function credentialSource({ env = process.env, home = os.homedir(), exists = existsSync } = {}) {
-  if (env.ZAI_API_KEY) return 'ZAI_API_KEY env';
-  if (exists(path.join(home, '.config', 'ccz', '.api_key'))) return '~/.config/ccz/.api_key';
-  // the kernel OAuth store is a credential too (G1, mirrors zmax.mjs)
-  try {
-    const s = JSON.parse(readFileSync(path.join(home, '.zcode', 'v2', 'credentials.json'), 'utf8'));
-    if (typeof s['oauth:zai:access_token'] === 'string' && s['oauth:zai:access_token'] !== '') {
-      return 'kernel OAuth store';
-    }
-  } catch {}
-  return null;
+  const cfg = path.join(home, '.zcode', 'cli', 'config.json');
+  let config = null;
+  try { config = JSON.parse(readFileSync(cfg, 'utf8')); } catch { /* absent or invalid */ }
+  return doctorCredential({ env, home, config, hasConfig: exists(cfg), exists });
 }
 
 /** Transcript -> Markdown for /export. */
@@ -415,7 +419,11 @@ export const CLIENT_COMMANDS = [
       // /status must still answer instantly mid-turn. 'not reported' when the
       // probe fails, never a blank or a zero.
       const fn = ctx.deps?.codingPlanStatus ?? codingPlanStatus;
-      try { ctx.print(formatQuota(await fn(), { bars: true })); }
+      try {
+        const report = await fn();
+        ctx.state.quotaReport = report;  // retryNotice prefers the monitor's reset
+        ctx.print(formatQuota(report, { bars: true }));
+      }
       catch { ctx.print('quota: not reported'); }
       ctx.draw();
     },
@@ -543,7 +551,11 @@ export const CLIENT_COMMANDS = [
     summary: 'Coding Plan quota: 5-hour window and monthly tool-call pool',
     async run(ctx) {
       const fn = ctx.deps?.codingPlanStatus ?? codingPlanStatus;
-      try { ctx.print(formatQuota(await fn())); }
+      try {
+        const report = await fn();
+        ctx.state.quotaReport = report;  // retryNotice prefers the monitor's reset
+        ctx.print(formatQuota(report));
+      }
       catch (e) { ctx.notice(`quota: ${String(e?.message ?? e).slice(0, 200)}`, 'warning'); }
     },
   },

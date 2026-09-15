@@ -88,12 +88,13 @@ export function composeFrame(state, theme, width, options = {}) {
   return { commit, live };
 }
 
-export function createScreen(stdout, { columns = () => 80 } = {}) {
+export function createScreen(stdout, { columns = () => 80, rows = () => 24 } = {}) {
   let eraseHeight = 0;
   const write = (text) => { try { stdout.write(text); } catch { /* closed pipe: nothing to do */ } };
 
   return {
     get width() { return Math.max(20, columns() || 80); },
+    get height() { return Math.max(8, rows() || 24); },
     /** Erase the live region, append `commit` to scrollback, redraw `live`. */
     paint(commit, live) {
       const width = Math.max(20, columns() || 80);

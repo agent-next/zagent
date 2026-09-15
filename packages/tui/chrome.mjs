@@ -222,12 +222,16 @@ export function renderUserPeek(entries, index, theme, width, str) {
   return [`  ${theme.faint(label)} ${theme.userMark('>')} ${theme.muted(clip(text, room))}`];
 }
 
+// The palette page: G3 raised the window to 10 rows (top CLIs show a taller
+// list) and index.mjs pages the selection by this many on pageup/pagedown.
+export const COMPLETION_ROWS = 10;
+
 /**
  * Completion popup. Sits directly above the input box, capped so the footer stays
  * a predictable height; paint() measures rows now, but a popup taller than the
  * terminal would still push the transcript off screen.
  */
-export function renderCompletions(completion, theme, width, max = 6) {
+export function renderCompletions(completion, theme, width, max = COMPLETION_ROWS) {
   const items = completion?.items ?? [];
   if (items.length === 0) return [];
   // Candidates are filenames from the workspace and command metadata from the
@@ -249,14 +253,16 @@ export function renderCompletions(completion, theme, width, max = 6) {
     lines.push(`  ${chosen ? theme.accent('>') : ' '} ${chosen ? theme.accent(text) : theme.muted(text)}`);
   }
   const hidden = items.length - Math.min(items.length, start + max);
-  if (hidden > 0) lines.push(`    ${theme.faint((completion.str ?? stringsFor()).moreCandidates(hidden))}`);
+  // The status line is always painted — a stable footer height plus the
+  // position count and the filter hint the other CLIs show under the list.
+  lines.push(`    ${theme.faint(clip((completion.str ?? stringsFor()).moreCandidates(hidden, index + 1, items.length), Math.max(8, width - 6)))}`);
   return lines;
 }
 
 export function renderFooter(state, value, theme, width, options = {}) {
   return [
     ...renderUserPeek(state.entries, options.userTurn, theme, width, options.str),
-    ...renderCompletions(options.completion, theme, width),
+    ...renderCompletions(options.completion, theme, width, options.completionRows),
     ...renderQueued(options.queue, theme, width, 3, {
       selected: options.queueItem, action: options.queueAction, str: options.str,
     }),

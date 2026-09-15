@@ -244,7 +244,7 @@ export function applyEvent(state, event) {
       const attempt = num(p.attempt, 0);
       if (attempt > 1 && state.turn) {
         state.turn.retries = attempt - 1;
-        state.entries.push({ kind: 'notice', level: 'warning', text: retryNotice(p, attempt) });
+        state.entries.push({ kind: 'notice', level: 'warning', text: retryNotice(p, attempt, state.quotaReport) });
       }
       break;
     }
@@ -375,6 +375,17 @@ export function addNotice(state, text, level = 'muted') {
   return state;
 }
 
+/** HH:MM in 24-hour local time — the same stamp /status, /quota and G4 print. */
+const hhmm = (at) => {
+  const d = new Date(at);
+  return Number.isFinite(d.getTime())
+    ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : null;
+};
+
+/** The authoritative window reset: a cached quota monitor report's TOKENS_LIMIT pool. */
+const windowResetAt = (report) =>
+  (report?.pools ?? []).find(x => x?.type === 'TOKENS_LIMIT')?.nextResetAt ?? null;
+
 /**
  * The retry notice text for a model_network_status payload. Every retry says
  * "retry n/m"; where the payload carries the provider error, a rate limit
@@ -385,7 +396,7 @@ export function addNotice(state, text, level = 'muted') {
  * port, and code 1113 (insufficient balance) is not the 5-hour window.
  * Unknown payloads keep the generic wording.
  */
-export function retryNotice(p, attempt) {
+export function retryNotice(p, attempt, report) {
   const n = attempt - 1;
   const m = Math.max(0, num(p?.maxAttempts, 0) - 1);
   const errText = [p?.error?.message ?? p?.error, p?.message, p?.reason, p?.lastError, p?.detail]
@@ -397,10 +408,18 @@ export function retryNotice(p, attempt) {
       || /\bhttp\s+429\b|\[1302\]|rate limit/i.test(errText) ? RETRYABLE
     : null;
   if (kind === EXHAUSTED) {
-    const resetAt = explained?.reset?.at;
-    const stamp = Number.isFinite(resetAt)
-      ? ` · resets ${new Date(resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
-    return `5-hour window used up${stamp}`;
+    // Prefer the monitor's pool.nextResetAt over the stamp resolveReset guesses
+    // out of the provider error text through a list of tz offsets — but only
+    // while it is still in the future: a report cached since startup can name
+    // a reset that has already passed, and resolveReset's candidate is always
+    // future-facing.
+    const monitored = Date.parse(windowResetAt(report) ?? '');
+    const stamp = hhmm(Number.isFinite(monitored) && monitored > Date.now()
+      ? monitored : explained?.reset?.at);
+    // G7: measured receipts (2026-09-07) show the rolling window is independent
+    // of off-peak routing — 1308s land inside an open off-peak window — so the
+    // honest remedy is provider-errors': wait for the reset.
+    return `5-hour window used up${stamp ? ` · resets ${stamp}` : ''} · nothing will succeed until the reset`;
   }
   if (kind === RETRYABLE) return `rate limited · retry ${n}/${m}`;
   return `network retry ${n}/${m}`;

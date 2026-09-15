@@ -16,7 +16,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
   toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
-import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, readContextMeter } from './chrome.mjs';
+import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, readContextMeter, COMPLETION_ROWS } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
@@ -45,7 +45,11 @@ export async function runTui(host = {}, { deps = null } = {}) {
     colorScheme: host.theme === 'light' ? 'light' : 'dark',
     ascii: process.env.ZAGENT_ASCII === '1',
   });
-  const screen = createScreen(stdout, { columns: () => stdout.columns });
+  const screen = createScreen(stdout, { columns: () => stdout.columns, rows: () => stdout.rows });
+  // The popup never outgrows the terminal: 10 rows on a 12-row screen would
+  // shove the transcript and the input box off the top. Page keys step by the
+  // same guarded window so PgDn never skips rows the user never saw.
+  const completionPageRows = () => Math.min(COMPLETION_ROWS, Math.max(2, screen.height - 8));
   // host.locale is one of the members the TUI was handed and ignored. The runtime
   // supports en-US / zh-CN / auto, and this is a Chinese model's client.
   const str = stringsFor(host.locale);
@@ -138,7 +142,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       : renderFooter(state, ui.input.value, theme, screen.width, {
           mode: ui.mode, model: ui.model, effort: ui.effort, busy: ui.busy, queue: ui.queue,
           queueItem: ui.queueItem, queueAction: ui.queueAction, userTurn: ui.userTurn,
-          completion: ui.completion, str,
+          completion: ui.completion, completionRows: completionPageRows(), str,
           spinnerFrame: ui.spinnerFrame, activity: ui.activity,
           mcp: ui.mcp, goal: ui.goal, agents: getSubagentCount(state),
         });
@@ -599,6 +603,12 @@ export async function runTui(host = {}, { deps = null } = {}) {
         c.index = (c.index + 1) % c.items.length; draw(); return true;
       case 'up':
         c.index = (c.index - 1 + c.items.length) % c.items.length; draw(); return true;
+      // G3: page keys step a whole window instead of a row — clamped, not
+      // wrapped, so the bottom of the list is a stable place to land.
+      case 'pagedown':
+        c.index = Math.min(c.index + completionPageRows(), c.items.length - 1); draw(); return true;
+      case 'pageup':
+        c.index = Math.max(c.index - completionPageRows(), 0); draw(); return true;
       case 'enter': {
         // A command typed in full must RUN, not accept the highlighted
         // suggestion: "/exit" used to be un-runnable because Enter only ever
@@ -1005,6 +1015,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     void Promise.resolve().then(() => quotaProbe())
       .then((report) => {
         if (exiting) return;
+        state.quotaReport = report;      // retryNotice prefers the monitor's reset
         const line = quotaHomeLine(report);
         if (line) { addNotice(state, line, 'muted'); draw(); }
       })

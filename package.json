@@ -1,6 +1,6 @@
 {
   "name": "zagent",
-  "version": "0.0.211",
+  "version": "0.0.212",
   "description": "Unofficial terminal client for a separately installed ZCode runtime.",
   "type": "module",
   "license": "MIT",
@@ -52,6 +52,7 @@
     "packages/driver/catalog.mjs",
     "packages/driver/credentials.mjs",
     "packages/driver/diffs.mjs",
+    "packages/driver/doctor.mjs",
     "packages/driver/extract.mjs",
     "packages/driver/headless-retry.mjs",
     "packages/driver/hooks-cli.mjs",

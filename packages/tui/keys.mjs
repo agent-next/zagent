@@ -15,7 +15,7 @@ const NAMED = new Map([
   ['\x1b[1;2A', 'shift-up'], ['\x1b[1;2B', 'shift-down'],
   ['\x1b[Z', 'shift-tab'],
   ['\x1b[H', 'home'], ['\x1b[F', 'end'], ['\x1b[1~', 'home'], ['\x1b[4~', 'end'],
-  ['\x1b[3~', 'delete'],
+  ['\x1b[3~', 'delete'], ['\x1b[5~', 'pageup'], ['\x1b[6~', 'pagedown'],
 ]);
 
 const PASTE_START = '\x1b[200~';

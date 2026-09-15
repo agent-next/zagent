@@ -124,7 +124,9 @@ export async function fetchMarketplace({ marketplaceId = 'zcode-plugins-official
   if (!parsed || parsed.protocol !== 'https:' || parsed.hostname !== OFFICIAL_CDN_HOST)
     throw new Error(`marketplace refresh: refusing a non-official source (${url})`);
 
-  const r = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
+  // redirect:'error' — a redirect must not silently move the marketplace fetch
+  // off the allowlisted origin (same class as the installPlugin finding).
+  const r = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' });
   if (!r.ok) throw new Error(`marketplace refresh: http ${r.status}`);
   const json = await r.json();
   if (!Array.isArray(json?.plugins)) throw new Error('marketplace refresh: response has no plugins array');
@@ -152,18 +154,26 @@ export async function installPlugin({ name, marketplaceJson, marketplaceId = 'zc
   const version = String(entry.source.url).match(/\/plugins\/[^/]+\/([^/]+)\/plugin\.zip$/)?.[1];
   if (!validSegment(version)) throw new Error('install: invalid marketplace version');
   // The source URL is marketplace-controlled input: pin it to https on the
-  // allowlisted registry host(s) BEFORE fetching, or a poisoned catalog turns
-  // install into a fetch-and-unpack of attacker-chosen bytes.
+  // allowlisted registry origin(s) BEFORE fetching, or a poisoned catalog turns
+  // install into a fetch-and-unpack of attacker-chosen bytes. The check pins
+  // scheme + host + PORT (URL.host includes the port, so an explicit
+  // :1234 on an allowlisted hostname is still refused) and the fetch sets
+  // redirect:'error' — undici follows redirects by default and never re-checks
+  // the Location against this allowlist, so an open redirect on the CDN could
+  // downgrade to a cleartext attacker host (red-team verified 2026-09-15:
+  // allowlisted https -> 302 -> http://localhost reached unzip).
   const source = (() => { try { return new URL(entry.source.url); } catch { return null; } })();
   if (!source || source.protocol !== 'https:')
     throw new Error(`install: refusing non-https plugin source '${entry.source.url}'`);
-  if (!allowedHosts.includes(source.hostname))
-    throw new Error(`install: '${source.hostname}' is not an allowed plugin source host (${allowedHosts.join(', ')})`);
+  const origin = `https://${source.host}`;
+  const allowedOrigins = allowedHosts.map(h => `https://${h}`);
+  if (!allowedOrigins.includes(origin))
+    throw new Error(`install: '${source.host}' is not an allowed plugin source origin (${allowedHosts.join(', ')})`);
   // Fail closed on a stalled download: race the fetch against the budget even
   // when the fetch impl ignores the abort signal (a hang must not stall forever).
   let timer;
   const r = await Promise.race([
-    fetchImpl(entry.source.url, { signal: AbortSignal.timeout(timeoutMs) }),
+    fetchImpl(entry.source.url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' }),
     new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`install: download timed out after ${timeoutMs}ms`)), timeoutMs); }),
   ]).finally(() => clearTimeout(timer));
   if (!r.ok) throw new Error(`install: download failed http ${r.status}`);

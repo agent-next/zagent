@@ -94,7 +94,6 @@ export function formatProviderError(e, opts = {}) {
     lines.push(`  resets at ${at.toLocaleString()} (in ${humanDelta(e.reset.delta)})`);
   }
   lines.push(`  ${e.advice}`);
-  if (e.code === 1308) lines.push('  `zagent offpeak` shows when off-peak routing is available.');
   if (e.requestId) lines.push(`  provider request id: ${e.requestId}`);
   return lines.join('\n');
 }
