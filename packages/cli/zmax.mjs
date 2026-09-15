@@ -13,7 +13,7 @@ const NODE = process.execPath; // eslint-disable-line
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import os from 'node:os';
 
-import { findRuntime } from '../driver/runtime.mjs';
+import { findRuntime, kernelEnv } from '../driver/runtime.mjs';
 import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs';
 import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
@@ -95,6 +95,14 @@ if (args[0] === 'doctor' || !rt) {
   let rtVersion = rt?.version;
   if (rt && !rtVersion) { const k = kernelVersion(rt.entry); rtVersion = k ? `(kernel ${k})` : null; }
   console.log(rt ? `runtime: ${rt.kind}${rtVersion ? ` ${rtVersion}` : ''} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  // The desktop's own updater stages the next build under its cache dir; a
+  // pending update-info.json means the GUI swaps versions on next launch —
+  // surface it read-only so doctor explains a sudden runtime change.
+  try {
+    const pending = JSON.parse(readFileSync(`${os.homedir()}/.cache/@zcodedesktop-updater/pending/update-info.json`, 'utf8'));
+    if (typeof pending?.fileName === 'string' && pending.fileName)
+      warnings.push(`desktop update pending: ${pending.fileName} (applies on next desktop launch)`);
+  } catch { /* no staged update */ }
   // Before zagent shipped its own TUI, doctor exited 0 on a desktop-only install while
   // the headline command (`zagent`) died with "Cannot find package '@zcode/tui'". A gate
   // that reports healthy for a configuration whose primary path crashes is a defect.
@@ -136,7 +144,7 @@ const headlessJson = args.includes('-p') && args.includes('--json');
 if (headlessJson) {
   const { runHeadlessWithRetry } = await import(new URL('../driver/headless-retry.mjs', import.meta.url).href);
   const entry = rt.entry;
-  const r = runHeadlessWithRetry(process.execPath, [entry, ...args], { cwd: process.cwd(), env: process.env,
+  const r = runHeadlessWithRetry(process.execPath, [entry, ...args], { cwd: process.cwd(), env: kernelEnv(entry),
     onAttempt: (a, v) => { if (v.retry) console.error(`zagent: attempt ${a} ${v.reason} — ${a < 2 ? 'retrying once' : 'giving up (exit 1)'}`); } });
   if (r.stderr) process.stderr.write(String(r.stderr).slice(-2000)); // r5 #6: runtime diagnostics surfaced
   if ((r.exitCode ?? 1) !== 0) {
@@ -161,6 +169,7 @@ if (headlessJson) {
   const headless = args.includes('-p');
   const child = spawn(NODE, ['--experimental-sqlite', '--no-warnings', ...launch.argv], {
     cwd: process.cwd(),
+    env: kernelEnv(rt.entry),
     stdio: headless ? ['inherit', 'inherit', 'pipe'] : 'inherit',
   });
   let errTail = '';

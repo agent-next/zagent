@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, openSync, readSync, closeSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -50,8 +50,47 @@ function debVersion(read) {
   } catch { return null; }
 }
 
-function desktopVersion(glmDir, platform, read) {
-  if (platform === 'linux') {
+// The desktop image is an asar blob: the JSON file index sits at offset 16
+// (its length is the u32 at 12) and file content follows the 4-aligned header
+// — the layout research/gui/asar.py walks. Reading is ranged: never the whole
+// ~300MB archive for one small JSON.
+export function asarFile(asarPath, inner) {
+  let fd;
+  try {
+    fd = openSync(asarPath, 'r');
+    const head = Buffer.alloc(16);
+    if (readSync(fd, head, 0, 16, 0) < 16) return null;
+    const len = head.readUInt32LE(12);
+    const hdr = Buffer.alloc(len);
+    if (readSync(fd, hdr, 0, len, 16) < len) return null;
+    let node = { files: JSON.parse(hdr.toString('utf8')).files };
+    for (const part of inner.split('/')) node = node?.files?.[part];
+    if (!node || node.files || node.size > 1 << 20) return null;
+    const buf = Buffer.alloc(node.size);
+    const base = Math.ceil((16 + len) / 4) * 4;
+    if (readSync(fd, buf, 0, node.size, base + Number(node.offset)) < node.size) return null;
+    return buf;
+  } catch { return null; }
+  finally { if (fd !== undefined) try { closeSync(fd); } catch {} }
+}
+
+// The .deb stanza is system-wide, so it only applies under the install roots
+// the package actually owns — an explicit runtime elsewhere must not inherit it.
+const DPKG_ROOTS = DESKTOP_BUNDLES.linux.map(e => path.resolve(path.dirname(e), '..', '..'));
+const dpkgOwned = entry => {
+  const e = path.resolve(entry);
+  return DPKG_ROOTS.some(r => e === r || e.startsWith(r + path.sep));
+};
+
+function desktopVersion(entry, platform, read, asar) {
+  const glmDir = path.dirname(entry);
+  // out/metadata/build-meta.json carries the app's own appVersion in every
+  // layout (3.11.2 and 3.12.1 both ship it) — authoritative where dpkg is not.
+  try {
+    const v = JSON.parse(asar(path.join(glmDir, '..', 'app.asar'), 'out/metadata/build-meta.json'))?.appVersion;
+    if (typeof v === 'string' && v) return v;
+  } catch { /* older or partial installs may lack the asar index or the file */ }
+  if (platform === 'linux' && dpkgOwned(entry)) {
     const v = debVersion(read);
     if (v) return v;
   }
@@ -67,29 +106,42 @@ function desktopVersion(glmDir, platform, read) {
 // its parent tree matches a known layout — the desktop resources/glm bundle or
 // a zcode-app-cli npm install. The .deb metadata is only consulted through the
 // desktop layout check, never for an arbitrary path.
-function explicitVersion(entry, platform, read) {
+function explicitVersion(entry, platform, read, asar) {
   const dir = path.dirname(entry);
   const tail = entry.replaceAll('\\', '/').toLowerCase(); // macOS uses Resources/, others resources/
-  if (tail.endsWith('/resources/glm/zcode.cjs')) return desktopVersion(dir, platform, read);
+  if (tail.endsWith('/resources/glm/zcode.cjs')) return desktopVersion(entry, platform, read, asar);
   if (tail.endsWith('/zcode-app-cli/bin/zcode.js')) return jsonVersion(path.join(dir, '..', 'package.json'), read);
   return null;
 }
 
-function runtimeVersion(entry, kind, { platform, read }) {
+function runtimeVersion(entry, kind, { platform, read, asar }) {
   try {
     if (kind === 'zcode-app-cli') return jsonVersion(path.join(path.dirname(entry), '..', 'package.json'), read);
-    if (kind === 'desktop-bundle') return desktopVersion(path.dirname(entry), platform, read);
-    if (kind === 'explicit') return explicitVersion(entry, platform, read);
+    if (kind === 'desktop-bundle') return desktopVersion(entry, platform, read, asar);
+    if (kind === 'explicit') return explicitVersion(entry, platform, read, asar);
   } catch { /* version probing must never break discovery */ }
   return null;
 }
 
+// Desktop 3.12.1's kernel locates its built-in provider config only through
+// ZCODE_BUILTIN_PROVIDER_CONFIG_FILE (the Electron host sets it before spawning
+// zcode.cjs); without it the kernel probes the monorepo dev layout and exits
+// "无法定位 CLI ZCode Built-in Provider Config". The bundled copy sits at
+// <resources>/config/provider/zcode-builtin.json beside resources/glm/zcode.cjs.
+// 3.11.2 never reads the variable, so setting it is safe on both — only when
+// the caller has not set it and the file exists.
+export function kernelEnv(entry, env = process.env, exists = existsSync) {
+  if (env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE) return env;
+  const cfg = path.resolve(path.dirname(entry), '..', 'config', 'provider', 'zcode-builtin.json');
+  return exists(cfg) ? { ...env, ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: cfg } : env;
+}
+
 export function findRuntime({ env = process.env, home = os.homedir(), cwd = process.cwd(),
                               platform = process.platform, exists = existsSync,
-                              read = p => readFileSync(p, 'utf8') } = {}) {
+                              read = p => readFileSync(p, 'utf8'), asar = asarFile } = {}) {
   const p = { home, localAppData: env.LOCALAPPDATA ?? '', appData: env.APPDATA ?? '' };
   const candidate = (entry, kind) => entry && exists(entry)
-    ? { entry, kind, root: path.dirname(entry), version: runtimeVersion(entry, kind, { platform, read }) }
+    ? { entry, kind, root: path.dirname(entry), version: runtimeVersion(entry, kind, { platform, read, asar }) }
     : null;
   // An explicit override is authoritative, including when it is invalid.
   if (env.ZCODE_RUNTIME) return candidate(path.resolve(cwd, env.ZCODE_RUNTIME), 'explicit');

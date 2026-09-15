@@ -2,9 +2,11 @@
 //   blob = "enc:v1:" + b64url(IV 12B) + "." + b64url(GCM tag 16B) + "." + b64url(ciphertext)
 //   key = sha256(secret), AES-256-GCM
 //   secret = env ZCODE_CREDENTIAL_SECRET, else `zcode-credential-fallback:${platform}:${homedir}:${username}`
-// READ-ONLY use only: this module never writes credentials.
+// The store is owner-only: the desktop runtime is the production writer, so the
+// load path self-heals a permissive file (the live guarantee); saveCredentialStore
+// (mode 0600) exists for callers that write the store from this codebase.
 import { createHash, createDecipheriv } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, statSync, chmodSync } from 'node:fs';
 import os from 'node:os';
 
 const b64url = s => Buffer.from(s, 'base64url');
@@ -44,6 +46,20 @@ export function deviceMid(env = process.env) {
 }
 
 // One loader for the enc:v1 store — quota/relay must not re-implement this.
+// The file holds the zcode JWT and the coding-plan key: a successful load also
+// tightens group/other bits left by an older writer (self-heal, best-effort).
 export function loadCredentialStore() {
-  return JSON.parse(readFileSync(`${os.homedir()}/.zcode/v2/credentials.json`, 'utf8'));
+  const file = `${os.homedir()}/.zcode/v2/credentials.json`;
+  const store = JSON.parse(readFileSync(file, 'utf8'));
+  try { if ((statSync(file).mode & 0o077) !== 0) chmodSync(file, 0o600); } catch {}
+  return store;
+}
+
+export function saveCredentialStore(store) {
+  const dir = `${os.homedir()}/.zcode/v2`;
+  mkdirSync(dir, { recursive: true });
+  const file = `${dir}/credentials.json`;
+  writeFileSync(file, JSON.stringify(store), { mode: 0o600 });
+  chmodSync(file, 0o600); // the write mode is ignored on an existing file
+  return file;
 }

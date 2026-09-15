@@ -18,11 +18,13 @@ export function decideRetry(stdout, exitCode, spawnError, { jsonMode = true } = 
   return { retry: false, reason: null };
 }
 
-export function runHeadlessWithRetry(cmd, args, { cwd, env, maxAttempts = 2, backoffMs = [8000], maxBuffer = 64e6, onAttempt } = {}) {
+export function runHeadlessWithRetry(cmd, args, { cwd, env, maxAttempts = 2, backoffMs = [8000], maxBuffer = 64e6, attemptTimeoutMs = 120000, onAttempt } = {}) {
   let last = null, lastVerdict = null, attempts = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     attempts = attempt;
-    const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', maxBuffer });
+    // Per-attempt bound: a hung runtime must not block its caller forever. A
+    // timeout surfaces as spawn error ETIMEDOUT — terminal, never retried.
+    const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', maxBuffer, timeout: attemptTimeoutMs });
     const verdict = decideRetry(r.stdout, r.status, r.error?.code);
     last = r; lastVerdict = verdict;
     onAttempt?.(attempt, verdict, r.status, (r.stdout ?? '').length);

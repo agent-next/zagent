@@ -37,8 +37,10 @@ export function wrapText(text, width) {
       if (word === '') continue;
       if (/^\s+$/.test(word)) { if (line !== '') { line += ' '; lineWidth += 1; } continue; }
       const wordWidth = stringWidth(word);
-      if (line === '' && wordWidth > limit) {
-        // Hard-split an unbreakable token on cell boundaries.
+      if (wordWidth > limit) {
+        // Hard-split an unbreakable token on cell boundaries — mid-line too, not
+        // only at line start: a long token after other text must not overflow.
+        if (line !== '') { out.push(line.trimEnd()); line = ''; lineWidth = 0; }
         let chunk = '';
         let chunkWidth = 0;
         for (const ch of word) {

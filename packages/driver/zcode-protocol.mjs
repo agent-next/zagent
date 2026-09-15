@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
-import { findRuntime } from './runtime.mjs';
+import { findRuntime, kernelEnv } from './runtime.mjs';
 export { DEFAULT_RUNTIME } from './runtime.mjs';
 
 // Server->client requests the runtime expects answered. session/requestRuntimePreferences is
@@ -32,7 +32,7 @@ export class ZCodeProtocolClient {
   constructor({ runtime, cwd = process.cwd(), nodeBin = process.execPath, onNotify, requestHandlers } = {}) {
     runtime ??= findRuntime({ cwd })?.entry;
     if (!runtime) throw new Error('ZCode runtime not found; set ZCODE_RUNTIME or install zcode-app-cli / ZCode desktop');
-    this.child = spawn(nodeBin, [runtime, 'app-server', '--stdio'], { cwd, stdio: ['pipe', 'pipe', 'inherit'] });
+    this.child = spawn(nodeBin, [runtime, 'app-server', '--stdio'], { cwd, env: kernelEnv(runtime), stdio: ['pipe', 'pipe', 'inherit'] });
     this.buf = ''; this.decoder = new StringDecoder('utf8'); this.pending = new Map(); this.nextId = 1; this.onNotify = onNotify ?? (() => {});
     this.requestHandlers = { ...DEFAULT_REQUEST_HANDLERS, ...(requestHandlers ?? {}) };
     // stdin can EPIPE/write-after-end during the exit race; without a sink that is an

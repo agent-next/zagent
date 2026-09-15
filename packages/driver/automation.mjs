@@ -8,6 +8,7 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { spawn, spawnSync } from 'node:child_process';
 import os from 'node:os';
 
 const BOUNDS = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]]; // m h dom mon dow (dow 7 == 0 == Sunday)
@@ -93,7 +94,10 @@ export function mutateJobs(update, { home = os.homedir(), lockTimeoutMs = 5000 }
 const minuteOf = ms => Math.floor(ms / 60_000);
 export function dueJobs(jobs, now = new Date()) {
   return jobs.filter(j => cronMatches(j.cron, now) &&
-    (j.lastAttemptMs == null || minuteOf(j.lastAttemptMs) < minuteOf(now.getTime())));
+    (j.lastAttemptMs == null || minuteOf(j.lastAttemptMs) < minuteOf(now.getTime())) &&
+    // failedAtMs: an occurrence whose minute had already passed while the failed
+    // run was still going is NOT the next occurrence — the next one is.
+    (j.failedAtMs == null || minuteOf(now.getTime()) * 60_000 > j.failedAtMs));
 }
 
 // Use inside mutateJobs: recheck the scheduled minute while holding the lock.
@@ -111,9 +115,48 @@ export function claimJob(jobs, id, { nowMs = Date.now(), scheduledAtMs = nowMs, 
 export function completeJob(jobs, id, { ok, error = null, nowMs = Date.now(), claimToken } = {}) {
   const j = jobs.find(x => x.id === id);
   if (!j || (claimToken !== undefined && j.claimToken !== claimToken)) return null;
-  if (ok) { j.lastSuccessMs = nowMs; j.status = 'idle'; j.error = null; }
-  else { j.status = 'failed'; j.error = String(error).slice(0, 200); }
+  if (ok) { j.lastSuccessMs = nowMs; j.status = 'idle'; j.error = null; j.failedAtMs = null; }
+  else { j.status = 'failed'; j.error = String(error).slice(0, 200); j.failedAtMs = nowMs; }
   return j;
+}
+
+// A timed-out job must lose its whole process GROUP: the zmax child spawns the
+// runtime, and signalling only the direct child leaves the grandchild burning
+// quota. The child is spawned detached so it leads its own group on POSIX.
+export function killProcessTree(pid, signal = 'SIGTERM') {
+  if (process.platform === 'win32') {
+    try { spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); } catch {}
+    return;
+  }
+  try { process.kill(-pid, signal); } catch { try { process.kill(pid, signal); } catch {} }
+}
+
+// spawnSync's timeout only signals the direct child. This resolves with the same
+// result shape the tick consumes ({status, stdout, stderr}) plus timedOut, and
+// on timeout kills the process tree: SIGTERM, SIGKILL after a grace, and a final
+// settle so a child that survives even that cannot hang the tick forever.
+export function runTimedProcess(cmd, args, { cwd, env, timeoutMs = 300000, maxBuffer = 64e6 } = {}) {
+  return new Promise(resolve => {
+    const child = spawn(cmd, args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '', timedOut = false, settled = false, force, hang;
+    const finish = res => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer); clearTimeout(force); clearTimeout(hang);
+      resolve(res);
+    };
+    child.stdout.on('data', d => { if (Buffer.byteLength(stdout) < maxBuffer) stdout += d; });
+    child.stderr.on('data', d => { if (Buffer.byteLength(stderr) < maxBuffer) stderr += d; });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killProcessTree(child.pid, 'SIGTERM');
+      force = setTimeout(() => killProcessTree(child.pid, 'SIGKILL'), 3000);
+      hang = setTimeout(() => finish({ status: null, signal: 'SIGTERM', stdout, stderr, timedOut }), 10000);
+      force.unref(); hang.unref();
+    }, timeoutMs);
+    child.on('error', error => finish({ status: null, error, stdout, stderr, timedOut }));
+    child.on('close', (status, signal) => finish({ status, signal, stdout, stderr, timedOut }));
+  });
 }
 
 export function jobsLine(jobs) {

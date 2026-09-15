@@ -6,7 +6,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadJobs, mutateJobs, dueJobs, jobsLine, parseCron, claimJob, completeJob } from '../driver/automation.mjs';
+import { loadJobs, mutateJobs, dueJobs, jobsLine, parseCron, claimJob, completeJob, runTimedProcess } from '../driver/automation.mjs';
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const [cmd, ...rest] = process.argv.slice(2);
 const HEARTBEAT = `${os.homedir()}/.zcode/cli/automation-heartbeat.log`;
@@ -39,15 +39,16 @@ if (cmd === 'add') {
   beat(`tick due=${due.length}`);
   if (!due.length) { console.log('no due jobs'); process.exit(0); }
   let failed = 0;
-  const { spawnSync } = await import('node:child_process');
   for (const d of due) {
     const j = mutateJobs(jobs => claimJob(jobs, d.id, { scheduledAtMs: tickAt.getTime() }));
     if (!j) { console.log(`skip ${d.id} (claimed elsewhere or stale)`); continue; }
     const t0 = Date.now();
-    const r = spawnSync(process.execPath, [`${ROOT}/packages/cli/zmax.mjs`, '-p', j.prompt, '--json'],
-      { cwd: j.workspace, encoding: 'utf8', timeout: 200000, maxBuffer: 64e6 });
+    // Worst case inside the child: 2 runtime attempts (120s each) + 8s backoff;
+    // 300s covers that plus margin. On timeout the whole process tree is killed.
+    const r = await runTimedProcess(process.execPath, [`${ROOT}/packages/cli/zmax.mjs`, '-p', j.prompt, '--json'],
+      { cwd: j.workspace, timeoutMs: 300000 });
     const ok = r.status === 0 && (() => { try { return !!JSON.parse(r.stdout ?? '').response; } catch { return false; } })();
-    const err = ok ? null : `rc=${r.status} ${String(r.stderr ?? '').slice(-120)}`;
+    const err = ok ? null : `rc=${r.status}${r.timedOut ? ' timed-out' : ''} ${String(r.stderr ?? '').slice(-120)}`;
     if (!ok) failed++;
     mutateJobs(jobs => completeJob(jobs, d.id, { ok, error: err, claimToken: j.claimToken }));
     beat(`${ok ? 'ok' : 'FAIL'} ${d.id} ${Date.now() - t0}ms${err ? ' ' + err.slice(0, 80) : ''}`);

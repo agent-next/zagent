@@ -20,6 +20,17 @@ export function deny(p, message = 'denied by client') {
   return p?.options?.find(o => o.kind === 'deny')?.response ?? { decision: 'deny', reason: message };
 }
 
+// Remote chat bridges (feishu/wechat/telegram): the requester is a chat message,
+// not a person at the terminal — high-risk tools are denied there by default.
+// ZMAX_BRIDGE_ALLOW_HIGH_RISK=1 opts back in. The deny still answers with the
+// request's own deny option response (the only shape the runtime accepts).
+export function bridgeAutoAllow(p, env = process.env) {
+  if (p?.riskLevel === 'high' && env.ZMAX_BRIDGE_ALLOW_HIGH_RISK !== '1') {
+    return deny(p, 'high-risk tool denied on remote bridge');
+  }
+  return autoAllow(p);
+}
+
 // Pick by option kind — covers allow_session / custom options the GUI shows.
 export function answerOption(p, kind) {
   const o = p?.options?.find(x => x.kind === kind);

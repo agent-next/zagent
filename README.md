@@ -81,7 +81,10 @@ zagent                         # interactive TUI
 - **Node.js ≥ 22.15** (Node 23 needs ≥ 23.5)
 - **A GLM Coding Plan** and your own installed **ZCode runtime** — the ZCode desktop app, or the
   third-party `zcode-app-cli`. Either works for both headless and interactive use: zagent brings
-  its own TUI, so no third-party package is required.
+  its own TUI, so no third-party package is required. Verified against ZCode desktop 3.11.2 and
+  3.12.1 — headless `-p` works with existing credentials; the interactive TUI on 3.12.1 additionally
+  needs the new `account-provider` credential that only a 3.12.1-era sign-in writes (a 3.11.2-era
+  credential store is not migrated by the kernel).
 
 ### Authentication — your GLM Coding Plan
 
