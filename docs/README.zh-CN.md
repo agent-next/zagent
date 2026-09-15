@@ -80,7 +80,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent` | 交互式 TUI |
 | `zagent onboard` | 首次运行：检查 + live 冒烟 + 引导 |
 | `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
-| `zagent models [query]` | 搜索模型目录 |
+| `zagent models [query]` | 搜索模型目录;`models test <provider/model>` 测试连接 |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan 额度 |
 | `zagent sessions` | 终端里的任务库 |
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
