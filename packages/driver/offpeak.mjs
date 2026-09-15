@@ -10,7 +10,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { BASE, identityHeaders, getZcodeJwt, redactDeep } from './quota.mjs';
 import { deviceMid, loadCredentialStore, decryptCredential } from './credentials.mjs';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 const cacheFile = () => `${os.homedir()}/.zcode/cli/offpeak-cache.json`;
 const DEFAULT = { startHourSGT: 23, endHourSGT: 9, campaignEnd: '2026-09-20', source: 'default' };
@@ -79,6 +79,24 @@ export function cachedWindow() {
     if (typeof w.startHourSGT !== 'number' || typeof w.endHourSGT !== 'number') return { ...DEFAULT };
     return w;
   } catch { return { ...DEFAULT }; }
+}
+
+// --- W2b: off-peak tool policy (desktop 3.12.x workspace/updateOffPeakToolPolicy) ---
+// The kernel keeps offPeakToolEnabled in app-server memory only — the update RPC
+// sets it on the running instance and session/create consumes it. The GUI
+// re-sends its stored preference each launch. zagent's equivalent store is this
+// file; the protocol client's session/create applies it on runtimes new enough.
+const toolPolicyFile = () => `${os.homedir()}/.zcode/cli/offpeak-tools.json`;
+export function readToolPolicy() {
+  try { return JSON.parse(readFileSync(toolPolicyFile(), 'utf8')).enabled === true; }
+  catch { return false; }
+}
+export function writeToolPolicy(enabled) {
+  mkdirSync(dirname(toolPolicyFile()), { recursive: true });
+  const tmp = `${toolPolicyFile()}.tmp`;
+  writeFileSync(tmp,
+    JSON.stringify({ enabled: enabled === true, updatedAt: new Date().toISOString() }, null, 1));
+  renameSync(tmp, toolPolicyFile());
 }
 
 // --- C1: off-peak REST client — the 4-call ticket lifecycle ---

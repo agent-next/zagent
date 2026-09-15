@@ -282,7 +282,8 @@ export function renderBanner(theme, width, info = {}) {
   }
   // Clip: the hint is longer than a narrow terminal, and an overflowing banner
   // wraps into a row the screen writer did not count.
-  lines.push(`  ${theme.faint(clip((info.str ?? stringsFor()).hint, Math.max(8, width - 2)))}`, '');
+  const hintText = typeof info.hint === 'string' ? info.hint : (info.str ?? stringsFor()).hint;
+  lines.push(`  ${theme.faint(clip(hintText, Math.max(8, width - 2)))}`, '');
   return lines;
 }
 

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
 import { findRuntime, kernelEnv } from './runtime.mjs';
+import { readToolPolicy } from './offpeak.mjs';
 export { DEFAULT_RUNTIME } from './runtime.mjs';
 
 // Server->client requests the runtime expects answered. session/requestRuntimePreferences is
@@ -105,7 +106,18 @@ export class ZCodeProtocolClient {
   listSessions() { return this.call('session/list'); }
   createSession(workspacePath) {
     const key = path.normalize(workspacePath);
-    return this.call('session/create', { workspace: { workspaceKey: key, workspacePath: key } });
+    const workspace = { workspaceKey: key, workspacePath: key };
+    // The stored off-peak tool policy goes out only when ON: the field does not
+    // exist pre-3.12.x, whose strict schema would reject it. A stale store on an
+    // older runtime (downgrade after enabling) still slips through once — retry
+    // without the field when the kernel names it in an invalid-params error.
+    const params = readToolPolicy() ? { workspace, offPeakToolEnabled: true } : { workspace };
+    return this.call('session/create', params).catch(e => {
+      const detail = `${e?.message ?? ''} ${JSON.stringify(e?.data ?? '')}`;
+      if (params.offPeakToolEnabled && e?.code === -32602 && /offPeakToolEnabled/.test(detail))
+        return this.call('session/create', { workspace });
+      throw e;
+    });
   }
   readSession(sessionId) { return this.call('session/read', { sessionId }); }
   close() { try { this.child.stdin.end(); } catch {} return this.child.kill('SIGTERM'); }

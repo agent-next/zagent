@@ -11,6 +11,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 const NODE = process.execPath; // eslint-disable-line
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 
 import { findRuntime, kernelEnv } from '../driver/runtime.mjs';
@@ -18,7 +19,62 @@ import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs'
 import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 
-function ensureConfig() { // same shape kingsword09's launcher creates; ours adds nothing secret
+// G1 (ux-inventory §1/§9): every top CLI keeps a new user inside the product with
+// 2-3 sign-in paths; zagent printed one line and exited 1. The card is also what
+// a headless `-p` run prints, so both surfaces name the same three paths.
+const SIGNIN_CARD = [
+  'zagent: no GLM Coding Plan credential — choose a sign-in path:',
+  '  1. zagent login                 sign in with the browser (OAuth)',
+  '  2. export ZAI_API_KEY=<key>     Coding Plan API key (saved to ~/.zcode/cli/config.json, mode 0600)',
+  '  3. quit',
+];
+const printSignInCard = () => { for (const l of SIGNIN_CARD) console.error(l); };
+
+// `zagent login` (kernel OAuth) writes ~/.zcode/v2/credentials.json; the
+// desktop/kernel provisions the plan key itself into v2/provider_config.json.
+// An OAuth'd user is a credential — reusing the kernel's own provisioned key
+// keeps the cli config consistent with what the runtime already trusts.
+function oauthSignedIn(home = os.homedir()) {
+  try {
+    const s = JSON.parse(readFileSync(`${home}/.zcode/v2/credentials.json`, 'utf8'));
+    return typeof s['oauth:zai:access_token'] === 'string' && s['oauth:zai:access_token'] !== '';
+  } catch { return false; }
+}
+function provisionedPlanKey(home = os.homedir()) {
+  try {
+    const pc = JSON.parse(readFileSync(`${home}/.zcode/v2/provider_config.json`, 'utf8'));
+    const k = pc?.config?.providerConfigRules?.providerRules
+      ?.find(r => r?.providerId === 'zai')?.config?.access?.apiKey;
+    return typeof k === 'string' && k !== '' ? k : null;
+  } catch { return null; }
+}
+
+// The card as an actual choice, on a real terminal only: 1 runs the kernel's
+// OAuth flow (`zagent login`), 2 takes a pasted key, anything else leaves.
+// The card and prompts write to stderr, so the gate is stdin+stderr — piping
+// stdout (`zagent | tee log`) must not dead-end into the non-interactive card.
+async function chooseSignIn() {
+  if (!process.stdin.isTTY || !process.stderr.isTTY) return null;
+  printSignInCard();
+  const { createInterface } = await import('node:readline');
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const pick = (await rl.question('sign in [1/2/3]: ')).trim();
+    if (pick === '2') {
+      const k = (await rl.question('paste ZAI_API_KEY: ')).trim();
+      return k ? { key: k } : null;
+    }
+    if (pick === '1') {
+      const bin = fileURLToPath(new URL('../../bin/zmax', import.meta.url));
+      const r = spawnSync(NODE, [bin, 'login'], { stdio: 'inherit' });
+      if ((r.status ?? 1) === 0 && oauthSignedIn()) return { oauth: true };
+      return null;
+    }
+    return null;
+  } finally { rl.close(); }
+}
+
+function ensureConfig(forcedKey) { // same shape kingsword09's launcher creates; ours adds nothing secret
   const dir = `${os.homedir()}/.zcode/cli`;
   const file = `${dir}/config.json`;
   if (existsSync(file)) { // migrate legacy provider key the TUI does not recognize
@@ -36,13 +92,30 @@ function ensureConfig() { // same shape kingsword09's launcher creates; ours add
         writeFileSync(file, JSON.stringify(cur, null, 2));
         chmodSync(file, 0o600); // writeFileSync mode is ignored on existing files
       }
+      // An OAuth-only config written before the plan key was provisioned holds
+      // apiKey:'' — backfill it once the kernel's provider_config has the key,
+      // or /quota's config reader rejects the provider forever.
+      const zai = cur.provider?.zai?.options;
+      if (zai && !zai.apiKey) {
+        const k = provisionedPlanKey();
+        if (k) {
+          zai.apiKey = k;
+          writeFileSync(file, JSON.stringify(cur, null, 2));
+          chmodSync(file, 0o600);
+        }
+      }
     } catch {}
     return file;
   }
   mkdirSync(dir, { recursive: true });
-  let key = process.env.ZAI_API_KEY;
+  let key = forcedKey ?? process.env.ZAI_API_KEY;
   if (!key) { try { key = readFileSync(`${os.homedir()}/.config/ccz/.api_key`, 'utf8').trim(); } catch {} }
-  if (!key) { console.error('zagent: no GLM Coding Plan credential — set ZAI_API_KEY (see doctor)'); process.exit(1); }
+  // OAuth-signed-in (zagent login / the desktop) counts: the kernel
+  // authenticates from its own v2 store; the plan key it provisioned is reused
+  // here when present so /quota's config reader keeps working too.
+  if (!key && oauthSignedIn()) key = provisionedPlanKey() ?? '';
+  if (!key && !oauthSignedIn()) { printSignInCard(); process.exit(2); } // exit 2 = "fixable usage error", like clap
+  key = key ?? '';
   // Launcher-native shape (provider key "zai" — what the TUI's /login and model picker
   // expect). The builtin:zai-coding-plan key is NOT recognized by the TUI (owner-verified
   // failure 2026-09-04: "Model access is not configured" banner + /login overwrite).
@@ -72,7 +145,8 @@ const args = process.argv.slice(2);
 const rt = findRuntime();
 if (args[0] === 'doctor' || !rt) {
   const cfg = `${os.homedir()}/.zcode/cli/config.json`;
-  const haveKey = !!(process.env.ZAI_API_KEY || existsSync(`${os.homedir()}/.config/ccz/.api_key`));
+  const haveKey = !!(process.env.ZAI_API_KEY || existsSync(`${os.homedir()}/.config/ccz/.api_key`))
+    || oauthSignedIn(); // the kernel OAuth store is a credential too (G1)
   const fixes = [];
   const warnings = [];
   let invalidConfig = false;
@@ -137,7 +211,19 @@ if (args[0] === 'doctor' || !rt) {
 // login/logout are kernel passthroughs (see bin/zmax): they manage the OAuth
 // credential a user picks INSTEAD of the API key, so they must not die on the
 // "no GLM Coding Plan credential" check ensureConfig performs first.
-if (args[0] !== 'login' && args[0] !== 'logout') ensureConfig();
+if (args[0] !== 'login' && args[0] !== 'logout') {
+  const cfgFile = `${os.homedir()}/.zcode/cli/config.json`;
+  const haveCredential = !!process.env.ZAI_API_KEY
+    || existsSync(`${os.homedir()}/.config/ccz/.api_key`) || oauthSignedIn();
+  // On a real terminal the card is a choice, not a dead end — `zagent login`
+  // (option 1) and a pasted key (option 2) both land here with the credential
+  // already in place, so ensureConfig just writes the provider entry.
+  const needChoice = !existsSync(cfgFile) && !haveCredential;
+  const picked = needChoice ? await chooseSignIn() : null;
+  // The chooser already printed the card; a declined choice exits quietly.
+  if (needChoice && picked == null && process.stdin.isTTY && process.stderr.isTTY) process.exit(2);
+  ensureConfig(picked?.key); // oauth runs proceed with the kernel's own store
+}
 // Headless JSON runs retry on empty/error-envelope output (product-level parity with
 // harnesses that retry internally; 2 of 3 gate-verdict failures were 429 envelopes).
 const headlessJson = args.includes('-p') && args.includes('--json');

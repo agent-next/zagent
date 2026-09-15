@@ -12,6 +12,13 @@
 const EN = {
   placeholder: 'Ask a task about this workspace',
   hint: '/help for commands · esc to interrupt · ctrl+c twice to exit',
+  // Rotating banner hints (G6): the single fixed line was the only place keys
+  // were ever discoverable. Codex rotates a tip the same way.
+  hints: [
+    '/help for commands · esc to interrupt · ctrl+c twice to exit',
+    '? for the shortcut list · / for commands · @ for files',
+    'shift+up selects an earlier turn · h folds it, l expands it',
+  ],
   working: 'working',
   interrupt: 'esc to interrupt',
   exitTwice: 'press ctrl+c again to exit',
@@ -54,6 +61,11 @@ const ZH = {
   ...EN,
   placeholder: '输入你想让它做的事',
   hint: '/help 查看命令 · esc 中断 · 连按两次 ctrl+c 退出',
+  hints: [
+    '/help 查看命令 · esc 中断 · 连按两次 ctrl+c 退出',
+    '? 查看快捷键 · / 命令 · @ 文件',
+    'shift+up 选中更早的一轮 · h 折叠,l 展开',
+  ],
   working: '处理中',
   interrupt: 'esc 中断',
   exitTwice: '再按一次 ctrl+c 退出',

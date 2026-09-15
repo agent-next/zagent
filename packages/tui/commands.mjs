@@ -125,7 +125,22 @@ export function matchClientCommand(text, commands = CLIENT_COMMANDS) {
   return command ? { command, args: m[2].trim() } : null;
 }
 
-/** /help body: the merged list, grouped, one line each. */
+// The keys a person can press, from the key handler in index.mjs — codex's `?`
+// overlay and claude's /help modal both lead with theirs; zagent's were only
+// ever visible in the one-line banner hint (G6).
+export const SHORTCUTS = Object.freeze([
+  ['enter', 'submit'],
+  ['tab', 'cycle the /command, $skill, #conversation or @file popup'],
+  ['esc', 'interrupt the turn · close a popup · clear a bare /'],
+  ['ctrl+c', 'interrupt the turn · twice to exit'],
+  ['ctrl+d', 'exit at an empty prompt'],
+  ['ctrl+l', 'clear the screen'],
+  ['ctrl+e', 'show or hide thinking'],
+  ['shift+up/down', 'select an earlier turn, then h/l folds or expands it'],
+  ['/ $ # @ ?', 'command · skill · conversation · file · help'],
+]);
+
+/** /help body: the merged list, grouped, one line each, then the keys. */
 export function renderHelp(commands) {
   const lines = [];
   let last = null;
@@ -138,6 +153,8 @@ export function renderHelp(commands) {
     const names = [c.name, ...(c.aliases ?? [])].map(n => `/${n}`).join(' ');
     lines.push(`  ${names} — ${c.summary ?? ''}${c.source === 'kernel' ? ' (runtime)' : ''}`);
   }
+  lines.push('', 'Shortcuts');
+  for (const [key, what] of SHORTCUTS) lines.push(`  ${key} — ${what}`);
   return lines.join('\n');
 }
 
@@ -235,7 +252,13 @@ export function doctorLines({ env = process.env, home = os.homedir(), cwd = proc
     } catch { state = 'INVALID CONFIG — unreadable JSON; existing file preserved'; }
     lines.push(`config: ${state}`);
   }
-  const haveKey = Boolean(env.ZAI_API_KEY) || exists(path.join(home, '.config', 'ccz', '.api_key'));
+  let haveKey = Boolean(env.ZAI_API_KEY) || exists(path.join(home, '.config', 'ccz', '.api_key'));
+  if (!haveKey) { // the kernel OAuth store is a credential too (G1, mirrors zmax.mjs)
+    try {
+      const s = JSON.parse(readFileSync(path.join(home, '.zcode', 'v2', 'credentials.json'), 'utf8'));
+      haveKey = typeof s['oauth:zai:access_token'] === 'string' && s['oauth:zai:access_token'] !== '';
+    } catch {}
+  }
   lines.push(`credential: ${haveKey ? 'present' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'}`);
   return lines;
 }

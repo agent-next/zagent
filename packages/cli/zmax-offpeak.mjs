@@ -8,16 +8,67 @@
 //   zagent offpeak            what the window is doing now
 //   zagent offpeak --refresh  ask the server for the window first
 //   zagent offpeak --json     machine-readable, for scripts and cron
+//   zagent offpeak tools on|off  enable the kernel's off-peak tool port for new
+//                                sessions (desktop 3.12.x+), or read the stored
+//                                policy with bare `tools`
 //
 // Exit code is the answer, so `zagent offpeak && run-the-batch` works in a shell:
 // 0 when the configured campaign window is open, 1 otherwise; neither proves cost.
 
+import path from 'node:path';
 import { defaultWindow, inOffPeak, campaignActive, minutesUntilWindow, routeToFlash,
-  fetchWindow, cachedWindow } from '../driver/offpeak.mjs';
+  fetchWindow, cachedWindow, readToolPolicy, writeToolPolicy } from '../driver/offpeak.mjs';
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
 const refresh = args.includes('--refresh');
+
+// --- tools: the 3.12.x workspace/updateOffPeakToolPolicy RPC ------------------
+// The kernel stores offPeakToolEnabled in app-server memory; the GUI re-sends
+// its saved preference every launch. zagent keeps its own store
+// (~/.zcode/cli/offpeak-tools.json) which session/create applies on runtimes
+// that accept the field. The RPC call here is the official surface — it also
+// serves as the capability check, so the store is only written when the
+// connected runtime actually honored the toggle.
+const positional = args.filter(a => !a.startsWith('-'));
+if (positional[0] === 'tools') {
+  const rest = positional.slice(1);
+  if (rest.length > 1 || (rest.length === 1 && rest[0] !== 'on' && rest[0] !== 'off')) {
+    console.error('usage: zagent offpeak tools [on|off] [--json]');
+    process.exit(2);
+  }
+  const sub = rest[0];
+  if (sub === undefined) {
+    const enabled = readToolPolicy();
+    if (asJson) console.log(JSON.stringify({ enabled }, null, 2));
+    else console.log(`off-peak tool: ${enabled ? 'on' : 'off'} — 'zagent offpeak tools on|off' to change`);
+    process.exit(0);
+  }
+  const enabled = sub === 'on';
+  const { ZCodeProtocolClient } = await import('../driver/zcode-protocol.mjs');
+  const key = path.normalize(process.cwd());
+  let client, code = 0;
+  try {
+    client = new ZCodeProtocolClient({ cwd: process.cwd() });
+    await client.ready;
+    const res = await client.call('workspace/updateOffPeakToolPolicy', {
+      workspace: { workspaceKey: key, workspacePath: key }, enabled,
+    });
+    const applied = res?.enabled === true;
+    if (applied !== enabled) console.error('warning: runtime echoed a different policy than requested');
+    writeToolPolicy(applied);
+    if (asJson) console.log(JSON.stringify({ enabled: applied, workspace: key }, null, 2));
+    else console.log(`off-peak tool: ${applied ? 'on' : 'off'} — applies to new sessions on this runtime`);
+  } catch (e) {
+    code = 1;
+    console.error(e?.code === -32601
+      ? 'this ZCode runtime does not support the off-peak tool (workspace/updateOffPeakToolPolicy arrived in desktop 3.12.x)'
+      : `offpeak tools failed: ${e?.message ?? e}`);
+  } finally {
+    try { client?.close(); } catch {}
+  }
+  process.exit(code);
+}
 
 const humanDuration = (minutes) => {
   const m = Math.max(0, Math.round(Number(minutes) || 0));

@@ -17,7 +17,7 @@ export const COMMANDS = [
   ['models [query]', 'list providers or search the model catalog', 'Set up'],
   ['quota [status|usage [--days 1..30]|balance|preview|reset] [--json]', 'Coding Plan quota and account usage', 'Account'],
   ['remote [status|connect] [--json]', 'whether this device is registered for remote control (not available yet)', 'Account'],
-  ['offpeak [--refresh|--json]', 'the off-peak campaign window (exit 0 while open)', 'Account'],
+  ['offpeak [--refresh|--json|tools [on|off]]', 'the off-peak campaign window and tool toggle (exit 0 while open)', 'Account'],
   ['usage [--session id] [--json]', 'token totals for a session', 'Account'],
   ['sessions', 'your sessions across CLI and desktop', 'Project'],
   ['diff [sessionId]', 'the file changes a session made', 'Project'],

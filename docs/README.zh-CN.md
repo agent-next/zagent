@@ -87,7 +87,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent cron add\|list\|tick` | 定时 prompt |
-| `zagent offpeak [--refresh\|--json]` | 活动时间窗口检查（计费未验证） |
+| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
 | `zagent plugins` | 管理本地插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
 | `zagent inspect [--storage] [--json]` | 打印 runtime/配置/skills；`--storage` = ~/.zcode 分类体积（只读） |

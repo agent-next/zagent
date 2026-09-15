@@ -114,7 +114,7 @@ sent only to your own provider endpoint.
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent cron add\|list\|tick` | Scheduled prompts |
-| `zagent offpeak [--refresh\|--json]` | Campaign time-window check (billing not verified) |
+| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
 | `zagent plugins` | Manage local plugins |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |

@@ -103,6 +103,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
   screen.writeRaw(renderBanner(theme, screen.width, {
     version: packageVersion, runtime: runtimeLabel(host), model: ui.model,
     workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
+    // Rotating hint (G6): one of str.hints per launch — the fixed line was the
+    // only place the keys were discoverable.
+    hint: (Array.isArray(str.hints) && str.hints.length
+      ? str.hints[Math.floor(Math.random() * str.hints.length)] : str.hint),
   }).join('\n') + '\n');
 
   if (host.loginRequired === true) {
@@ -222,11 +226,14 @@ export async function runTui(host = {}, { deps = null } = {}) {
     },
   };
 
-  function enqueueOrSubmit(text) {
+  function enqueueOrSubmit(text, { trusted = false } = {}) {
     if (exiting) return;
     clearCompletion();
-    const trimmed = sanitizeText(text).trim();
+    let trimmed = sanitizeText(text).trim();
     if (trimmed === '') return;
+    // G6: '?' is the one-keystroke help the other top CLIs open on — an exact
+    // bare '?' resolves to /help instead of spending a model turn on it.
+    if (trimmed === '?') trimmed = '/help';
     // Before the busy guard below, which would otherwise QUEUE the quit: the user
     // typing /exit while a turn runs is asking to leave now, not after it finishes.
     // That is exactly the state they are in when a turn has hung.
@@ -257,6 +264,27 @@ export async function runTui(host = {}, { deps = null } = {}) {
       // If the runtime cannot offer a list, fall through to the plain command.
       void openPicker(picker).then(opened => { if (!opened) void submit(trimmed); });
       return;
+    }
+    // G9: a slash word matching NOTHING in the merged palette used to reach the
+    // kernel, which answered "Unknown command" listing only ITS commands —
+    // every zagent command (incl. /exit, the way out) missing. Answer locally
+    // with the merged list. Skipped when the host reports no command list:
+    // then the kernel's list is the only truth and it answers for itself.
+    if (!trusted && trimmed.startsWith('/')
+        && Array.isArray(host.slashCommands) && host.slashCommands.length > 0) {
+      const name = (/^\/+([^\s/]+)/.exec(trimmed)?.[1] ?? '').toLowerCase();
+      const known = name !== '' && !trimmed.startsWith('//')
+        && merged.some(c => c.name === name || (c.aliases ?? []).includes(name));
+      if (!known) {
+        ui.input = { value: '', cursor: 0 };
+        ui.history.push(trimmed);
+        ui.historyIndex = ui.history.length;
+        addUserEntry(state, trimmed);
+        const names = merged.map(c => `/${c.name}`).join(' ');
+        addCommandEntry(state, `Unknown command: ${trimmed.split(/\s/)[0]}. Available commands: ${names}`);
+        draw();
+        return;
+      }
     }
     ui.input = { value: '', cursor: 0 };
     ui.history.push(trimmed);
@@ -416,8 +444,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
       items,
       index: Number.isInteger(selection.selectedIndex) ? selection.selectedIndex : 0,
       // enqueueOrSubmit, not submit: a queued turn may still be draining, and a
-      // pick made while busy must queue rather than silently drop.
-      pick: (item) => { enqueueOrSubmit(item.value); },
+      // pick made while busy must queue rather than silently drop. trusted:
+      // the kernel's own follow-up command must skip the unknown-command gate —
+      // a kernel pick for a command it never advertised is still the kernel's.
+      pick: (item) => { enqueueOrSubmit(item.value, { trusted: true }); },
     };
     draw();
     return true;
@@ -559,7 +589,11 @@ export async function runTui(host = {}, { deps = null } = {}) {
         return acceptCompletion();
       }
       case 'escape':
-        clearCompletion(); draw(); return true;
+        clearCompletion();
+        // G9: closing the palette must drop slash debris too, or the next
+        // typed /help becomes '//help'. Mirrored in the main escape branch.
+        if (/^\/+$/.test(ui.input.value)) ui.input = { value: '', cursor: 0 };
+        draw(); return true;
       default:
         return false;
     }
@@ -796,6 +830,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
       clearCompletion();
       if (ui.busy) { interrupt(); return; }
       if (ui.queue.length > 0) { applyQueueAction(ui.queue.length - 1, 1); return; }
+      // G9: Esc dismissed the palette but left a bare '/', so typing /help next
+      // produced '//help' and the kernel's unknown-command reply. An input that
+      // is only slashes is debris — drop it.
+      if (/^\/+$/.test(ui.input.value)) { ui.input = { value: '', cursor: 0 }; draw(); return; }
       if (ui.userTurn >= 0) { ui.userTurn = -1; draw(); }
       return;
     }
