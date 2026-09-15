@@ -22,7 +22,8 @@ import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates, skillCandidates, conversationCandidates } from './complete.mjs';
-import { mergeCommands, CLIENT_COMMANDS, matchClientCommand, zagentVersion, runtimeLabel } from './commands.mjs';
+import { mergeCommands, CLIENT_COMMANDS, matchClientCommand, zagentVersion, runtimeLabel, quotaHomeLine } from './commands.mjs';
+import { codingPlanStatus } from '../driver/quota.mjs';
 import { stringsFor } from './strings.mjs';
 import { sanitizeText } from './sanitize.mjs';
 import { listSkills, listConversationsAsync, mcpSummary } from '../driver/catalog.mjs';
@@ -79,6 +80,19 @@ export async function runTui(host = {}, { deps = null } = {}) {
     conversations: [],
   };
   void listConversationsAsync({}).then((rows) => { if (!exiting) ui.conversations = rows; }).catch(() => {});
+
+  // G4: the context window is knowable before the first turn — the host's own
+  // modelOptions carry it (the /model picker shows it). Seed the meter so the
+  // footer and /context can show the window while 'used' is still unreported;
+  // latchMeter merges, so a real kernel sighting overwrites the seed. Exact
+  // id/alias match only — seeding another model's window would be a lie.
+  const modelWindowFor = (model) => {
+    const m = (Array.isArray(host.modelOptions) ? host.modelOptions : [])
+      .find(o => o?.id === model || o?.alias === model);
+    return Number.isFinite(m?.contextWindow) && m.contextWindow > 0 ? m.contextWindow : null;
+  };
+  let seededWindow = modelWindowFor(ui.model);
+  if (seededWindow !== null) state.projection = { ...state.projection, contextWindow: seededWindow };
   let exiting = false;
   let escapeTimer = null;
   const keyDecoder = createKeyDecoder();
@@ -398,7 +412,18 @@ export async function runTui(host = {}, { deps = null } = {}) {
     if (!result || typeof result !== 'object') return;
     latchMeter(result);
     if (typeof result.mode === 'string') ui.mode = result.mode;
-    if (typeof result.model === 'string') ui.model = result.model;
+    if (typeof result.model === 'string') {
+      ui.model = result.model;
+      // The seeded window belongs to the model it was read from: on a switch,
+      // re-seed only while the meter still carries OUR seed — a real kernel
+      // sighting is never overwritten (latchMeter above already merged it).
+      if (seededWindow !== null && state.projection?.contextWindow === seededWindow) {
+        const w = modelWindowFor(ui.model);
+        const { contextWindow, ...rest } = state.projection;
+        state.projection = w !== null ? { ...rest, contextWindow: w } : rest;
+        seededWindow = w;
+      }
+    }
     if (typeof result.thoughtLevel === 'string') ui.effort = result.thoughtLevel;   // shown in the footer
     if (openSelection(result.selection)) return;
     if (!wasCommand) return;
@@ -968,6 +993,20 @@ export async function runTui(host = {}, { deps = null } = {}) {
           addNotice(state, `mcp ${name}: ${v.status}${v.error ? ` — ${String(v.error).slice(0, 120)}` : ''}`, 'warning');
         }
         draw();
+      })
+      .catch(() => {});
+  }
+
+  // G4: the plan window on the home screen — the other top CLIs surface quota
+  // at start; ours only answered on /quota. One async probe, silent on failure:
+  // a missing credential is already covered by the first-run card.
+  const quotaProbe = deps?.codingPlanStatus ?? codingPlanStatus;
+  if (typeof quotaProbe === 'function') {
+    void Promise.resolve().then(() => quotaProbe())
+      .then((report) => {
+        if (exiting) return;
+        const line = quotaHomeLine(report);
+        if (line) { addNotice(state, line, 'muted'); draw(); }
       })
       .catch(() => {});
   }

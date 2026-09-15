@@ -191,12 +191,20 @@ function usageReport(ctx) {
   return lines.join('\n');
 }
 
+/** A 10-cell usage bar for a percentage — the limit bars /status shows (G5). */
+export function quotaBar(pct, width = 10) {
+  if (!Number.isFinite(pct)) return '';
+  const filled = Math.round(Math.min(100, Math.max(0, pct)) / 100 * width);
+  return `[${'█'.repeat(filled)}${'░'.repeat(width - filled)}]`;
+}
+
 /** Coding Plan quota line block. Unknown amounts say "not reported", never 0. */
-export function formatQuota(report) {
+export function formatQuota(report, { bars = false } = {}) {
   const pools = Array.isArray(report?.pools) ? report.pools : [];
   const fiveHour = pools.find(p => p?.type === 'TOKENS_LIMIT');
   const monthly = pools.find(p => p?.type === 'TIME_LIMIT');
   const others = pools.filter(p => p !== fiveHour && p !== monthly);
+  const bar = (p) => (bars && p?.usedPercent != null ? `${quotaBar(p.usedPercent)} ` : '');
   const hm = (iso) => {
     const d = new Date(iso);
     return Number.isFinite(d.getTime())
@@ -209,22 +217,30 @@ export function formatQuota(report) {
   const lines = [];
   // TOKENS_LIMIT is the rolling window (number = its length in hours, 5 live).
   lines.push(fiveHour
-    ? `${fiveHour.number ?? 5}-hour window: ${fiveHour.usedPercent == null ? 'not reported' : `${fiveHour.usedPercent}% used`}` +
+    ? `${fiveHour.number ?? 5}-hour window: ${bar(fiveHour)}${fiveHour.usedPercent == null ? 'not reported' : `${fiveHour.usedPercent}% used`}` +
       `${fiveHour.nextResetAt && hm(fiveHour.nextResetAt) ? ` · resets ${hm(fiveHour.nextResetAt)}` : ''}`
     : '5-hour window: not reported');
   // TIME_LIMIT is the monthly tool-call allowance: used/limit are call counts.
   lines.push(monthly
-    ? `monthly tool calls: ${monthly.used ?? 'not reported'} / ${monthly.limit ?? 'not reported'}` +
+    ? `monthly tool calls: ${bar(monthly)}${monthly.used ?? 'not reported'} / ${monthly.limit ?? 'not reported'}` +
       `${monthly.usedPercent == null ? '' : ` (${monthly.usedPercent}% used)`}` +
       `${monthly.nextResetAt && day(monthly.nextResetAt) ? ` · resets ${day(monthly.nextResetAt)}` : ''}`
     : 'monthly tool calls: not reported');
   // A pool we do not recognise still prints — raw type, like `zagent quota`.
   for (const p of others) {
-    lines.push(`${p?.type ?? 'unknown pool'}: ${p?.usedPercent == null ? 'not reported' : `${p.usedPercent}% used`}` +
+    lines.push(`${p?.type ?? 'unknown pool'}: ${bar(p)}${p?.usedPercent == null ? 'not reported' : `${p.usedPercent}% used`}` +
       `${p?.nextResetAt && day(p.nextResetAt) ? ` · resets ${day(p.nextResetAt)}` : ''}`);
   }
   if (typeof report?.level === 'string' && report.level) lines.push(`plan: ${report.level}`);
   return lines.join('\n');
+}
+
+/** One-line start-of-session quota summary for the home screen (G4). */
+export function quotaHomeLine(report) {
+  if (!report || typeof report !== 'object') return null;
+  const first = formatQuota(report).split('\n')[0];
+  if (!first) return null;
+  return (typeof report.level === 'string' && report.level ? `plan ${report.level} · ` : '') + first;
 }
 
 /** In-process mirror of the checks `zagent doctor` runs (packages/cli/zmax.mjs). */
@@ -252,15 +268,23 @@ export function doctorLines({ env = process.env, home = os.homedir(), cwd = proc
     } catch { state = 'INVALID CONFIG — unreadable JSON; existing file preserved'; }
     lines.push(`config: ${state}`);
   }
-  let haveKey = Boolean(env.ZAI_API_KEY) || exists(path.join(home, '.config', 'ccz', '.api_key'));
-  if (!haveKey) { // the kernel OAuth store is a credential too (G1, mirrors zmax.mjs)
-    try {
-      const s = JSON.parse(readFileSync(path.join(home, '.zcode', 'v2', 'credentials.json'), 'utf8'));
-      haveKey = typeof s['oauth:zai:access_token'] === 'string' && s['oauth:zai:access_token'] !== '';
-    } catch {}
-  }
-  lines.push(`credential: ${haveKey ? 'present' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'}`);
+  const cred = credentialSource({ env, home, exists });
+  lines.push(`credential: ${cred ? `present (${cred})` : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'}`);
   return lines;
+}
+
+/** Where the Coding Plan credential comes from; null when there is none. */
+export function credentialSource({ env = process.env, home = os.homedir(), exists = existsSync } = {}) {
+  if (env.ZAI_API_KEY) return 'ZAI_API_KEY env';
+  if (exists(path.join(home, '.config', 'ccz', '.api_key'))) return '~/.config/ccz/.api_key';
+  // the kernel OAuth store is a credential too (G1, mirrors zmax.mjs)
+  try {
+    const s = JSON.parse(readFileSync(path.join(home, '.zcode', 'v2', 'credentials.json'), 'utf8'));
+    if (typeof s['oauth:zai:access_token'] === 'string' && s['oauth:zai:access_token'] !== '') {
+      return 'kernel OAuth store';
+    }
+  } catch {}
+  return null;
 }
 
 /** Transcript -> Markdown for /export. */
@@ -291,6 +315,14 @@ export function lastTurnToolCallIds(state) {
     if (e.kind === 'tool' && e.id) ids.add(e.id);
   }
   return ids;
+}
+
+/** The current model's contextWindow from the host's own catalog; null if absent. */
+function modelWindow(ctx) {
+  const opts = Array.isArray(ctx.host?.modelOptions) ? ctx.host.modelOptions : [];
+  const cur = opts.find(m => m?.id === ctx.ui?.model || m?.alias === ctx.ui?.model);
+  const w = cur?.contextWindow ?? opts.find(m => Number.isFinite(m?.contextWindow))?.contextWindow;
+  return Number.isFinite(w) && w > 0 ? w : null;
 }
 
 function listGrants(home) {
@@ -356,8 +388,8 @@ export const CLIENT_COMMANDS = [
   },
   {
     name: 'status', group: 'zagent',
-    summary: 'version, runtime, model, session and token state',
-    run(ctx) {
+    summary: 'version, runtime, model, session, plan and token state',
+    async run(ctx) {
       const rt = runtimeDescriptor(ctx.host);
       const t = ctx.state.totals ?? {};
       const mcp = ctx.ui.mcp;
@@ -371,10 +403,21 @@ export const CLIENT_COMMANDS = [
         mcp && mcp.total > 0
           ? `mcp: ${mcp.connected}/${mcp.total} connected${mcp.failed ? ` · ${mcp.failed} failed` : ''}`
           : 'mcp: none',
+        `credential: ${credentialSource({ env: ctx.env, home: ctx.home }) ?? 'none'}`,
         `tokens: ${formatTokens(num(t.inputTokens))} in · ${formatTokens(num(t.outputTokens))} out · ${formatTokens(num(t.cacheReadTokens) + num(t.cacheCreationTokens) + num(t.cacheWriteTokens))} cached`,
         `elapsed: ${formatDuration(Date.now() - ctx.state.startedAt)}`,
       ];
       ctx.print(lines.join('\n'));
+      ctx.draw();
+      // G5: the other top CLIs' /status carries the plan and its limit bars;
+      // ours needed a second command. The quota tail is a separate entry so a
+      // slow monitor (15s timeout upstream) never stalls the local block —
+      // /status must still answer instantly mid-turn. 'not reported' when the
+      // probe fails, never a blank or a zero.
+      const fn = ctx.deps?.codingPlanStatus ?? codingPlanStatus;
+      try { ctx.print(formatQuota(await fn(), { bars: true })); }
+      catch { ctx.print('quota: not reported'); }
+      ctx.draw();
     },
   },
   {
@@ -395,9 +438,23 @@ export const CLIENT_COMMANDS = [
     summary: 'context meter and input baseline breakdown',
     run(ctx) {
       const p = ctx.state.projection ?? {};
-      const lines = [Number.isFinite(p.contextUsed) && Number.isFinite(p.contextWindow)
-        ? `context: ${formatTokens(p.contextUsed)} / ${formatTokens(p.contextWindow)}`
-        : 'context: not reported yet (the meter fills in after the first turn)'];
+      const lines = [];
+      const hasUsed = Number.isFinite(p.contextUsed);
+      const hasWindow = Number.isFinite(p.contextWindow) && p.contextWindow > 0;
+      if (hasUsed && hasWindow) {
+        lines.push(`context: ${formatTokens(p.contextUsed)} / ${formatTokens(p.contextWindow)}`);
+      } else {
+        // G4: the window is knowable before the first turn — the kernel may
+        // report it alone, and the host's modelOptions carry it (the /model
+        // picker shows it). Neither half is ever guessed: a reported 'used'
+        // still prints when the window is unknown.
+        const w = hasWindow ? p.contextWindow : modelWindow(ctx);
+        lines.push(Number.isFinite(w)
+          ? `context: ${hasUsed ? `${formatTokens(p.contextUsed)} used · ` : ''}window ${formatTokens(w)}${hasUsed ? '' : ' · used fills in after the first turn'}`
+          : hasUsed
+          ? `context: ${formatTokens(p.contextUsed)} used · window not reported`
+          : 'context: not reported yet (the meter fills in after the first turn)');
+      }
       const base = ctx.state.contextBreakdown;
       if (base && typeof base === 'object') {
         const rows = Object.entries(base).filter(([, v]) => typeof v === 'number' || typeof v === 'string');

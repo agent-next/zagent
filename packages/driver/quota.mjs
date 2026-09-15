@@ -83,30 +83,38 @@ function validateCodingPlanKey(value) {
   if (!/^[\x21-\x7e]+$/.test(key)) throw new Error('Invalid Coding Plan key format');
   return key;
 }
-export function codingPlanKey({ env = process.env, home = os.homedir() } = {}) {
-  if (env.ZAI_API_KEY?.trim()) return validateCodingPlanKey(env.ZAI_API_KEY);
+// Resolve the Coding Plan key AND identify which configured plan it belongs to.
+// plan is {providerId, name} when the key comes from the CLI provider config
+// (e.g. builtin:zai-coding-plan vs builtin:zai-start-plan), null when the key
+// source (env var, ccz fallback file) carries no plan identity.
+export function resolveCodingPlanKey({ env = process.env, home = os.homedir() } = {}) {
+  if (env.ZAI_API_KEY?.trim())
+    return { key: validateCodingPlanKey(env.ZAI_API_KEY), source: 'ZAI_API_KEY', plan: null };
   let config;
   try { config = JSON.parse(readFileSync(`${home}/.zcode/cli/config.json`, 'utf8')); }
   catch (e) { if (e.code !== 'ENOENT') throw new Error('Cannot read CLI provider config; repair it or set ZAI_API_KEY'); }
   if (config !== undefined) {
     const id = typeof config?.model?.main === 'string' ? config.model.main.split('/')[0] : undefined;
-    const options = config?.provider?.[id]?.options;
+    const provider = config?.provider?.[id];
+    const options = provider?.options;
     if (typeof options?.baseURL !== 'string' || options.baseURL.replace(/\/$/, '') !== 'https://api.z.ai/api/anthropic' ||
         typeof options.apiKey !== 'string' || !options.apiKey.trim())
       throw new Error('Selected CLI provider is not a configured Z.ai Coding Plan; set ZAI_API_KEY explicitly');
-    return validateCodingPlanKey(options.apiKey);
+    return { key: validateCodingPlanKey(options.apiKey), source: 'cli-config',
+      plan: { providerId: id, name: typeof provider?.name === 'string' ? provider.name : null } };
   }
   try {
     const key = readFileSync(`${home}/.config/ccz/.api_key`, 'utf8').trim();
-    if (key) return validateCodingPlanKey(key);
+    if (key) return { key: validateCodingPlanKey(key), source: 'ccz-fallback', plan: null };
   } catch (e) { if (e.code !== 'ENOENT') throw new Error('Cannot read Coding Plan key'); }
   throw new Error('No Coding Plan key; configure the CLI or set ZAI_API_KEY');
 }
+export function codingPlanKey(options) { return resolveCodingPlanKey(options).key; }
 
 async function monitor(endpoint, params, { fetchImpl = fetch, env = process.env, home = os.homedir() } = {}) {
   const url = new URL(`/api/monitor/usage/${endpoint}`, 'https://api.z.ai');
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  const key = codingPlanKey({ env, home });
+  const { key, source: keySource, plan } = resolveCodingPlanKey({ env, home });
   let response;
   try {
     response = await fetchImpl(url.href, { headers: { authorization: key },
@@ -119,7 +127,7 @@ async function monitor(endpoint, params, { fetchImpl = fetch, env = process.env,
   try { body = await response.json(); } catch { throw new Error('Invalid Coding Plan JSON response'); }
   if (quotaError({ status: response.status, body }) || !body?.data)
     throw new Error(`Coding Plan request failed (HTTP ${response.status}); quota is unknown`);
-  return { data: body.data, observedAt: new Date().toISOString() };
+  return { data: body.data, observedAt: new Date().toISOString(), keySource, plan };
 }
 
 const count = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -146,8 +154,8 @@ export function normalizeQuota(data) {
 }
 
 export async function codingPlanStatus(options) {
-  const { data, observedAt } = await monitor('quota/limit', {}, options);
-  return { source: 'Z.ai Coding Plan monitor', observedAt, scope: 'account', ...normalizeQuota(data) };
+  const { data, observedAt, keySource, plan } = await monitor('quota/limit', {}, options);
+  return { source: 'Z.ai Coding Plan monitor', observedAt, scope: 'account', keySource, plan, ...normalizeQuota(data) };
 }
 
 export function usageRange(days = 7, now = new Date()) {
@@ -177,7 +185,7 @@ export function normalizeUsage(data) {
 
 export async function codingPlanUsage({ days = 7, now = new Date(), ...options } = {}) {
   const range = usageRange(days, now);
-  const { data, observedAt } = await monitor('model-usage', range, options);
-  return { source: 'Z.ai Coding Plan monitor', observedAt, scope: 'account',
+  const { data, observedAt, keySource, plan } = await monitor('model-usage', range, options);
+  return { source: 'Z.ai Coding Plan monitor', observedAt, scope: 'account', keySource, plan,
     timeZone: 'Asia/Singapore', requestedRange: range, ...normalizeUsage(data) };
 }

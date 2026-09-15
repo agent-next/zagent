@@ -22,6 +22,10 @@ for (let i = 0; i < args.length; i++) {
 if (daysSeen && which !== 'usage') usage();
 // Escape server-provided strings before terminal output, as JSON output does.
 const label = value => JSON.stringify(value ?? 'unknown');
+const keyLine = (result) => `Key: ${result.plan?.providerId
+  ? `CLI provider ${label(result.plan.providerId)}` +
+    (result.plan.name ? ` (${label(result.plan.name)})` : '')
+  : `${label(result.keySource)}; the plan name is not derivable from this key source`}`;
 try {
   if (which === 'status' || which === 'usage') {
     const result = which === 'status' ? await codingPlanStatus() : await codingPlanUsage({ days });
@@ -36,6 +40,7 @@ try {
         const monthly = pools.find((p) => p?.type === 'TIME_LIMIT' && p?.unit === 5);
         const others = pools.filter((p) => p !== fiveHour && p !== monthly);
         if (typeof result.level === 'string' && result.level) console.log(`Plan: ${label(result.level)}`);
+        console.log(keyLine(result));
         const now = Date.now();
         const resetIn = (iso) => {
           const ms = Date.parse(iso ?? '');
@@ -71,6 +76,7 @@ try {
         }
         if (others.length) console.log('Other plan limits also reported — see zagent quota --json.');
       } else {
+        console.log(keyLine(result));
         console.log(`${result.source} — account aggregate (${result.observedAt})`);
         console.log(`${result.requestedRange.startTime} through ${result.requestedRange.endTime} (${result.timeZone}); current day is partial.`);
         console.log(`Calls: ${result.calls}; reported tokens: ${result.reportedTokens}`);

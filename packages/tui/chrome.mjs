@@ -143,6 +143,11 @@ export function statusFields(state, theme, options = {}) {
       ? str.context(formatTokens(ctx.contextUsed), formatTokens(ctx.contextWindow))
       : `${formatTokens(ctx.contextUsed)}/${formatTokens(ctx.contextWindow)}`;
     fields.push(field(meter, theme.faint));
+  } else if (Number.isFinite(ctx?.contextWindow) && ctx.contextWindow > 0) {
+    // G4: the window alone is still worth showing — seeded from the host's
+    // model catalog at start. '?/200k' pairs with the usual 'used/window'
+    // shape without inventing a used count.
+    fields.push(field(`ctx ?/${formatTokens(ctx.contextWindow)}`, theme.faint));
   }
   const used = turn?.usage?.totalTokens ?? turn?.usage?.inputTokens;
   if (used) fields.push(field(str.tokens(formatTokens(used)), theme.faint));
