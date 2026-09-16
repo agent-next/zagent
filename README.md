@@ -101,6 +101,8 @@ sent only to your own provider endpoint.
 
 ## Commands
 
+### Everyday
+
 | Command | What it does |
 |---|---|
 | `zagent -p "…" [--json] [options]` | Headless one-shot (retry-safe; `zagent -p --help` lists options) |
@@ -108,31 +110,68 @@ sent only to your own provider endpoint.
 | `zagent onboard` | First-run: checks + live smoke + guidance |
 | `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |
 | `zagent update [--check]` | Update zagent itself from npm |
-| `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
-| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
+
+### Sessions and changes
+
+| Command | What it does |
+|---|---|
 | `zagent sessions` | Your task store, in the terminal |
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
 | `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | Inspect or restore workspace checkpoints (undo a turn's file edits) |
-| `zagent memory show\|index\|append` | Runtime-compatible memory |
-| `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
+| `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
+| `zagent usage stats [--range all\|7d\|30d] [--json]` | App-usage dashboard: totals, cache hit rate, streaks, per-model/tool breakdown (ZCode 3.12.x+) |
+| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
+| `zagent subagents [--session id] [--json]` | List running and ended child session ids |
+
+### Plan and account
+
+| Command | What it does |
+|---|---|
+| `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
+| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
+| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
+| `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
+
+### Scheduled prompts
+
+| Command | What it does |
+|---|---|
 | `zagent cron add\|list\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
-| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
+
+### Runtime data and diagnostics
+
+| Command | What it does |
+|---|---|
+| `zagent memory show\|index\|append` | Runtime-compatible memory |
+| `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent plugins` | Manage local plugins |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |
-| `$using-zagent` | Bundled skill: what zagent is, how to tell it from the GUI, how to drive it |
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | Import Claude Code instructions, commands, and skills |
-| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
-| `zagent subagents [--session id] [--json]` | List running and ended child session ids |
-| `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
-| `zagent usage stats [--range all\|7d\|30d] [--json]` | App-usage dashboard: totals, cache hit rate, streaks, per-model/tool breakdown (ZCode 3.12.x+) |
-| `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
+| `$using-zagent` | Bundled skill: what zagent is, how to tell it from the GUI, how to drive it |
 
 `za` is a short alias for `zagent`.
 
 Context compaction runs inside the interactive TUI as `/compact` — live sessions are
 process-local, so there is no standalone `zagent compact` command.
+
+## In the TUI
+
+**Permission modes:** `plan`, `build` (default), `edit`, `yolo` — per session, enforced by the
+kernel and shown in the status line. Switch with `/mode <name>` or the `/approvals` picker;
+`/plan` is a shortcut for plan mode. In `yolo` no permission prompts are asked.
+
+Slash commands (one palette — `/help` lists them live):
+
+| | |
+|---|---|
+| **Session** | `/exit` · `/stop` · `/clear` · `/rename` · `/archive` · `/delete` · `/export` · `/copy` · `/diff` · `/undo` · `/compact` |
+| **State** | `/status` · `/version` (`/v`) · `/usage` (`/cost`) · `/context` · `/doctor` · `/quota` · `/update` · `/theme` |
+| **Project and tools** | `/hooks` · `/permissions` · `/memory` · `/agents` · `/workflow` · `/feedback` (`/bug`) · `/help` (`?`) |
+| **Modes** | `/mode` · `/approvals` · `/plan` |
+
+The composer also has the model and effort pickers and `@`-file completion.
 
 ## How it works
 
