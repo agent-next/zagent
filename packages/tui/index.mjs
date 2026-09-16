@@ -22,6 +22,7 @@ import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { pasteToken, expandChips, insertChip, chipSpanAt, chipSpanIn, takeChips, attachChips, pruneChips } from './paste-chips.mjs';
+import { createPasteBurst } from './paste-burst.mjs';
 import { appendHistory, HISTORY_CAP, loadHistory } from './history.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates, skillCandidates, conversationCandidates } from './complete.mjs';
@@ -124,8 +125,13 @@ export async function runTui(host = {}, { deps = null } = {}) {
   if (seededWindow !== null) state.projection = { ...state.projection, contextWindow: seededWindow };
   let exiting = false;
   let escapeTimer = null;
+  let burstTimer = null;
   let unsubscribeWorkflow = null;
   const keyDecoder = createKeyDecoder();
+  // Unbracketed pastes arrive as a char flood whose newlines decode as 'enter'
+  // and would submit line-by-line. The collector buffers the flood; the flush
+  // timer re-inserts it as one text event (chip-eligible) once it goes quiet.
+  const pasteBurst = createPasteBurst(deps?.pasteBurst);
 
   const clearCompletion = () => { ui.completionSeq += 1; ui.completion = null; };
 
@@ -1022,6 +1028,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     denyPendingPermission();
     stopSpinner();
     clearTimeout(escapeTimer);
+    clearTimeout(burstTimer);
     try { unsubscribeWorkflow?.(); } catch {}
     unsubscribeWorkflow = null;
     stdin.removeListener?.('data', onData);
@@ -1389,18 +1396,82 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // --- run ------------------------------------------------------------------
   function finish() { exit(); resolveRun?.(); }
 
+  /**
+   * Deliver the buffered flood as ONE text event — the chipify path in onKey
+   * decides whether it collapses to a `[Pasted ~N lines]` token. `submit`
+   * fires only for a flood whose last byte was Enter and whose payload is a
+   * single line; a multi-line paste always stays in the composer for review.
+   */
+  function flushBurst({ submit }) {
+    clearTimeout(burstTimer);
+    const out = pasteBurst.takeFlush();
+    if (!out || exiting) return;
+    if (out.text) onKey({ text: out.text });
+    // A modal prompt owns the keys (api-key entry is a designed paste target):
+    // its Enter resolves the prompt, not the composer. Otherwise submit the
+    // composer the same way a real Enter does.
+    if (submit && out.submit) {
+      if (ui.prompt) onKey({ name: 'enter' });
+      else enqueueOrSubmit(ui.input.value);
+    }
+  }
+
+  const armBurst = () => {
+    clearTimeout(burstTimer);
+    if (pasteBurst.flushMs <= 0) return;   // onData flushes at the emit's end
+    burstTimer = setTimeout(() => flushBurst({ submit: true }), pasteBurst.flushMs);
+    if (typeof burstTimer.unref === 'function') burstTimer.unref();
+  };
+
+  function dispatchKey(event) {
+    const action = pasteBurst.onEvent(event);
+    switch (action.kind) {
+      case 'swallow': armBurst(); return;
+      case 'capture': {
+        // The burst's first chars already reached the composer as ordinary
+        // inserts — pull them back so the flood re-lands as one paste. While a
+        // modal surface owns the keys (ui.prompt) they went there instead, so
+        // the composer's tail is not the prefix and must not be cut.
+        const { value, cursor } = ui.input;
+        if (action.prefix !== '' && !ui.prompt
+            && value.slice(0, cursor).endsWith(action.prefix)) {
+          ui.input = { value: value.slice(0, cursor - action.prefix.length) + value.slice(cursor),
+                       cursor: cursor - action.prefix.length };
+          draw();
+        } else if (action.prefix !== '') {
+          pasteBurst.dropPrefix(action.prefix.length);
+        }
+        armBurst();
+        return;
+      }
+      case 'flush-then':
+        // A non-text key ends the flood; it is not itself part of the paste.
+        // The collector already detached the buffer into action.text — a
+        // takeFlush() here would drain nothing.
+        clearTimeout(burstTimer);
+        if (action.text) onKey({ text: action.text });
+        onKey(event);
+        return;
+      default: onKey(event);
+    }
+  }
+
   function onData(chunk) {
     clearTimeout(escapeTimer);
     for (const event of keyDecoder.push(chunk)) {
       if (exiting) break;
-      onKey(event);
+      dispatchKey(event);
     }
     if (exiting) { resolveRun?.(); return; }
+    // flushMs 0 is a test seam: deliver the burst at the emit's end so
+    // in-process drives stay synchronous. The real window (60 ms) instead
+    // guards terminals that stream a paste across several reads.
+    if (pasteBurst.flushMs <= 0) flushBurst({ submit: true });
     // A bare Escape is ambiguous until the terminal has had a chance to send
     // the rest of a sequence. Incomplete CSI and paste payloads never time out
     // into ordinary keystrokes.
     if (keyDecoder.waitingForEscape) {
-      escapeTimer = setTimeout(() => { for (const event of keyDecoder.flushEscape()) onKey(event); }, 40);
+      escapeTimer = setTimeout(() => { for (const event of keyDecoder.flushEscape()) dispatchKey(event); }, 40);
     }
   }
 

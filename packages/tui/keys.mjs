@@ -78,7 +78,12 @@ export function createKeyDecoder() {
         // feeding string fragments that end in a high surrogate.
         if (pending.length === 1 && code >= 0xD800 && code <= 0xDBFF) break;
         const point = String.fromCodePoint(code);
-        if (NAMED.has(ch)) events.push({ name: NAMED.get(ch) });
+        if (NAMED.has(ch)) {
+          const name = NAMED.get(ch);
+          // '\r' and '\n' both decode as 'enter'; keep the byte so the
+          // paste-burst collector can collapse a pasted CRLF to one break.
+          events.push(name === 'enter' ? { name, raw: ch } : { name });
+        }
         else if (code >= 0x20 && (code < 0x80 || code > 0x9f)) events.push({ text: point });
         pending = pending.slice(point.length);
       }

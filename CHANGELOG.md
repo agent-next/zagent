@@ -2,6 +2,16 @@
 
 This file is the public-facing release log for the npm package `zagent`.
 
+## 0.0.217 — 2026-09-16
+
+- `zagent models test zai/glm-5.3` works — the provider/model spec that
+  `zagent models` prints now round-trips instead of failing as ambiguous.
+- `zagent sessions --json` and `zagent task list --json` emit real JSON
+  (`{count, total, sessions}` / `{count, tasks}`) instead of silently
+  printing the human table; unknown flags are usage errors.
+- Pasted bursts typed without escape markers can no longer submit the
+  composer line-by-line via a trailing Enter.
+
 ## 0.0.216 — 2026-09-16
 
 - First-run sign-in card no longer dumps a TypeError stack when stdin closes

@@ -142,11 +142,11 @@ sent only to your own provider endpoint.
 | `zagent update [--check]` | Update zagent itself from npm |
 | `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
-| `zagent sessions` | Your task store, in the terminal |
+| `zagent sessions [--json]` | Your task store, in the terminal |
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
 | `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | Inspect or restore workspace checkpoints (undo a turn's file edits) |
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
-| `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
+| `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent cron add\|list\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
 | `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |

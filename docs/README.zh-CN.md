@@ -91,11 +91,11 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent update [--check]` | 从 npm 升级 zagent 自身 |
 | `zagent models [query]` | 搜索模型目录;`models test <provider/model>` 测试连接 |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset [claim\|use five-hour\|use week]] [--json] [--yes]` | Coding-Plan 额度 |
-| `zagent sessions` | 终端里的任务库 |
+| `zagent sessions [--json]` | 终端里的任务库 |
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
 | `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | 查看或恢复 workspace checkpoint（撤销某轮的文件改动） |
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
-| `zagent task list\|archive\|pin\|rename\|delete` | 查看或修改 runtime 任务记录 |
+| `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent cron add\|list\|tick` | 定时 prompt（本地 crontab） |
 | `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
 | `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |

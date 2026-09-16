@@ -44,8 +44,8 @@ if (process.argv[2] === 'test') {
       return { configured, disabled };
     } catch { return { configured: {}, disabled: new Set() }; }
   })();
-  const fail = (msg, modelId) => {
-    if (asJson) console.log(JSON.stringify({ ok: false, providerId: null, modelId, error: msg }, null, 2));
+  const fail = (msg, modelId, resolvedProvider = null) => {
+    if (asJson) console.log(JSON.stringify({ ok: false, providerId: resolvedProvider, modelId, error: msg }, null, 2));
     else console.error(msg);
     process.exit(1);
   };
@@ -79,7 +79,20 @@ if (process.argv[2] === 'test') {
       console.error('usage: zagent models test <provider/model|model> [--json]');
       process.exit(2);
     }
-    if (configured[providerId]) {
+    // `zagent models` prints the CLI Coding Plan key ('zai/glm-5.3'), but the
+    // v2 store the registry mirrors keys it 'builtin:zai-coding-plan'. Alias a
+    // bare family name to its builtin key so the printed spec round-trips
+    // instead of falling into the carriers() ambiguity error.
+    if (!Object.hasOwn(configured, providerId) && !disabled.has(providerId) && !providerId.includes(':')) {
+      const typed = providerId.toLowerCase();
+      const cands = [`builtin:${typed}-coding-plan`, `builtin:${typed}`, `builtin:${typed}-start-plan`];
+      const alias = cands.find(c => Object.hasOwn(configured, c)) ?? cands.find(c => disabled.has(c));
+      if (alias) {
+        if (!asJson) console.error(`note: '${providerId}' resolves as '${alias}'`);
+        providerId = alias;
+      }
+    }
+    if (Object.hasOwn(configured, providerId)) {
       // Canonical model id: the kernel's getModel is exact-match, and
       // config.json keys carry the canonical casing (GLM-5.3, not glm-5.3).
       modelId = configured[providerId].find(m => m.toLowerCase() === modelId.toLowerCase()) ?? modelId;
@@ -90,7 +103,7 @@ if (process.argv[2] === 'test') {
         providerId = accountId;
       }
     } else if (disabled.has(providerId)) {
-      fail(`provider '${providerId}' is disabled in the CLI config`, modelId);
+      fail(`provider '${providerId}' is disabled in the CLI config`, modelId, providerId);
     } else if (providerId.startsWith('account:')) {
       // Registry-native ids (the account-config push): the kernel resolves them
       // against its rebuilt registry — never remap through configured carriers.
