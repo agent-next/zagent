@@ -146,6 +146,15 @@ const kernelVersion = (entry) => {
 
 const args = process.argv.slice(2);
 const rt = findRuntime();
+// --model/--effort only make sense on a headless -p run; answer the usage
+// error before any credential/runtime gates so `zagent --model x` never shows
+// the sign-in card for what is really a flag mistake.
+const { hasSelection, isPrintInvocation, splitSelection, runPrintOnce, printEnvelope } =
+  await import(new URL('./zmax-print.mjs', import.meta.url).href);
+if (hasSelection(args) && !isPrintInvocation(args)) {
+  console.error('zagent: --model/--effort apply to headless -p runs; inside the TUI use /model and /effort');
+  process.exit(2);
+}
 if (args[0] === 'doctor' || !rt) {
   const cfg = `${os.homedir()}/.zcode/cli/config.json`;
   const haveKey = !!(process.env.ZAI_API_KEY || existsSync(`${os.homedir()}/.config/ccz/.api_key`))
@@ -252,6 +261,32 @@ if (args[0] !== 'login' && args[0] !== 'logout') {
   // The chooser already printed the card; a declined choice exits quietly.
   if (needChoice && picked == null && process.stdin.isTTY && process.stderr.isTTY) process.exit(2);
   ensureConfig(picked?.key); // oauth runs proceed with the kernel's own store
+}
+// --model/--effort have no kernel -p flag (its parseArgs table rejects both);
+// selection is protocol-side (session/create takes model+thoughtLevel). Those
+// invocations divert to the app-server runner in zmax-print.mjs; every other
+// -p keeps the kernel path below (including its empty-envelope retry wrapper —
+// this path reports real errors instead, so it needs none).
+if (hasSelection(args)) { // !isPrintInvocation already exited above
+  let sel;
+  try { sel = splitSelection(args); }
+  catch (e) { console.error(`zagent: ${e.message}`); process.exit(2); }
+  const asJson = args.includes('--json') || sel.format === 'json';
+  const write = (s, code) => process.stdout.write(s, () => process.exit(code)); // write-true ≠ flushed — callback form only (r6 #1)
+  try {
+    const r = await runPrintOnce(sel);
+    if (asJson) write(JSON.stringify(printEnvelope(r)) + '\n', r.ok ? 0 : 1);
+    else write((r.answer || `(turn ${r.ended})`) + '\n', r.ok ? 0 : 1);
+  } catch (e) {
+    const msg = String(e?.message ?? e).slice(0, 300);
+    if (asJson) write(JSON.stringify(printEnvelope({ ok: false, error: msg, sessionId: null, durationMs: 0 })) + '\n', 1);
+    else {
+      console.error(`zagent: ${msg}`);
+      const explained = explainProviderError(msg);
+      if (explained) console.error(formatProviderError(explained));
+      process.exit(1);
+    }
+  }
 }
 // Headless JSON runs retry on empty/error-envelope output (product-level parity with
 // harnesses that retry internally; 2 of 3 gate-verdict failures were 429 envelopes).

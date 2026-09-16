@@ -16,17 +16,19 @@ export const COMMANDS = [
   ['doctor [--fix]', 'diagnose the runtime, config, and API key', 'Set up'],
   ['update [--check] [--json]', 'update zagent itself to the latest npm release', 'Set up'],
   ['models [query|test <provider/model|model> [--json]]', 'list providers, search the catalog, or test a model connection', 'Set up'],
-  ['quota [status|usage [--days 1..30]|balance|preview|reset] [--json]', 'Coding Plan quota and account usage', 'Account'],
+  ['quota [status|usage [--days 1..30]|balance|preview|reset [claim|use five-hour|use week]] [--json] [--yes]', 'Coding Plan quota and account usage', 'Account'],
   ['remote [status|connect] [--json]', 'whether this device is registered for remote control (not available yet)', 'Account'],
   ['offpeak [--refresh|--json|tools [on|off]]', 'the off-peak campaign window and tool toggle (exit 0 while open)', 'Account'],
-  ['usage [--session id] [--json]', 'token totals for a session', 'Account'],
+  ['usage [--session id] [--json] | stats [--range all|7d|30d] [--json]', 'token totals for a session, or the app-usage dashboard', 'Account'],
   ['sessions', 'your sessions across CLI and desktop', 'Project'],
   ['diff [sessionId]', 'the file changes a session made', 'Project'],
+  ['rewind [list|latest|<checkpointId>|changes|preview [<checkpointId>]] [--message id] [--session id] [--json]', 'inspect or restore workspace checkpoints (undo a turn\u2019s file edits)', 'Project'],
   ['task list|archive|pin|rename|delete', 'inspect or modify saved task records (no create)', 'Project'],
   ['memory show|index|append', 'view or add project memory', 'Project'],
   ['goal [show|set <text>|pause|resume|clear] [--session id] [--json]', "show or control a session's goal", 'Project'],
   ['subagents [--session id] [--json]', "list a session's child sessions", 'Project'],
-  ['cron add|list|tick', 'schedule prompts to run later', 'Extend'],
+  ['cron add|list|tick', 'schedule prompts to run later (local crontab)', 'Extend'],
+  ['automation list|create|update|delete|check-binding', 'scheduled prompts store served to the kernel', 'Extend'],
   ['plugins', 'inspect and manage local plugins', 'Extend'],
   ['hooks list [--json]', 'list configured hook events', 'Extend'],
   ['import [--dry-run|--apply] [--force] [--json]', 'import Claude Code instructions, commands, and skills', 'Extend'],
@@ -34,20 +36,22 @@ export const COMMANDS = [
   ['--version', 'print the zagent version', 'Debug'],
 ];
 
-// Leading-position options the dispatcher forwards to the runtime. The set is
-// the kernel's own parseArgs table plus its manually pre-parsed flags —
-// identical on 3.11.2 and 3.12.1 — verified by executing each against both
-// builds (2026-09-15). The official --help lists six options its parser rejects
-// outright: --print, --max-turns, --allowed-tools, --permission-mode,
-// --settings, --allow-main-worktree-yolo. They are NOT here: accepting them
-// would forward a guaranteed "Unknown option" that ends in the kernel's own
-// usage text — the wrong product's answer for our product's surface.
+// Leading-position options the dispatcher accepts. The set is the kernel's own
+// parseArgs table plus its manually pre-parsed flags — identical on 3.11.2 and
+// 3.12.1 — verified by executing each against both builds (2026-09-15), plus
+// two zagent extensions the kernel has no flags for: --model/--effort, consumed
+// by zmax-print.mjs's protocol path rather than forwarded. The official --help
+// lists six options its parser rejects outright: --print, --max-turns,
+// --allowed-tools, --permission-mode, --settings, --allow-main-worktree-yolo.
+// They are NOT here: accepting them would forward a guaranteed "Unknown option"
+// that ends in the kernel's own usage text — the wrong product's answer for
+// our product's surface.
 export const ENTRY_FLAGS = new Set([
   '-p', '--prompt', '--json', '--output-format', '--no-color', '--no-browser',
   '--browser-use', '--browser-executable', '--attach', '--cwd', '--locale',
   '--resume', '--target', '--target-replace', '-c', '--continue',
   '-f', '--force', '--force-mcs', '--mode', '--verbose', '--stdio', '--surface',
-  '--disallowedTools', '--disallowed-tools',
+  '--disallowedTools', '--disallowed-tools', '--model', '--effort',
 ]);
 
 // The headless rows `zagent -p --help` prints. Only options a headless prompt
@@ -56,7 +60,9 @@ export const ENTRY_FLAGS = new Set([
 export const HEADLESS_OPTIONS = [
   ['-p, --prompt <text>', 'run one headless prompt'],
   ['--attach <path>', 'attach a local file to the prompt; repeat for more'],
-  ['--mode <build|edit|plan|yolo>', 'permission mode (default yolo for --prompt)'],
+  ['--mode <build|edit|plan|yolo|auto>', 'permission mode (default yolo for --prompt)'],
+  ['--model <provider/model|model>', 'pick the model (zagent extension — protocol-side, bare id = zai provider)'],
+  ['--effort <level>', 'pick the reasoning effort (zagent extension — protocol-side)'],
   ['--disallowed-tools <tools…>', 'comma/space-separated tool denylist (alias --disallowedTools)'],
   ['-c, --continue', 'continue the latest session for this directory'],
   ['--resume <sess_…>', 'resume a persisted session by id'],

@@ -13,6 +13,7 @@ import { readToolPolicy } from './offpeak.mjs';
 import { explainProviderError } from './provider-errors.mjs';
 import { pushAccountConfig } from './account-config.mjs';
 import { configuredKeyFor, configuredAccountKeys } from './account-provider.mjs';
+import { automationHostHandlers } from './automation-host.mjs';
 export { DEFAULT_RUNTIME } from './runtime.mjs';
 
 // Server->client requests the runtime expects answered. session/requestRuntimePreferences is
@@ -63,7 +64,13 @@ export class ZCodeProtocolClient {
     this.runtime = runtime;
     this.child = spawn(nodeBin, [runtime, 'app-server', '--stdio'], { cwd, env: kernelEnv(runtime), stdio: ['pipe', 'pipe', 'inherit'] });
     this.buf = ''; this.decoder = new StringDecoder('utf8'); this.pending = new Map(); this.nextId = 1; this.onNotify = onNotify ?? (() => {});
-    this.requestHandlers = { ...DEFAULT_REQUEST_HANDLERS, ...(requestHandlers ?? {}) };
+    // automation/* is host-served: the kernel's automationPort calls INTO the
+    // client when a model turn invokes Cron* tools (desktop 3.12.x wires it
+    // unconditionally). Back it with the local `zagent cron` store so
+    // model-initiated scheduled prompts work headlessly. A caller can still
+    // override or disable (pass the key with an undefined handler -> -32601).
+    this.requestHandlers = { ...DEFAULT_REQUEST_HANDLERS,
+      ...automationHostHandlers({ cwd }), ...(requestHandlers ?? {}) };
     // stdin can EPIPE/write-after-end during the exit race; without a sink that is an
     // unhandled 'error' event that crashes the host process.
     this.child.stdin.on('error', () => {});

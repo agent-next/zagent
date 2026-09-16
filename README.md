@@ -112,9 +112,11 @@ sent only to your own provider endpoint.
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
 | `zagent sessions` | Your task store, in the terminal |
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
+| `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | Inspect or restore workspace checkpoints (undo a turn's file edits) |
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
-| `zagent cron add\|list\|tick` | Scheduled prompts |
+| `zagent cron add\|list\|tick` | Scheduled prompts (local crontab) |
+| `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
 | `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
 | `zagent plugins` | Manage local plugins |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
@@ -124,6 +126,7 @@ sent only to your own provider endpoint.
 | `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
 | `zagent subagents [--session id] [--json]` | List running and ended child session ids |
 | `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
+| `zagent usage stats [--range all\|7d\|30d] [--json]` | App-usage dashboard: totals, cache hit rate, streaks, per-model/tool breakdown (ZCode 3.12.x+) |
 | `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
 
 `za` is a short alias for `zagent`.

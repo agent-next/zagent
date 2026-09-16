@@ -1,5 +1,6 @@
 // Coding Plan monitor plus legacy desktop billing/reset readers.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, linkSync, rmSync } from 'node:fs';
+import { dirname } from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { decryptCredential, loadCredentialStore, deviceMid } from './credentials.mjs';
@@ -38,9 +39,9 @@ export function identityHeaders(appVersion) {
 }
 // Desktop-credentialed calls refuse redirects (a cross-origin hop would carry the
 // JWT/OAuth token and device MID) and are bounded like the monitor call.
-async function desktopFetch(url, headers) {
+async function desktopFetch(url, headers, { method, body } = {}) {
   try {
-    return await fetch(url, { headers, redirect: 'error', signal: AbortSignal.timeout(15000) });
+    return await fetch(url, { method, headers, body, redirect: 'error', signal: AbortSignal.timeout(15000) });
   } catch {
     // Transport errors may contain request headers; never expose their text.
     throw new Error('Desktop quota transport failed; the result is unknown');
@@ -62,16 +63,100 @@ export async function billing(path, { jwt, appVersion = '3.10.2' } = {}) {
 
 // Coding-plan reset oracle (B2b, verified 2026-09-04): dual-token auth — zcode JWT in
 // Authorization + oauth access token in x-bigmodel-authorization + bigmodel-target-type.
-export async function resetStatus({ appVersion = '3.10.2' } = {}) {
+// Action surface verified against the installed 3.12.1 desktop host: GET status,
+// POST use {idempotency_key, reset_type: FIVE_HOUR|WEEK} -> {used:true},
+// POST opportunity {idempotency_key} -> {granted:true} or business code 3301 with
+// {granted:false, next_try_at}; the host picks the oauth credential by account family.
+function resetOauth(store) {
+  for (const key of ['oauth:zai:access_token', 'oauth:bigmodel:access_token']) {
+    try {
+      const token = store[key] === undefined ? undefined : decryptCredential(store[key]);
+      if (token) return token;
+    } catch { /* a corrupt blob falls through to the next family key */ }
+  }
+  return undefined;
+}
+async function resetRequest(path, { method = 'GET', body, appVersion = '3.10.2' } = {}) {
   const store = loadCredentialStore();
-  const oauth = decryptCredential(store['oauth:zai:access_token']);
-  const r = await desktopFetch(`${BASE}/api/v1/coding-plan/reset/status`, {
-    Authorization: `Bearer ${getZcodeJwt()}`, 'x-bigmodel-authorization': oauth,
+  const headers = {
+    Authorization: `Bearer ${getZcodeJwt()}`, 'x-bigmodel-authorization': resetOauth(store),
     'bigmodel-target-type': 'PERSONAL', ...identityHeaders(appVersion),
     'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(), 'x-os-version': os.release(),
+  };
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  const r = await desktopFetch(`${BASE}/api/v1/coding-plan/reset${path}`, headers, {
+    method, body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const body = await r.json().catch(() => ({}));
-  return { status: r.status, body: redactDeep(body) };
+  let parsed, bodyOk = true;
+  try { parsed = await r.json(); } catch { parsed = {}; bodyOk = false; }
+  // `settled` = the service gave a definitive answer: a sub-500 status with a
+  // parseable body. A 5xx or unreadable body leaves the consume outcome unknown.
+  return { status: r.status, body: redactDeep(parsed), settled: r.status < 500 && bodyOk };
+}
+export function resetStatus(opts) {
+  return resetRequest('/status', opts);
+}
+// Consume-safety: a pending action's idempotency key is persisted BEFORE the POST
+// and cleared only once the service settles the outcome (sub-500 + parseable
+// body — a business error still means the consume did not silently happen). A
+// transport failure, 5xx, or unreadable body leaves the file, so a retry replays
+// the SAME key and the service can dedupe instead of consuming a second scarce
+// ticket. One file per action slot under ~/.zcode/cli/reset-pending/ (0600),
+// published via tmp+hardlink so the first concurrent writer's key wins and
+// losers converge on it rather than minting competing keys.
+const pendingResetFile = (home, slot) => `${home}/.zcode/cli/reset-pending/${slot}.json`;
+function pendingKey(slot, home) {
+  try {
+    const parsed = JSON.parse(readFileSync(pendingResetFile(home, slot), 'utf8'));
+    return /^[0-9a-f-]{36}$/.test(parsed?.idempotency_key ?? '') ? parsed.idempotency_key : null;
+  } catch { return null; }
+}
+// Parks `key` for the slot unless a valid key is already parked; returns the key
+// that is actually persisted (the winner's on a concurrent collision).
+function rememberPending(slot, key, home) {
+  const file = pendingResetFile(home, slot);
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(
+    { version: 1, idempotency_key: key, created_at: new Date().toISOString() }, null, 1),
+    { mode: 0o600 });
+  try {
+    linkSync(tmp, file);  // atomic create-if-absent: the first writer wins
+  } catch {
+    // Slot already parked (or hardlinks unsupported): keep a valid parked key;
+    // only replace a missing/corrupt one so OUR key is the persisted one.
+    if (pendingKey(slot, home) === null) {
+      try { renameSync(tmp, file); } catch { /* a winner re-parked meanwhile */ }
+    }
+  }
+  rmSync(tmp, { force: true });
+  return pendingKey(slot, home) ?? key;
+}
+function forgetPending(slot, key, home) {
+  try {
+    // Compare-and-delete: a concurrent run may have parked its own key after we
+    // settled — only remove the file while it still holds OURS.
+    if (pendingKey(slot, home) !== key) return;
+    rmSync(pendingResetFile(home, slot), { force: true });
+  } catch { /* cleanup is best-effort; a stale file only replays a settled key */ }
+}
+export const RESET_TYPES = { 'five-hour': 'FIVE_HOUR', week: 'WEEK' };
+export async function resetUse(resetType, { home = os.homedir(), ...opts } = {}) {
+  const mapped = RESET_TYPES[resetType];
+  if (!mapped) throw new Error(`unknown reset type "${resetType}" (expected five-hour|week)`);
+  const slot = `use-${mapped}`;
+  const key = rememberPending(slot, pendingKey(slot, home) ?? crypto.randomUUID(), home);
+  const r = await resetRequest('/use', { ...opts, method: 'POST',
+    body: { idempotency_key: key, reset_type: mapped } });
+  if (r.settled) forgetPending(slot, key, home);
+  return r;
+}
+export async function resetClaim({ home = os.homedir(), ...opts } = {}) {
+  const key = rememberPending('claim', pendingKey('claim', home) ?? crypto.randomUUID(), home);
+  const r = await resetRequest('/opportunity', { ...opts, method: 'POST',
+    body: { idempotency_key: key } });
+  if (r.settled) forgetPending('claim', key, home);
+  return r;
 }
 
 // ZAI_API_KEY explicitly overrides account selection. Otherwise use the CLI's

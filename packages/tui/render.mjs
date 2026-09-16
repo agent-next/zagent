@@ -119,7 +119,17 @@ export function renderEntry(entry, theme, width, options = {}) {
     const shown = body.slice(0, cap);
     for (const line of shown) lines.push(`  ${theme.faint(line)}`);
     const hidden = body.length - shown.length;
-    if (hidden > 0) lines.push(`  ${theme.faint(str.reasoningHidden(hidden))}`);
+    if (hidden > 0) {
+      const count = str.reasoningHidden(hidden);
+      // While the stream is open this is the LIVE line — the only one the
+      // append-only writer repaints. Append the newest reasoning fragment so a
+      // long thinking phase visibly moves instead of sitting behind a frozen
+      // counter (the PTY-measured "screen shows only a spinner" defect). It
+      // never commits: on settle the writer erases it and the count alone lands.
+      const budget = inner - 2 - stringWidth(count);
+      const tail = entry.done !== true && budget > 8 ? clipToWidth(body.at(-1), budget) : '';
+      lines.push(`  ${theme.faint(tail ? `${count}  ${tail}` : count)}`);
+    }
     return lines;
   }
 

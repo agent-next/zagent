@@ -26,6 +26,27 @@ export async function sessionUsage(client, sessionId) {
   };
 }
 
+// App-usage dashboard (live-verified 2026-09-16, runtime 3.12.1): usage/stats
+// takes strict {range, timeZone?} — range ∈ all|7d|30d — and answers a snapshot
+// {range, generatedAt, timeZone, source:'agent-db', summary, heatmap,
+// dailyModelUsage, models, tools}. v4/usage/stats is the same surface under the
+// v4 prefix — retry it once on -32601 for runtimes that only register that name.
+export const USAGE_STATS_RANGES = ['all', '7d', '30d'];
+
+export async function appUsageStats(client, { range = '7d', timeZone } = {}) {
+  if (!USAGE_STATS_RANGES.includes(range)) {
+    throw new Error(`appUsageStats: range must be one of ${USAGE_STATS_RANGES.join('|')} (got '${range}')`);
+  }
+  const params = { range };
+  if (typeof timeZone === 'string' && timeZone) params.timeZone = timeZone;
+  try {
+    return await client.call('usage/stats', params, 20000);
+  } catch (e) {
+    if (e?.code !== -32601) throw e;
+    return client.call('v4/usage/stats', params, 20000);
+  }
+}
+
 export function compactSession(client, sessionId, { timeoutMs = 120000 } = {}) {
   return client.call('session/compact', { sessionId }, timeoutMs); // returns {response, snapshot}
 }

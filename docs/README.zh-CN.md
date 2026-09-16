@@ -82,12 +82,14 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
 | `zagent update [--check]` | 从 npm 升级 zagent 自身 |
 | `zagent models [query]` | 搜索模型目录;`models test <provider/model>` 测试连接 |
-| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan 额度 |
+| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset [claim\|use five-hour\|use week]] [--json] [--yes]` | Coding-Plan 额度 |
 | `zagent sessions` | 终端里的任务库 |
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
+| `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | 查看或恢复 workspace checkpoint（撤销某轮的文件改动） |
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | 查看或修改 runtime 任务记录 |
-| `zagent cron add\|list\|tick` | 定时 prompt |
+| `zagent cron add\|list\|tick` | 定时 prompt（本地 crontab） |
+| `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
 | `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
 | `zagent plugins` | 管理本地插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
@@ -97,6 +99,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | 显示或控制当前会话目标 |
 | `zagent subagents [--session id] [--json]` | 列出运行中与已结束的子会话 |
 | `zagent usage [--session id] [--json]` | 会话 token 总量 + 上下文 baseline 分解 |
+| `zagent usage stats [--range all\|7d\|30d] [--json]` | 应用用量面板：总量、缓存命中率、连续天数、按模型/工具分解（ZCode 3.12.x+） |
 | `zagent remote [status\|connect] [--json]` | 本机 relay 设备 id / last ack（D1/D2；不提供第二设备控制） |
 
 `za` 是 `zagent` 的短别名。
@@ -122,7 +125,7 @@ runtime 发现覆盖 Linux / macOS / Windows（三平台均有单测）。**Linu
 查询账户合计调用次数和服务端 token（支持最近 1–30 个新加坡日历日，含尚未结束的当天）。
 token 不等于计费 credits，共享账户的用量无法按 ccz / zagent 归因；缺失额度保持未知，百分比可能取整。
 `ZAI_API_KEY` 显式覆盖查询账户，否则使用 CLI 当前 provider 的 key；仅当 CLI 配置不存在时回退到 ccz key 文件。
-`balance` / `preview` 查询独立的桌面账单，空余额不代表 Coding Plan 用量为零；`reset` 仅读取重置卡状态，不消耗卡。
+`balance` / `preview` 查询独立的桌面账单，空余额不代表 Coding Plan 用量为零；裸 `reset` 仅读取重置卡状态，`reset use` 消耗卡（稀缺额度，需确认或 `--yes`）、`reset claim` 申请卡。
 
 task / memory / diff / quota 输出可能含私有工作区、prompt 或账户数据。分享日志前请脱敏，切勿提交凭据或配置。
 

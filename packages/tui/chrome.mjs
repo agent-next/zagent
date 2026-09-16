@@ -25,13 +25,25 @@ const clip = clipToWidth;
  */
 const field = (text, paint) => ({ text: sanitizeText(text, { keepNewlines: false }), paint });
 
+// Locating the hardware cursor inside the wrapped rows: a private-use sentinel
+// (one cell, unreachable from sanitised input) is spliced in at the insertion
+// point and wrapped WITH the text. The mark then rides the same greedy wrap the
+// display uses — exact even where whitespace collapses or a token hard-splits,
+// the two places a prefix-wrap of value.slice(0, cursor) undercounts.
+const CURSOR_MARK = '';
+
 /**
  * The prompt box. It WRAPS rather than clipping: a prompt longer than the
  * terminal used to disappear as you typed it, which made the tool feel broken
  * before it did anything wrong. The box grows with the text and is capped so it
  * can never push the transcript off screen.
+ *
+ * Returns the rendered lines plus the cursor cell: {row, col} is a line index
+ * into `lines` and a 0-based column on that line, or null when no cursor was
+ * asked for. The visible window follows the cursor — a tail-only slice hid it
+ * as soon as the user moved it into the scrolled-off rows.
  */
-export function renderInputBox(value, theme, width, options = {}) {
+function layoutInputBox(value, theme, width, options = {}) {
   const g = theme.glyph;
   const box = Math.max(20, width);
   const placeholder = options.placeholder ?? (options.str ?? stringsFor()).placeholder;
@@ -46,29 +58,63 @@ export function renderInputBox(value, theme, width, options = {}) {
   const room = Math.max(1, box - lead - 2);          // ... + " │"
   const maxRows = Math.max(1, options.maxInputRows ?? 8);
 
-  const text = showPlaceholder ? placeholder : value;
-  let rows = wrapText(text, room);
-  let truncated = false;
-  if (rows.length > maxRows) {                       // keep the TAIL: that is where the cursor is
-    rows = rows.slice(rows.length - maxRows);
-    truncated = true;
+  // A literal U+E000 in pasted input would collide with the mark — strip it so
+  // exactly one exists. The cursor is a code-unit index into the (pre-sanitise)
+  // value; clamp it onto the displayed text — a stripped byte can leave it stale.
+  const text = (showPlaceholder ? placeholder : value).replaceAll(CURSOR_MARK, '');
+  const at = typeof options.cursor === 'number'
+    ? Math.min(Math.max(0, options.cursor | 0), showPlaceholder ? 0 : text.length)
+    : -1;
+  const rows = wrapText(at < 0 ? text : text.slice(0, at) + CURSOR_MARK + text.slice(at), room);
+
+  let cursor = null;
+  if (at >= 0) {
+    const i = rows.findIndex(row => row.includes(CURSOR_MARK));
+    if (i >= 0) {
+      const pos = rows[i].indexOf(CURSOR_MARK);
+      rows[i] = rows[i].slice(0, pos) + rows[i].slice(pos + CURSOR_MARK.length);
+      cursor = { row: i, col: lead + widthOf(rows[i].slice(0, pos)) };
+    }
   }
 
+  let start = cursor === null
+    ? Math.max(0, rows.length - maxRows)           // the tail, where the cursor rests
+    : Math.min(Math.max(0, rows.length - maxRows), cursor.row);
+  // The "earlier lines" note replaces the FIRST visible row — it must never be
+  // the row the cursor is on, so the window slides one earlier to clear it.
+  if (cursor !== null && start > 0 && cursor.row === start) start -= 1;
+  const view = rows.slice(start, start + maxRows);
+
   const lines = [border(g.boxTL + g.boxH.repeat(box - 2) + g.boxTR)];
-  rows.forEach((row, i) => {
+  view.forEach((row, i) => {
     const shown = clip(row, room);
     const gap = ' '.repeat(Math.max(0, room - widthOf(shown)));
     // The marker sits on the first visible row; continuations align under the text.
     const lead2 = i === 0 ? theme.accent(marker) : ' '.repeat(widthOf(marker));
     lines.push(`${border(g.boxV)} ${lead2} ${paint(shown)}${gap} ${border(g.boxV)}`);
   });
-  if (truncated) {
-    const note = clip((options.str ?? stringsFor()).earlierLines(wrapText(text, room).length - maxRows), room);
+  if (start > 0) {
+    const note = clip((options.str ?? stringsFor()).earlierLines(start), room);
     lines[1] = `${border(g.boxV)} ${theme.accent(marker)} ${theme.faint(note)}` +
       `${' '.repeat(Math.max(0, room - widthOf(note)))} ${border(g.boxV)}`;
   }
   lines.push(border(g.boxBL + g.boxH.repeat(box - 2) + g.boxBR));
-  return lines;
+  if (cursor !== null) cursor.row += 1 - start;    // into `lines`: +1 for the top border
+  return { lines, cursor };
+}
+
+export function renderInputBox(value, theme, width, options = {}) {
+  return layoutInputBox(value, theme, width, options).lines;
+}
+
+/**
+ * Where the input cursor lands: a line index into the rendered box and a
+ * 0-based cell column on it, plus the box height — the caller needs it to find
+ * the box inside the footer. Null when options.cursor is not a number.
+ */
+export function inputBoxCursor(value, theme, width, options = {}) {
+  const { lines, cursor } = layoutInputBox(value, theme, width, options);
+  return cursor === null ? null : { row: cursor.row, col: cursor.col, rows: lines.length };
 }
 
 // Narrow, unambiguous marks only. The obvious emoji picks (U+23F8 pause,
@@ -255,7 +301,7 @@ export function renderCompletions(completion, theme, width, max = COMPLETION_ROW
   const hidden = items.length - Math.min(items.length, start + max);
   // The status line is always painted — a stable footer height plus the
   // position count and the filter hint the other CLIs show under the list.
-  lines.push(`    ${theme.faint(clip((completion.str ?? stringsFor()).moreCandidates(hidden, index + 1, items.length), Math.max(8, width - 6)))}`);
+  lines.push(`    ${theme.faint(clip((completion.str ?? theme.str ?? stringsFor()).moreCandidates(hidden, index + 1, items.length), Math.max(8, width - 6)))}`);
   return lines;
 }
 
@@ -344,7 +390,7 @@ export function renderChooser({ title, detail, items, index, hint }, theme, widt
     const label = clip(one(`${i + 1}. ${item.label}${item.note ? `  ${item.note}` : ''}`), Math.max(8, width - 6));
     lines.push(`  ${chosen ? theme.accent('>') : ' '} ${chosen ? theme.accent(label) : theme.muted(label)}`);
   });
-  lines.push(`  ${theme.faint(clip(one(hint ?? stringsFor().chooseHint), Math.max(8, width - 2)))}`);
+  lines.push(`  ${theme.faint(clip(one(hint ?? (theme.str ?? stringsFor()).chooseHint), Math.max(8, width - 2)))}`);
   return lines;
 }
 

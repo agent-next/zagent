@@ -56,7 +56,21 @@ export function createKeyDecoder() {
           }
           const alt = pending.slice(0, 2);
           if (NAMED.has(alt)) { events.push({ name: NAMED.get(alt) }); pending = pending.slice(2); }
-          else { events.push({ name: 'escape' }); pending = pending.slice(1); }
+          else {
+            const altCode = pending.codePointAt(1);
+            if (pending.length === 2 && altCode >= 0xD800 && altCode <= 0xDBFF) break;
+            // ESC followed by a printable key before the escape flush is a meta
+            // chord (alt+key), not the Escape key — a real Escape arrives as a
+            // lone byte and only resolves through flushEscape(). Decoding the
+            // chord as escape+text made alt+x abort the turn and then type 'x'.
+            // C1 controls (0x80-0x9f) stay on the escape path; DEL (alt+bksp)
+            // and everything printable are chords.
+            if (altCode >= 0x20 && (altCode < 0x80 || altCode > 0x9f)) {
+              const point = String.fromCodePoint(altCode);
+              events.push({ name: 'meta', key: point });
+              pending = pending.slice(1 + point.length);
+            } else { events.push({ name: 'escape' }); pending = pending.slice(1); }
+          }
           continue;
         }
         const code = pending.codePointAt(0);
@@ -65,7 +79,7 @@ export function createKeyDecoder() {
         if (pending.length === 1 && code >= 0xD800 && code <= 0xDBFF) break;
         const point = String.fromCodePoint(code);
         if (NAMED.has(ch)) events.push({ name: NAMED.get(ch) });
-        else if (code >= 0x20) events.push({ text: point });
+        else if (code >= 0x20 && (code < 0x80 || code > 0x9f)) events.push({ text: point });
         pending = pending.slice(point.length);
       }
       return events;

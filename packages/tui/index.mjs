@@ -16,7 +16,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
   toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
-import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, readContextMeter, COMPLETION_ROWS } from './chrome.mjs';
+import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, readContextMeter, COMPLETION_ROWS, inputBoxCursor } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
@@ -53,6 +53,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // host.locale is one of the members the TUI was handed and ignored. The runtime
   // supports en-US / zh-CN / auto, and this is a Chinese model's client.
   const str = stringsFor(host.locale);
+  // chrome.mjs resolves locale through theme.str — attaching it is what reaches
+  // the permission prompt, chooser hints and the completion status line. It was
+  // never set, so a zh-CN host still got an English 'needs permission'.
+  theme.str = str;
 
   const ui = {
     input: { value: '', cursor: 0 },
@@ -147,8 +151,19 @@ export async function runTui(host = {}, { deps = null } = {}) {
           completion: ui.completion, completionRows: completionPageRows(), str,
           spinnerFrame: ui.spinnerFrame, activity: ui.activity,
           mcp: ui.mcp, goal: ui.goal, agents: getSubagentCount(state),
+          cursor: ui.input.cursor,
         });
-    screen.paint(commit, [...live, ...tail]);
+    // Park the hardware cursor inside the input box — the whole point of the
+    // tracked cursor is that the user can SEE where the next keystroke lands.
+    // The box is the last block before the one-line status, so its top is
+    // tail.length - 1 - box height.
+    let cursor = null;
+    if (!ui.permission && !ui.chooser) {
+      const spot = inputBoxCursor(ui.input.value, theme, screen.width,
+        { busy: ui.busy, str, cursor: ui.input.cursor });
+      if (spot) cursor = { line: live.length + tail.length - 1 - spot.rows + spot.row, col: spot.col };
+    }
+    screen.paint(commit, [...live, ...tail], cursor);
   };
 
   let spinner = null;
@@ -206,6 +221,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       colorScheme: scheme === 'auto' ? (host.theme === 'light' ? 'light' : 'dark') : scheme,
       ascii: process.env.ZAGENT_ASCII === '1',
     });
+    theme.str = str;
     draw();
   };
 
@@ -843,6 +859,9 @@ export async function runTui(host = {}, { deps = null } = {}) {
     stdout.removeListener?.('resize', draw);
     process.removeListener('SIGTERM', finish);
     process.removeListener('SIGHUP', finish);
+    process.removeListener('SIGINT', finish);
+    process.removeListener('uncaughtException', onFatal);
+    process.removeListener('unhandledRejection', onRejection);
     screen.clearLive();
     try { stdin.setRawMode?.(false); } catch {}
     screen.writeRaw('\x1b[?2004l');
@@ -1115,20 +1134,57 @@ export async function runTui(host = {}, { deps = null } = {}) {
     }
   }
 
-  try { stdin.setRawMode?.(true); } catch {}
-  screen.writeRaw('\x1b[?2004h');            // bracketed paste: paste arrives verbatim
-  stdin.resume?.();
-  stdin.setEncoding?.('utf8');
-  draw();
+  // The crash guard goes in BEFORE raw mode: from here to exit() the terminal
+  // is ours, and any death that skips exit() — a fault, an outside kill — must
+  // still hand back a sane terminal. Pre-fix the only release was exit(), so an
+  // uncaught error left the shell in raw mode with bracketed paste armed.
+  const onFatal = (err) => {
+    try { stdin.setRawMode?.(false); } catch {}
+    screen.writeRaw('\x1b[?2004l');
+    // The stack belongs to the runtime's diagnostic log — on the user's screen
+    // it is exactly the stack-on-screen defect the journeys already gate.
+    logDiagnostic(`fatal: ${err?.stack || err}`);
+    try { process.stderr.write(`zagent: fatal: ${String(err?.message || err).split('\n')[0].slice(0, 300)}\n`); } catch {}
+    process.exit(1);
+  };
+  // Raw mode turns a terminal ctrl-c into the 0x03 byte, so an observed SIGINT
+  // is always an outside kill — it takes SIGTERM's graceful finish, not the
+  // key path.
+  process.once('SIGINT', finish);
+  process.once('uncaughtException', onFatal);
+  // A rejection is fatal only when nothing else handles it: if the host process
+  // has its own unhandledRejection listener it owns the survive/die call — the
+  // process is staying up, so there is nothing to restore and exiting here
+  // would override its intent. `on`, not `once`: a deferred rejection must not
+  // disarm the guard for a later unowned one.
+  const onRejection = (err) => {
+    if (process.listenerCount('unhandledRejection') > 1) return;
+    onFatal(err);
+  };
+  process.on('unhandledRejection', onRejection);
 
-  await new Promise((resolve) => {
-    resolveRun = resolve;
-    stdin.on('data', onData);
-    stdin.on('end', finish);
-    stdout.on?.('resize', draw);
-    process.once('SIGTERM', finish);
-    process.once('SIGHUP', finish);
-  });
+  try {
+    try { stdin.setRawMode?.(true); } catch {}
+    screen.writeRaw('\x1b[?2004h');            // bracketed paste: paste arrives verbatim
+    stdin.resume?.();
+    stdin.setEncoding?.('utf8');
+    draw();
+
+    await new Promise((resolve) => {
+      resolveRun = resolve;
+      stdin.on('data', onData);
+      stdin.on('end', finish);
+      stdout.on?.('resize', draw);
+      process.once('SIGTERM', finish);
+      process.once('SIGHUP', finish);
+    });
+  } finally {
+    // A throw between the guard and the run loop must not leave it armed —
+    // the caller may catch the rejection and live on with a sane terminal.
+    process.removeListener('SIGINT', finish);
+    process.removeListener('uncaughtException', onFatal);
+    process.removeListener('unhandledRejection', onRejection);
+  }
   exit();
 }
 

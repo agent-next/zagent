@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // zagent usage — session/usage on the most recent tasks-index row, or --session.
 // Reports the runtime's own token totals plus inputBaselineBySource (the GUI's
-// context-breakdown source).
+// context-breakdown source). `usage stats` is the GUI's app-usage dashboard:
+// usage/stats {range, timeZone} → summary/heatmap/models/tools (3.12.1).
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { sessionUsage } from '../driver/session-control.mjs';
+import { appUsageStats, sessionUsage, USAGE_STATS_RANGES } from '../driver/session-control.mjs';
 import { openTasksDb } from '../driver/tasks-index.mjs';
 import { NOT_RUNNING, isNotRunning } from './session-errors.mjs';
 
@@ -37,28 +38,41 @@ const agoWords = (ms) => {
 // A tasks-index row proves a session existed, not that it still runs: sessions
 // live inside the process that owns them, so a stale id answers "not found".
 
-export const USAGE = 'usage: zagent usage [--session <id>] [--json]';
+export const USAGE = 'usage: zagent usage [--session <id>] [--json] | zagent usage stats [--range all|7d|30d] [--json]';
 
 export function parseUsageArgs(argv) {
   let json = false;
   let session;
+  let range;
+  const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') { json = true; continue; }
-    if (a === '--session') {
+    if (a === '--session' || a === '--range') {
       const v = argv[++i];
       if (typeof v !== 'string' || !v.trim() || v.startsWith('-')) return { error: USAGE };
-      session = v.trim();
+      if (a === '--session') session = v.trim(); else range = v.trim();
       continue;
     }
-    if (a.startsWith('--session=')) {
-      const v = a.slice('--session='.length).trim();
+    if (a.startsWith('--session=') || a.startsWith('--range=')) {
+      const v = a.slice(a.indexOf('=') + 1).trim();
       if (!v) return { error: USAGE };
-      session = v;
+      if (a.startsWith('--session=')) session = v; else range = v;
       continue;
     }
+    if (a.startsWith('-')) return { error: USAGE };
+    positional.push(a);
+  }
+  if (positional.length > 1 || (positional.length === 1 && positional[0] !== 'stats')) {
     return { error: USAGE };
   }
+  if (positional[0] === 'stats') {
+    if (session !== undefined) return { error: USAGE };
+    const r = range ?? '7d';
+    if (!USAGE_STATS_RANGES.includes(r)) return { error: USAGE };
+    return { action: 'stats', json, range: r };
+  }
+  if (range !== undefined) return { error: USAGE };
   return { json, session };
 }
 
@@ -79,6 +93,41 @@ async function defaultCreateClient() {
   }
 }
 
+const pct = (v) => (typeof v === 'number' && Number.isFinite(v)) ? `${(v * 100).toFixed(1)}%` : 'n/a';
+
+function printStats(stdout, snap) {
+  const s = snap?.summary ?? {};
+  const when = typeof snap?.generatedAt === 'number' ? new Date(snap.generatedAt).toISOString() : 'unknown';
+  stdout.write(`app usage (source: ${snap?.source ?? 'unknown'}, generated: ${when})\n`);
+  stdout.write(`range: ${snap?.range ?? 'unknown'}\n`);
+  for (const k of ['totalTokens', 'inputTokens', 'outputTokens', 'reasoningTokens',
+    'cacheReadTokens', 'cacheCreationTokens', 'totalSessions', 'totalTurns',
+    'toolCallCount', 'activeDays', 'currentStreakDays', 'longestStreakDays',
+    'longestSessionMs', 'peakDayTokens', 'avgTimeToFirstTokenMs', 'avgTurnDurationMs']) {
+    const v = s[k];
+    stdout.write(`${k === 'totalSessions' ? 'sessions' : k === 'totalTurns' ? 'turns' : k === 'toolCallCount' ? 'toolCalls' : k}: ${v ?? 'n/a'}\n`);
+  }
+  stdout.write(`cacheHitRate: ${pct(s.cacheHitRate)}\n`);
+  stdout.write(`toolErrorRate: ${pct(s.toolErrorRate)}\n`);
+  stdout.write(`modelErrorRate: ${pct(s.modelErrorRate)}\n`);
+  const fav = s.favoriteModel;
+  stdout.write(`favoriteModel: ${fav?.modelId ?? '(none)'}${fav ? ` (${pct(fav.share)})` : ''}\n`);
+  const models = Array.isArray(snap?.models) ? snap.models : [];
+  if (models.length) {
+    stdout.write('models:\n');
+    for (const m of models) {
+      stdout.write(`  ${m?.modelId ?? '(unknown)'}: ${m?.totalTokens ?? 0} tokens (${pct(m?.share)}, ${m?.requestCount ?? 0} requests)\n`);
+    }
+  }
+  const tools = Array.isArray(snap?.tools) ? snap.tools : [];
+  if (tools.length) {
+    stdout.write('tools:\n');
+    for (const t of tools) {
+      stdout.write(`  ${t?.toolName ?? '(unknown)'}: ${t?.callCount ?? 0} calls (${pct(t?.errorRate)} errors)\n`);
+    }
+  }
+}
+
 export async function runUsage(argv, opts = {}) {
   const stdout = opts.stdout ?? process.stdout;
   const stderr = opts.stderr ?? process.stderr;
@@ -86,6 +135,40 @@ export async function runUsage(argv, opts = {}) {
   if (parsed.error) {
     stderr.write(`${parsed.error}\n`);
     return 2;
+  }
+  if (parsed.action === 'stats') {
+    let client = opts.client;
+    let owned = false;
+    if (!client) {
+      try {
+        client = await (opts.createClient ?? defaultCreateClient)();
+        owned = true;
+      } catch (e) {
+        stderr.write(`usage stats: ${e?.message ?? e}\n`);
+        return 1;
+      }
+    }
+    try {
+      const snap = await appUsageStats(client, {
+        range: parsed.range,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      if (parsed.json) {
+        stdout.write(`${JSON.stringify(snap, null, 2)}\n`);
+      } else {
+        printStats(stdout, snap);
+      }
+      return 0;
+    } catch (e) {
+      if (e?.code === -32601) {
+        stderr.write('usage stats: this runtime does not serve usage/stats (needs ZCode desktop 3.12.x or newer)\n');
+      } else {
+        stderr.write(`usage stats: ${e?.message ?? e}\n`);
+      }
+      return 1;
+    } finally {
+      if (owned) try { client.close?.(); } catch {}
+    }
   }
   let sessionId = parsed.session;
   if (!sessionId) {
