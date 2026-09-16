@@ -2,6 +2,11 @@
 
 This file is the public-facing release log for the npm package `zagent`.
 
+## 0.0.216 — 2026-09-16
+
+- First-run sign-in card no longer dumps a TypeError stack when stdin closes
+  early (ctrl+D, hung-up terminal); it declines quietly instead.
+
 ## 0.0.215 — 2026-09-16
 
 - `/login` works end to end in the TUI: the bare command opens the provider

@@ -62,9 +62,12 @@ async function chooseSignIn() {
   const { createInterface } = await import('node:readline');
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
-    const pick = (await rl.question('sign in [1/2/3]: ')).trim();
+    // rl.question resolves undefined when the interface closes early — stdin
+    // EOF (ctrl+D), a hung-up pty — and a bare .trim() turned that into an
+    // uncaught TypeError stack on the user's screen.
+    const pick = ((await rl.question('sign in [1/2/3]: ')) ?? '').trim();
     if (pick === '2') {
-      const k = (await rl.question('paste ZAI_API_KEY: ')).trim();
+      const k = ((await rl.question('paste ZAI_API_KEY: ')) ?? '').trim();
       return k ? { key: k } : null;
     }
     if (pick === '1') {
