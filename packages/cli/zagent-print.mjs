@@ -16,6 +16,9 @@ import { setMode, MODES } from '../driver/session-control.mjs';
 import { autoAllow } from '../driver/permissions.mjs';
 
 const VALUE_FLAGS = new Set(['--model', '--effort', '--mode', '--cwd', '--output-format', '--locale']);
+// GLM accepts reasoningLevel/thoughtLevel low|high|max (same contract as
+// commit-msg's --effort); anything else would fly to the provider unvalidated.
+export const EFFORTS = ['low', 'high', 'max'];
 // Presentation-only flags a headless run can accept and ignore without lying.
 const IGNORED_FLAGS = new Set(['--no-color', '--no-browser', '--verbose']);
 // Flags whose semantics this path would silently break — refuse loudly.
@@ -43,7 +46,8 @@ export function splitSelection(args) {
     const [name, eq] = a.includes('=') ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a, undefined];
     if (a === '-p' || name === '--prompt') {
       sel.prompt = eq !== undefined ? eq : args[++i];
-      if (typeof sel.prompt !== 'string') throw new Error('-p/--prompt requires a prompt text');
+      if (typeof sel.prompt !== 'string' || !sel.prompt || sel.prompt.startsWith('-'))
+        throw new Error('-p/--prompt requires a prompt text');
       continue;
     }
     if (VALUE_FLAGS.has(name)) {
@@ -73,6 +77,11 @@ export function splitSelection(args) {
     throw new Error('-p/--prompt requires a prompt text');
   if (sel.mode && !MODES.includes(sel.mode))
     throw new Error(`--mode must be one of ${MODES.join('|')} (got '${sel.mode}')`);
+  if (sel.effort) {
+    if (!EFFORTS.includes(sel.effort.toLowerCase()))
+      throw new Error(`--effort must be one of ${EFFORTS.join('|')} (got '${sel.effort}')`);
+    sel.effort = sel.effort.toLowerCase();
+  }
   return sel;
 }
 

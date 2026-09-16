@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { loadCatalog } from '../driver/providers.mjs';
+import { EFFORTS } from './zagent-print.mjs';
 
 const rest = process.argv.slice(2);
 const asJson = rest.includes('--json');
@@ -41,6 +42,14 @@ let modelRef, effort;
     console.error(usage);
     process.exit(2);
   }
+  // GLM accepts reasoningLevel low|high|max — reject anything else before it
+  // flies to the provider (same contract as -p --effort in zagent-print.mjs).
+  if (effort && !EFFORTS.includes(effort.toLowerCase())) {
+    console.error(`--effort must be one of ${EFFORTS.join('|')} (got '${effort}')`);
+    console.error(usage);
+    process.exit(2);
+  }
+  if (effort) effort = effort.toLowerCase();
 }
 
 const fail = (msg, extra = {}) => {

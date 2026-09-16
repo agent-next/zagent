@@ -4,6 +4,18 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.219 — 2026-09-16
+
+- `zagent -p`/`--prompt` with a missing, empty, or flag-shaped value now
+  fails with zagent's own usage error (exit 2) instead of leaking the
+  kernel's `Usage: zcode` block.
+- `--effort` is validated client-side against `low|high|max` on both `-p`
+  headless runs and `commit-msg` — invalid values exit 2 before reaching
+  the provider.
+- The TUI coalesces frame requests to one paint per 16 ms window and
+  flushes a held frame on exit, so a crash can't leave a dangling
+  repaint.
+
 ## 0.0.218 — 2026-09-16
 
 - `zagent commit-msg` drafts a commit message from your staged (or

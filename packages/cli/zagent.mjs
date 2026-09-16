@@ -158,6 +158,25 @@ if (hasSelection(args) && !isPrintInvocation(args)) {
   console.error('zagent: --model/--effort apply to headless -p runs; inside the TUI use /model and /effort');
   process.exit(2);
 }
+// A -p/--prompt with no value reaches the kernel parser, which answers our
+// product's mistake with ITS usage ("Usage: zcode", "zcode 0.16.5"). A
+// flag-shaped next token would be swallowed as the prompt text, so a bare or
+// flag-followed -p is a usage error here (same rule splitSelection applies).
+{
+  // Only flag-leading invocations parse -p as the prompt flag; the words that
+  // route through this file (doctor/login/logout/app-server) own their args.
+  if (!args.length || args[0].startsWith('-')) {
+    const missing = (v) => !v || v.startsWith('-'); // undefined, '' or flag-shaped
+    const bare = args.some((a, i) => (a === '-p' || a === '--prompt') && missing(args[i + 1]));
+    const emptyEq = args.some(a =>
+      (a.startsWith('--prompt=') && !a.slice('--prompt='.length)) ||
+      (a.startsWith('-p=') && !a.slice(3)));
+    if (bare || emptyEq) {
+      console.error("zagent: -p/--prompt requires a prompt text (use --prompt=... if the prompt starts with '-')");
+      process.exit(2);
+    }
+  }
+}
 // 'doctor bogus' used to run the full diagnosis and exit 0 — a mistyped arg
 // must not be swallowed. (The !rt fallback below stays permissive: bin/zagent
 // already validated the command name upstream.)

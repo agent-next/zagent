@@ -17,6 +17,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
   toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
+import { createFrameScheduler } from './frames.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, renderPrompt, readContextMeter, COMPLETION_ROWS, inputBoxCursor } from './chrome.mjs';
 import { effortItems, modelItems, modelOptionId, modelOptionMatches, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
@@ -33,6 +34,10 @@ import { sanitizeText } from './sanitize.mjs';
 import { listSkills, listConversationsAsync, mcpSummary } from '../driver/catalog.mjs';
 
 const SPINNER_MS = 90;
+// Paint-rate ceiling: streaming deltas, the spinner and key echoes all funnel
+// through one scheduler, so no source can repaint faster than ~60 fps (codex's
+// FrameRequester caps at 120; opencode batches at 16 ms — same order).
+const FRAME_MS = 16;
 const DOUBLE_CTRL_C_MS = 2000;
 // Armed-interrupt window (opencode parity): the first Esc while a turn runs
 // only flips the status hint; a second inside the window aborts.
@@ -169,7 +174,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     addNotice(state, str.noModelAccess, 'warning');
   }
 
-  const draw = () => {
+  const paintNow = () => {
     if (exiting) return;
     const foldOf = (entry, i) => foldStateFor(ui.fold, entry, i);
     const { commit, live } = composeFrame(state, theme, screen.width, { str, foldOf });
@@ -208,6 +213,15 @@ export async function runTui(host = {}, { deps = null } = {}) {
     }
     screen.paint(commit, [...live, ...tail], cursor);
   };
+
+  // Every draw site requests a frame instead of painting directly: bursts of
+  // streaming deltas collapse into one paint per FRAME_MS window instead of
+  // one repaint per event. Composition still happens at fire time, so a held
+  // frame always renders the latest state. `deps.frameMs = 0` is the
+  // in-process test seam — fully synchronous paints, same convention as
+  // pasteBurst.flushMs 0; the real window is exercised by the PTY journeys.
+  const frames = createFrameScheduler({ paint: paintNow, frameMs: deps?.frameMs ?? FRAME_MS });
+  const draw = frames.scheduleFrame;
 
   let spinner = null;
   const startSpinner = () => {
@@ -1028,6 +1042,9 @@ export async function runTui(host = {}, { deps = null } = {}) {
   let resolveRun = null;
   const exit = () => {
     if (exiting) return;
+    // Flush BEFORE the flag: a coalesced frame can hold scrollback commits
+    // (stream tail, the interrupted notice) that cancel() would discard.
+    frames.flush();
     exiting = true;
     interrupt();
     ui.queue.length = 0;
@@ -1035,6 +1052,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     ui.prompt = null;
     denyPendingPermission();
     stopSpinner();
+    frames.cancel();
     clearTimeout(escapeTimer);
     clearTimeout(burstTimer);
     try { unsubscribeWorkflow?.(); } catch {}
@@ -1505,6 +1523,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   const onFatal = (err) => {
     if (fatalInFlight) return;               // a second fault mid-flush: once is enough
     fatalInFlight = true;
+    frames.cancel();                         // a held frame must not repaint into the teardown
     try { stdin.setRawMode?.(false); } catch {}
     // The stack belongs to the runtime's diagnostic log — on the user's screen
     // it is exactly the stack-on-screen defect the journeys already gate.
