@@ -1,9 +1,11 @@
 // `zagent -p "…" --model <ref> --effort <level>` — model/effort selection for
 // headless one-shots. The kernel's own -p parser (parseGlobalArgs, verified
 // identical on 3.11.2 and 3.12.1) has NO --model/--effort flag; selection is a
-// protocol surface instead: session/create accepts {model:{modelId,providerId},
-// thoughtLevel} (its "hasInitialModel/hasInitialThoughtLevel" telemetry proves
-// both keys), and the turn runs over the app-server channel.
+// protocol surface instead: session/create accepts {model:{modelId,providerId,
+// options:{reasoningLevel}}, thoughtLevel} (its "hasInitialModel/
+// hasInitialThoughtLevel" telemetry proves both keys), and the turn runs over
+// the app-server channel. Registry models REQUIRE options.reasoningLevel —
+// a bare model ref fails bootstrap validation before thoughtLevel is read.
 //
 // Only invocations carrying --model/--effort take this path; every other -p
 // keeps the kernel's own runner (and its retry wrapper) verbatim. Flags this
@@ -14,6 +16,7 @@ import path from 'node:path';
 import { ZCodeProtocolClient, runTurn, sessionSid, currentAnswer, extractUsage } from '../driver/zcode-protocol.mjs';
 import { setMode, MODES } from '../driver/session-control.mjs';
 import { autoAllow } from '../driver/permissions.mjs';
+import { modelReasoningLevels } from '../driver/providers.mjs';
 
 const VALUE_FLAGS = new Set(['--model', '--effort', '--mode', '--cwd', '--output-format', '--locale']);
 // GLM accepts reasoningLevel/thoughtLevel low|high|max (same contract as
@@ -108,7 +111,7 @@ async function openPrintClient(cwd) {
 // --prompt" and zagentd does the same. A user-chosen --mode still applies via
 // session/setMode (kernel-side enforcement); plan approval prompts hit the
 // client's default decline handler, so headless plan mode produces the plan.
-export async function runPrintOnce(sel, { client, createClient = openPrintClient, timeoutMs = 600_000 } = {}) {
+export async function runPrintOnce(sel, { client, createClient = openPrintClient, timeoutMs = 600_000, catalog } = {}) {
   const t0 = Date.now();
   const cwd = path.resolve(sel.cwd ?? process.cwd());
   const own = !client;
@@ -117,8 +120,21 @@ export async function runPrintOnce(sel, { client, createClient = openPrintClient
   try {
     const key = path.normalize(cwd);
     const params = { workspace: { workspaceKey: key, workspacePath: key } };
-    if (sel.model) params.model = modelRef(sel.model);
-    if (sel.effort) params.thoughtLevel = sel.effort;
+    if (sel.model) {
+      // Kernel contract (verified on 3.12.1): bootstrap validates the model
+      // selection strictly — registry models whose optionSpecs.reasoningLevel
+      // exists reject a bare {providerId,modelId} with "Reasoning level is
+      // required". Then the create handler re-applies the model via the string
+      // setModel path, which DROPS options — so thoughtLevel must also be sent
+      // to restore the level afterwards. --effort wins; without it we send the
+      // model's own default (kernel picker convention: values.at(-1)).
+      const ref = modelRef(sel.model);
+      const level = sel.effort ?? modelReasoningLevels(ref.modelId, catalog)?.at(-1);
+      params.model = level ? { ...ref, options: { reasoningLevel: level } } : ref;
+      if (level) params.thoughtLevel = level;
+    } else if (sel.effort) {
+      params.thoughtLevel = sel.effort;
+    }
     const created = await client.call('session/create', params);
     sid = sessionSid(created);
     if (!sid) throw new Error('unexpected session/create reply (no session id)');

@@ -1,6 +1,6 @@
 {
   "name": "zagent",
-  "version": "0.0.220",
+  "version": "0.0.221",
   "description": "Unofficial coding-agent terminal for the GLM engine — streaming TUI, tool calls, checkpoints, quota insight; drives your installed ZCode runtime on your own Coding Plan.",
   "type": "module",
   "license": "MIT",
@@ -98,6 +98,7 @@
     "packages/tui/sanitize.mjs",
     "packages/tui/screen.mjs",
     "packages/tui/strings.mjs",
+    "packages/tui/syntax.mjs",
     "packages/tui/theme.mjs",
     "packages/tui/width.mjs",
     "scripts/verify-public-package.mjs",

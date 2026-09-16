@@ -4,6 +4,20 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.221 — 2026-09-16
+
+- Fenced code blocks in the TUI transcript now paint syntax colors,
+  and streaming output commits at newline boundaries with open tables
+  held until they close — no torn tables or duplicated scrollback.
+- `zagent <cmd> --help` answers the command's usage row, flag notes,
+  and an example for every routed verb.
+- Unknown options mid-argv are refused with exit 2 before the
+  credential gate, with a bounded did-you-mean suggestion.
+- `-p --model` on reasoning-required models embeds the catalog
+  reasoningLevel so the provider accepts the turn.
+- The offpeak ticket queue bounds requeues so a crashed worker can no
+  longer cycle a ticket forever.
+
 ## 0.0.220 — 2026-09-16
 
 - The TUI transcript collapses consecutive read/list/search tool calls

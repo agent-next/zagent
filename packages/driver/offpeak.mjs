@@ -263,11 +263,12 @@ export async function idleTaskGate() {
 // and 429 go back to queued (bounded); quota_wait/eligibility park as waiting.
 export const QUEUE_STATES = ['idle', 'queued', 'ready', 'running', 'waiting', 'settled', 'done', 'failed'];
 
-export function initialQueueState() { return { state: 'idle', ticketId: null, taskId: null, attempts: 0 }; }
+export function initialQueueState() { return { state: 'idle', ticketId: null, taskId: null, attempts: 0, retries: 0 }; }
 
 export function onTicketTaken(s, { taskId, ticketId }) {
   if (s.state !== 'idle' && s.state !== 'failed') return { ...s, error: `take in state ${s.state}` };
-  return { state: 'queued', taskId, ticketId, attempts: s.attempts + 1, error: undefined };
+  if (s.attempts >= 3) return { ...s, error: 'take: attempt bound' }; // retake-from-failed is bounded too
+  return { state: 'queued', taskId, ticketId, attempts: s.attempts + 1, retries: 0, error: undefined };
 }
 
 export function onPollResult(s, pollBody) {
@@ -294,9 +295,15 @@ export function onQueueError(s, status, code) {
   const { action, retry } = classifyOffPeakError(status, code);
   if (action === 'abort_retake') return { ...s, state: s.attempts >= 3 ? 'failed' : 'idle', error: `code ${code}` }; // bounded retake
   if (action === 'quota_wait') return { ...s, state: 'waiting', error: `code ${code}` }; // parked until quota resets
-  if (action === 'wait' && retry) return { ...s, state: s.attempts >= 3 ? 'failed' : 'queued', error: `code ${code} (retryable wait)` }; // 429-class: requeue bounded
+  // In-queue requeues need their own counter: `attempts` only moves on a ticket
+  // take, which never fires while a ticket is held — bounding on it never trips.
+  const retries = (s.retries ?? 0) + 1;
+  const requeue = err => retries >= 3
+    ? { ...s, retries, state: 'failed', error: `${err} (requeue bound)` }
+    : { ...s, retries, state: 'queued', error: err };
+  if (action === 'wait' && retry) return requeue(`code ${code} (retryable wait)`); // 429-class
   if (action === 'wait') return { ...s, state: 'waiting', error: `code ${code}` };
-  if (retry) return { ...s, state: s.attempts >= 3 ? 'failed' : 'queued', error: `http ${status}` };
+  if (retry) return requeue(`http ${status}`);
   return { ...s, state: 'failed', error: `code ${code} http ${status}` };
 }
 

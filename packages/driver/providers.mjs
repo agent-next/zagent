@@ -65,12 +65,19 @@ function builtinProviderList(catalog) {
   return [...(rules.providerRules ?? []).map(plan), ...(rules.templateRules ?? []).map(plan)];
 }
 
+// Kernel parity: the kernel matches modelConfigRules through its matchesRule
+// (nct in zcode.cjs, called by RuleSet.resolve as nct(o.modelMatch, t.modelId,
+// !0)) — anchored `^(?:pattern)$` AND case-insensitive. Both are load-bearing:
+// catalog ids are uppercase ('GLM-5.3') while rule patterns are lowercase, and
+// without the $ anchor 'glm-5.3xyz' would take the glm-5.3 rule.
+const matchModelRule = (pattern, modelId) => new RegExp(`^(?:${pattern})$`, 'i').test(modelId);
+
 // modelRules are regexes applied in array order; later matches override earlier
 // ones (the first rule is the `.*` default). Unparseable patterns are skipped.
 function builtinModelProps(catalog, modelId) {
   const props = {}; let maxOutputTokens = null;
   for (const r of catalog.config?.modelConfigRules?.modelRules ?? []) {
-    try { if (!new RegExp(r.modelMatch).test(modelId)) continue; } catch { continue; }
+    try { if (!matchModelRule(r.modelMatch, modelId)) continue; } catch { continue; }
     Object.assign(props, r.config?.properties ?? {});
     const m = r.config?.optionSpecs?.maxOutputTokens?.max;
     if (typeof m === 'number') maxOutputTokens = m;
@@ -107,6 +114,26 @@ export function findModel(modelId, catalog = loadCatalog()) {
       contextWindow: m.contextWindow ?? null, maxOutputTokens: m.maxOutputTokens ?? null,
       kinds: m.kinds ?? [], input: m.modalities?.input ?? [] });
   return hits;
+}
+
+// Reasoning-level vocabulary for a model id, resolved the same way the kernel
+// does (modelRules regexes applied in order, later matches win). The kernel
+// requires options.reasoningLevel on registry-backed selections and picks
+// values.at(-1) as the picker default (yDn/jio); mirror that here so headless
+// `--model` can complete a required level when --effort was not given.
+export function modelReasoningLevels(modelId, catalog = loadCatalog()) {
+  if (isBuiltin(catalog)) {
+    let values;
+    for (const r of catalog.config?.modelConfigRules?.modelRules ?? []) {
+      try { if (!matchModelRule(r.modelMatch, modelId)) continue; } catch { continue; }
+      const v = r.config?.optionSpecs?.reasoningLevel?.values;
+      if (Array.isArray(v) && v.length) values = v;
+    }
+    return values ?? null;
+  }
+  for (const p of catalog?.providers ?? []) for (const m of p.models ?? [])
+    if (m.id === modelId) return m.reasoning?.variants ?? null;
+  return null;
 }
 
 export function catalogLine(catalog = loadCatalog()) {

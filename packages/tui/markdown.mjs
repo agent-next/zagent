@@ -9,6 +9,7 @@
 // styled as a heading or a bullet.
 
 import { wrapText } from './render.mjs';
+import { createHighlighter } from './syntax.mjs';
 import { charWidth, clipToWidth, stringWidth } from './width.mjs';
 
 const FENCE = /^\s{0,3}(`{3,}|~{3,})\s*(\S+)?/;
@@ -188,6 +189,7 @@ export function renderMarkdown(text, theme, width) {
   const inner = Math.max(8, width);
   const lines = [];
   let fence = null;
+  let codeStyle = null;
   const source = String(text ?? '').split('\n');
 
   for (let i = 0; i < source.length; i++) {
@@ -197,15 +199,18 @@ export function renderMarkdown(text, theme, width) {
       if (fence === null) {
         fence = fenceMatch[1];
         const lang = fenceMatch[2];
+        codeStyle = createHighlighter(lang, theme);
         if (lang) lines.push(theme.faint(lang));
       } else {
         fence = null;
+        codeStyle = null;
       }
       continue;
     }
     if (fence !== null) {
       // Code is never wrapped: broken indentation is worse than a truncated line.
-      lines.push(`  ${theme.code(clipToWidth(raw, Math.max(4, inner - 2)))}`);
+      const budget = Math.max(4, inner - 2);
+      lines.push(`  ${codeStyle ? codeStyle(raw, budget) : theme.code(clipToWidth(raw, budget))}`);
       continue;
     }
 
@@ -260,4 +265,60 @@ export function renderMarkdown(text, theme, width) {
 
   // An unterminated fence is the model being cut off, not a parse failure.
   return lines;
+}
+
+/**
+ * How much of an UNSETTLED stream's source may be committed to scrollback.
+ * Two holdbacks, both because a later delta can still re-shape the render:
+ *   * newline gate — the unterminated tail line stays mutable; only source up
+ *     to the last '\n' is stable (codex markdown_stream.rs:87-96).
+ *   * table holdback — a pipe line has no delimiter until the next line lands,
+ *     and every new row can re-width the columns already rendered; a trailing
+ *     run that is or may become a table stays live until a terminated
+ *     non-table line closes it (codex streaming/controller.rs:12-20).
+ * The returned index sits ON a newline (or 0): slicing there never invents a
+ * trailing artifact line, so the safe prefix's render is a strict prefix of the
+ * full render.
+ * @returns {number} source index; text.slice(0, n) is the commit-safe prefix.
+ */
+export function commitSafeLen(text) {
+  const source = String(text ?? '');
+  const nl = source.lastIndexOf('\n');
+  if (nl < 0) return 0;
+  const tail = source.slice(nl + 1);
+  // Consecutive non-blank terminated lines ending at the last newline — the
+  // only region a still-arriving tail can retroactively re-shape.
+  const run = [];
+  let end = nl;
+  for (;;) {
+    const prev = source.lastIndexOf('\n', end - 1);
+    const at = prev + 1;
+    const line = source.slice(at, end);
+    if (line.trim() === '') break;
+    run.unshift({ at, line });
+    if (prev < 0) break;
+    end = prev;
+  }
+  // An open table reaching the end of the run pins from its header. The scan
+  // must consume the way renderMarkdown does — left to right, rows while
+  // isTableLine — or a consumed delimiter row can false-pair with a following
+  // rule line ('| - |' + '---') ahead of the genuinely open table (r2 MAJOR:
+  // the prefix check then fails, the fallback commits the open table at early
+  // widths, and the next row's re-width tears it in scrollback).
+  for (let i = 0; i + 1 < run.length; i++) {
+    const aligns = tableAligns(run[i + 1].line);
+    if (aligns === null || !isTableLine(run[i].line)
+        || aligns.length !== splitRow(run[i].line).length) continue;
+    let j = i + 2;
+    while (j < run.length && isTableLine(run[j].line)) j++;
+    if (j === run.length) return Math.max(0, run[i].at - 1);   // open at run end
+    i = j - 1;                                               // closed at run[j]; resume there
+  }
+  // A lone trailing pipe line may yet gain a delimiter — keep it live while the
+  // growing tail could still supply one ('', '|-', '  | -' all can; 'xyz' can
+  // never become a row of dashes).
+  if (run.length > 0 && isTableLine(run.at(-1).line) && /^[|\s:-]*$/.test(tail)) {
+    return Math.max(0, run.at(-1).at - 1);
+  }
+  return nl;
 }

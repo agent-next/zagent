@@ -105,8 +105,8 @@ export function renderEntry(entry, theme, width, options = {}) {
   return lines.map((l, i) => (i === idx ? `${l}${' '.repeat(room)}${theme.faint(at)}` : l));
 }
 
-/** @returns {string[]} rendered lines for one transcript entry */
-function renderEntryLines(entry, theme, width, options = {}) {
+/** @returns {string[]} rendered lines for one transcript entry, without the timestamp stamp */
+export function renderEntryLines(entry, theme, width, options = {}) {
   const maxResultLines = options.maxResultLines ?? 6;
   const g = theme.glyph;
   const inner = Math.max(8, width - 2);
