@@ -2,7 +2,7 @@
 
 # zagent
 
-**Z.ai's coding agent, in your terminal — the part Z.ai never shipped.**
+**A coding-agent terminal for the GLM engine you already pay for — streaming TUI, tool calls, checkpoints, quota insight — driving your installed ZCode runtime from the shell.**
 
 [![npm](https://img.shields.io/npm/v/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![downloads](https://img.shields.io/npm/dm/zagent.svg)](https://www.npmjs.com/package/zagent)
@@ -43,29 +43,54 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
+⏺ zagent 0.0.214 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+  ~/src/myproject
+  ? shortcuts · / commands · @ files
+
 ╭──────────────────────────────────────────────────────────────╮
 │ > refactor the parser to use a lookup table                  │
 ╰──────────────────────────────────────────────────────────────╯
-  glm-5.3 · ~/src/myproject · 12.4k tokens
+  ⠋ working 4.2s · esc interrupt
+
+I'll replace the if/elif chain with a dispatch table…
 
 ⏺ Read(src/parser.py)
   ⎿ 214 lines
 
-⏺ I'll replace the if/elif chain with a dispatch table.
-
 ⏺ Edit(src/parser.py)
-  ⎿ +18 -31
+  ⎿ +18 −31
+
+    parser = {
+      "INTEGER": parse_int,
+      "STRING":  parse_string,
+    }
+
+plan max · 5-hour window: 23% used · resets 14:25
+build · account:zai/GLM-5.3 · max · mcp 0/2
 ```
 
 ## What you get
 
 | | |
 |---|---|
-| **A real TUI** | Streaming output, tool calls, permission prompts, model/effort pickers, slash commands, `@`-file completion. Wide-character correct (CJK, emoji), and every rendered string is sanitised — no ANSI or bidi injection from model output. |
+| **A real TUI** | Token-by-token streaming with live reasoning preview, rendered markdown (fenced code with language labels, tables), one-line tool calls with results, permission prompts, model/effort pickers, 25+ slash commands, `@`-file completion, session folds. Wide-character correct (CJK, emoji); every rendered string sanitised against ANSI/bidi injection. |
 | **Headless too** | `zagent -p "…" --json` for scripts, CI and pipelines. Real exit codes: a failed turn fails, a typo'd command fails. |
 | **Your plan, your machine** | Runs on your own GLM Coding Plan and your own installed runtime. Nothing bundled, nothing phoned home. |
 | **The rest of the product** | Quota, sessions, per-turn diffs, memory, scheduled prompts, and plugins — all from the CLI. |
 | **Cross-platform** | Runtime discovery on Linux, macOS and Windows. |
+
+## Highlights
+
+- **Undo any turn** — `zagent rewind latest` restores the files a turn changed, from real
+  checkpoints; `rewind changes` shows what a turn did before you decide.
+- **Know what you're spending** — `zagent quota` shows the 5-hour window, plan level and reset
+  time right in the TUI status line; `quota reset` manages your reset cards (confirm-gated).
+- **Scheduled agents** — local `cron` and server-side `automation` schedules that run prompts
+  when you're not there.
+- **Usage analytics** — `zagent usage stats` gives per-model/per-tool breakdowns, cache-hit
+  rate and streaks from the same data the desktop app shows.
+- **Your CLIs, imported** — `zagent import` brings Claude Code instructions, commands and
+  skills over.
 
 ## Quick start
 
@@ -74,11 +99,18 @@ npm install -g zagent          # or run ad-hoc: npx zagent
 zagent doctor                  # checks your runtime + Coding Plan setup
 zagent -p "Explain this repo"  # headless one-shot
 zagent                         # interactive TUI
+zagent update                  # stay on the latest release
 ```
 
 ### Requirements
 
-- **Node.js ≥ 22.15** (Node 23 needs ≥ 23.5)
+- **Node.js ≥ 22.15** (Node 23 needs ≥ 23.5). Check `node --version` before installing — on macOS a stale
+  `/usr/local/bin/node` (an old Intel-Homebrew install) can shadow the current one in PATH. To install or
+  upgrade Node on macOS: `brew install node` (or `nvm install --lts`).
+- **`npm install -g` permission errors (EACCES)?** Your npm global prefix is root-owned — common with
+  `/usr/local` on Intel Macs. Prefer a user-level toolchain (nvm, or `npm config set prefix ~/.npm-global`
+  and add `~/.npm-global/bin` to PATH) over `sudo`. After install, `zagent`/`za` must be on PATH: they live
+  in `$(npm prefix -g)/bin`.
 - **A GLM Coding Plan** and your own installed **ZCode runtime** — the ZCode desktop app, or the
   third-party `zcode-app-cli`. Either works for both headless and interactive use: zagent brings
   its own TUI, so no third-party package is required. Verified against ZCode desktop 3.11.2 and
@@ -101,8 +133,6 @@ sent only to your own provider endpoint.
 
 ## Commands
 
-### Everyday
-
 | Command | What it does |
 |---|---|
 | `zagent -p "…" [--json] [options]` | Headless one-shot (retry-safe; `zagent -p --help` lists options) |
@@ -110,68 +140,31 @@ sent only to your own provider endpoint.
 | `zagent onboard` | First-run: checks + live smoke + guidance |
 | `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |
 | `zagent update [--check]` | Update zagent itself from npm |
-
-### Sessions and changes
-
-| Command | What it does |
-|---|---|
+| `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
+| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
 | `zagent sessions` | Your task store, in the terminal |
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
 | `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | Inspect or restore workspace checkpoints (undo a turn's file edits) |
-| `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
-| `zagent usage stats [--range all\|7d\|30d] [--json]` | App-usage dashboard: totals, cache hit rate, streaks, per-model/tool breakdown (ZCode 3.12.x+) |
-| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
-| `zagent subagents [--session id] [--json]` | List running and ended child session ids |
-
-### Plan and account
-
-| Command | What it does |
-|---|---|
-| `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
-| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
-| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
-| `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
-
-### Scheduled prompts
-
-| Command | What it does |
-|---|---|
-| `zagent cron add\|list\|tick` | Scheduled prompts (local crontab) |
-| `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
-
-### Runtime data and diagnostics
-
-| Command | What it does |
-|---|---|
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | Inspect or modify runtime task records |
+| `zagent cron add\|list\|tick` | Scheduled prompts (local crontab) |
+| `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
+| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
 | `zagent plugins` | Manage local plugins |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |
-| `zagent import [--dry-run\|--apply] [--force] [--json]` | Import Claude Code instructions, commands, and skills |
 | `$using-zagent` | Bundled skill: what zagent is, how to tell it from the GUI, how to drive it |
+| `zagent import [--dry-run\|--apply] [--force] [--json]` | Import Claude Code instructions, commands, and skills |
+| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
+| `zagent subagents [--session id] [--json]` | List running and ended child session ids |
+| `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
+| `zagent usage stats [--range all\|7d\|30d] [--json]` | App-usage dashboard: totals, cache hit rate, streaks, per-model/tool breakdown (ZCode 3.12.x+) |
+| `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
 
 `za` is a short alias for `zagent`.
 
 Context compaction runs inside the interactive TUI as `/compact` — live sessions are
 process-local, so there is no standalone `zagent compact` command.
-
-## In the TUI
-
-**Permission modes:** `plan`, `build` (default), `edit`, `yolo` — per session, enforced by the
-kernel and shown in the status line. Switch with `/mode <name>` or the `/approvals` picker;
-`/plan` is a shortcut for plan mode. In `yolo` no permission prompts are asked.
-
-Slash commands (one palette — `/help` lists them live):
-
-| | |
-|---|---|
-| **Session** | `/exit` · `/stop` · `/clear` · `/rename` · `/archive` · `/delete` · `/export` · `/copy` · `/diff` · `/undo` · `/compact` |
-| **State** | `/status` · `/version` (`/v`) · `/usage` (`/cost`) · `/context` · `/doctor` · `/quota` · `/update` · `/theme` |
-| **Project and tools** | `/hooks` · `/permissions` · `/memory` · `/agents` · `/workflow` · `/feedback` (`/bug`) · `/help` (`?`) |
-| **Modes** | `/mode` · `/approvals` · `/plan` |
-
-The composer also has the model and effort pickers and `@`-file completion.
 
 ## How it works
 

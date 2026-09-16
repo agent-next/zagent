@@ -2,7 +2,7 @@
 // r7-hardened: strict cron grammar with STANDARD dom/dow OR semantics, dow 7→0,
 // 1-based step anchoring, atomic (tmp+rename) state writes, ENOENT-only empty read,
 // per-job claim/complete lifecycle (no batch replay, no silent double-fire).
-// No daemon: the user's crontab calls `zmax cron tick`; every tick appends a heartbeat
+// No daemon: the user's crontab calls `zagent cron tick`; every tick appends a heartbeat
 // receipt and exits nonzero on failures (no-bare-cron rule).
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, appendFileSync, chmodSync, statSync } from 'node:fs';
@@ -309,7 +309,7 @@ export function completeJob(jobs, id, { ok, error = null, nowMs = Date.now(), cl
   return j;
 }
 
-// A timed-out job must lose its whole process GROUP: the zmax child spawns the
+// A timed-out job must lose its whole process GROUP: the zagent child spawns the
 // runtime, and signalling only the direct child leaves the grandchild burning
 // quota. The child is spawned detached so it leads its own group on POSIX.
 export function killProcessTree(pid, signal = 'SIGTERM') {

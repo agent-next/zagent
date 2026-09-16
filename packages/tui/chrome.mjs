@@ -58,10 +58,18 @@ function layoutInputBox(value, theme, width, options = {}) {
   const room = Math.max(1, box - lead - 2);          // ... + " │"
   const maxRows = Math.max(1, options.maxInputRows ?? 8);
 
+  // options.maskFrom: the code-unit index from which the value is a secret —
+  // the key argument of a typed "/login <plan>-api-key <key>" command. The
+  // command prefix stays visible so the user sees what they typed; the key
+  // shows as mask glyphs, per code unit so the tracked cursor still lines up.
+  const maskAt = !showPlaceholder && Number.isInteger(options.maskFrom) && options.maskFrom >= 0
+    ? Math.min(options.maskFrom, value.length) : -1;
+  const masked = maskAt < 0 ? value
+    : value.slice(0, maskAt) + value.slice(maskAt).replace(/./gs, g.mask);
   // A literal U+E000 in pasted input would collide with the mark — strip it so
   // exactly one exists. The cursor is a code-unit index into the (pre-sanitise)
   // value; clamp it onto the displayed text — a stripped byte can leave it stale.
-  const text = (showPlaceholder ? placeholder : value).replaceAll(CURSOR_MARK, '');
+  const text = (showPlaceholder ? placeholder : masked).replaceAll(CURSOR_MARK, '');
   const at = typeof options.cursor === 'number'
     ? Math.min(Math.max(0, options.cursor | 0), showPlaceholder ? 0 : text.length)
     : -1;
@@ -237,8 +245,8 @@ export function renderQueued(queue, theme, width, max = 3, options = {}) {
   const prefix = '  > ';
   const showChips = widthOf(prefix) + 1 + widthOf(chipPlain) + 4 <= width;
   const lines = [];
-  for (const [offset, text] of items.slice(0, max).entries()) {
-    const body = sanitizeText(text, { keepNewlines: false }).replace(/\s+/gu, ' ');
+  for (const [offset, item] of items.slice(0, max).entries()) {
+    const body = sanitizeText(typeof item === 'string' ? item : item?.text, { keepNewlines: false }).replace(/\s+/gu, ' ');
     if (!showChips) {
       lines.push(`  ${theme.faint('>')} ${theme.faint(clip(body, Math.max(8, width - 6)))}`);
       continue;
@@ -364,8 +372,28 @@ export function permissionOptions(request) {
         { keepNewlines: false }),
       response: o.response,
     }));
+  if (options.length > 0) return options;
+  // 3.12.1's TUI bridge asks with NO options (ruleId/sideEffectScope/
+  // suggestedPermissionUpdates shape — live-captured, J4). Deny-only there
+  // means no mutating tool can ever be approved, so synthesize the answerable
+  // set on the proven contract: {decision:'allow'} / {decision:'deny'}, with
+  // the host's own suggestedPermissionUpdates riding the "always" choice.
+  // A request that does not even name a tool keeps the lone-Deny fallback.
+  if (typeof request?.toolName === 'string' && request.toolName) {
+    const synthesized = [
+      { value: 'allow_once', label: 'Allow once', response: { decision: 'allow' } },
+    ];
+    const updates = Array.isArray(request.suggestedPermissionUpdates)
+      ? request.suggestedPermissionUpdates.filter(u => u && typeof u === 'object') : [];
+    if (updates.length > 0) {
+      synthesized.push({ value: 'allow_always', label: 'Allow always',
+        response: { decision: 'allow', permissionUpdates: updates } });
+    }
+    synthesized.push({ value: 'deny', label: 'Deny', response: { decision: 'deny' } });
+    return synthesized;
+  }
   // A request with no usable options would trap the session with no way to answer.
-  return options.length > 0 ? options : [{ value: 'deny', label: 'Deny', response: { decision: 'deny' } }];
+  return [{ value: 'deny', label: 'Deny', response: { decision: 'deny' } }];
 }
 
 /**
@@ -394,14 +422,44 @@ export function renderChooser({ title, detail, items, index, hint }, theme, widt
   return lines;
 }
 
-export function renderPermission(request, selected, theme, width) {
-  const options = permissionOptions(request);
-  const tool = typeof request?.toolName === 'string' ? request.toolName : 'tool';
+/**
+ * A modal free-text prompt — the surface a selection item's `input` spec asks
+ * for (the kernel's /login api-key entry sends {input:{mask:true,...}}). The
+ * same sanitise-everything rule as renderChooser: every label is
+ * kernel-supplied. mask:true paints the value as mask glyphs so a credential
+ * never reaches the screen.
+ */
+export function renderPrompt({ title, detail, value = '', mask = false, placeholder, hint }, theme, width) {
+  const g = theme.glyph;
+  const one = (v) => sanitizeText(v, { keepNewlines: false });
+  const lines = [`${theme.warning(g.assistant)} ${theme.muted(clip(one(title ?? ''), Math.max(8, width - 2)))}`];
+  if (detail) lines.push(`  ${theme.faint(clip(one(detail), Math.max(10, width - 4)))}`);
+  const shown = value === ''
+    ? theme.faint(clip(one(placeholder ?? ''), Math.max(8, width - 6)))
+    : mask ? theme.text(clip(g.mask.repeat([...value].length), Math.max(8, width - 6)))
+    : theme.text(clip(one(value), Math.max(8, width - 6)));
+  lines.push(`  ${theme.accent(g.user)} ${shown}`);
+  lines.push(`  ${theme.faint(clip(one(hint ?? (theme.str ?? stringsFor()).promptHint), Math.max(8, width - 2)))}`);
+  return lines;
+}
+
+export function renderPermission(request, selected, theme, width, options) {
+  // `options` may be passed in by a caller that computed them from the RAW
+  // request (index.mjs sanitizes a copy for display — a toolName that
+  // sanitizeText empties would otherwise render a deny-only card while digit
+  // keys act on the stored allow options).
+  options = Array.isArray(options) ? options : permissionOptions(request);
+  const tool = typeof request?.toolName === 'string' && request.toolName ? request.toolName : 'tool';
   // Same job as the transcript's tool header, so use the same picker. The inline
   // copy had a shorter key list and no fallback, so a Search/WebSearch or MCP
   // call showed NO detail at all — in the one place you most need to see what you
   // are approving.
-  const detail = typeof request?.input === 'string' ? request.input : toolSummary(request);
+  let detail = typeof request?.input === 'string' ? request.input : toolSummary(request);
+  // 3.12.1 requests carry the host's own reason + riskLevel — a high-risk card
+  // must not look identical to a routine one.
+  const reason = [request?.riskLevel, request?.reason]
+    .filter(v => typeof v === 'string' && v).join(' — ');
+  if (reason) detail = detail ? `${reason}\n${detail}` : reason;
   return renderChooser({
     title: (theme.str ?? stringsFor()).needsPermission(tool),
     detail,

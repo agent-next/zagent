@@ -2,7 +2,7 @@
 
 # zagent（中文）
 
-**把 Z.ai 的编码 agent 搬进终端 —— Z.ai 自己没发的那一块。**
+**把 GLM 引擎的编码 agent 搬进你的终端 —— 流式 TUI、工具调用、检查点、配额透明，驱动你已装的 ZCode runtime。**
 
 [![npm](https://img.shields.io/npm/v/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![downloads](https://img.shields.io/npm/dm/zagent.svg)](https://www.npmjs.com/package/zagent)
@@ -48,6 +48,14 @@ runtime 会 import 这个模块,而 Z.ai 从未发布它。所以在每一台装
 | **产品的其余部分** | 额度、会话、每轮 diff、memory、定时 prompt、插件 —— 全在 CLI 里。 |
 | **跨平台** | 在 Linux / macOS / Windows 上自动发现 runtime。 |
 
+## 亮点
+
+- **撤销任意一轮** — `zagent rewind latest` 从真实 checkpoint 恢复该轮改动的文件；`rewind changes` 先看它做了什么再决定。
+- **花费透明** — TUI 状态行直接显示 5 小时窗口用量、套餐档位与重置时间；`quota reset` 管理重置卡（确认后才消耗）。
+- **定时 agent** — 本地 `cron` 与服务端 `automation`，人不在也跑。
+- **用量分析** — `zagent usage stats` 按模型/工具分解、缓存命中率、连续使用天数。
+- **迁移你的 CLI 配置** — `zagent import` 导入 Claude Code 的指令、命令与技能。
+
 ## 快速上手
 
 ```bash
@@ -74,8 +82,6 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 
 ## 命令
 
-### 日常
-
 | 命令 | 作用 |
 |---|---|
 | `zagent -p "…" [--json] [options]` | 无头一次性执行（可重试；选项见 `zagent -p --help`） |
@@ -83,68 +89,31 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent onboard` | 首次运行：检查 + live 冒烟 + 引导 |
 | `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
 | `zagent update [--check]` | 从 npm 升级 zagent 自身 |
-
-### 会话与改动
-
-| 命令 | 作用 |
-|---|---|
+| `zagent models [query]` | 搜索模型目录;`models test <provider/model>` 测试连接 |
+| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset [claim\|use five-hour\|use week]] [--json] [--yes]` | Coding-Plan 额度 |
 | `zagent sessions` | 终端里的任务库 |
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
 | `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | 查看或恢复 workspace checkpoint（撤销某轮的文件改动） |
-| `zagent usage [--session id] [--json]` | 会话 token 总量 + 上下文 baseline 分解 |
-| `zagent usage stats [--range all\|7d\|30d] [--json]` | 应用用量面板：总量、缓存命中率、连续天数、按模型/工具分解（ZCode 3.12.x+） |
-| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | 显示或控制当前会话目标 |
-| `zagent subagents [--session id] [--json]` | 列出运行中与已结束的子会话 |
-
-### 套餐与账户
-
-| 命令 | 作用 |
-|---|---|
-| `zagent models [query]` | 搜索模型目录;`models test <provider/model>` 测试连接 |
-| `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset [claim\|use five-hour\|use week]] [--json] [--yes]` | Coding-Plan 额度 |
-| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
-| `zagent remote [status\|connect] [--json]` | 本机 relay 设备 id / last ack（D1/D2；不提供第二设备控制） |
-
-### 定时 prompt
-
-| 命令 | 作用 |
-|---|---|
-| `zagent cron add\|list\|tick` | 定时 prompt（本地 crontab） |
-| `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
-
-### runtime 数据与诊断
-
-| 命令 | 作用 |
-|---|---|
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
 | `zagent task list\|archive\|pin\|rename\|delete` | 查看或修改 runtime 任务记录 |
+| `zagent cron add\|list\|tick` | 定时 prompt（本地 crontab） |
+| `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
+| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
 | `zagent plugins` | 管理本地插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
 | `zagent inspect [--storage] [--json]` | 打印 runtime/配置/skills；`--storage` = ~/.zcode 分类体积（只读） |
-| `zagent import [--dry-run\|--apply] [--force] [--json]` | 从 Claude Code 导入说明、commands、skills |
 | `$using-zagent` | 随包装的 skill：zagent 是什么、怎么和 GUI 区分、怎么用 |
+| `zagent import [--dry-run\|--apply] [--force] [--json]` | 从 Claude Code 导入说明、commands、skills |
+| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | 显示或控制当前会话目标 |
+| `zagent subagents [--session id] [--json]` | 列出运行中与已结束的子会话 |
+| `zagent usage [--session id] [--json]` | 会话 token 总量 + 上下文 baseline 分解 |
+| `zagent usage stats [--range all\|7d\|30d] [--json]` | 应用用量面板：总量、缓存命中率、连续天数、按模型/工具分解（ZCode 3.12.x+） |
+| `zagent remote [status\|connect] [--json]` | 本机 relay 设备 id / last ack（D1/D2；不提供第二设备控制） |
 
 `za` 是 `zagent` 的短别名。
 
 上下文压缩在交互式 TUI 内通过 `/compact` 完成 —— 活跃会话是进程内的，因此不提供独立的
 `zagent compact` 子命令。
-
-## TUI 内部
-
-**权限模式：** `plan`、`build`（默认）、`edit`、`yolo` —— 按会话生效，由 kernel 强制执行，
-并显示在状态栏。用 `/mode <名称>` 或 `/approvals` 选择器切换；`/plan` 是进入 plan 模式的快捷方式。
-`yolo` 模式下不再弹出权限确认。
-
-斜杠命令（统一在一个面板里，TUI 内 `/help` 实时列出）：
-
-| | |
-|---|---|
-| **会话** | `/exit` · `/stop` · `/clear` · `/rename` · `/archive` · `/delete` · `/export` · `/copy` · `/diff` · `/undo` · `/compact` |
-| **状态** | `/status` · `/version` (`/v`) · `/usage` (`/cost`) · `/context` · `/doctor` · `/quota` · `/update` · `/theme` |
-| **项目与工具** | `/hooks` · `/permissions` · `/memory` · `/agents` · `/workflow` · `/feedback` (`/bug`) · `/help` (`?`) |
-| **模式** | `/mode` · `/approvals` · `/plan` |
-
-输入区还提供模型 / effort 选择器与 `@` 文件补全。
 
 ## 工作原理
 

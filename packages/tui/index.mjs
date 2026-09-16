@@ -10,16 +10,19 @@
 // exist or the module fails to load.
 
 import crypto from 'node:crypto';
+import { writeSync } from 'node:fs';
 import { createTheme } from './theme.mjs';
 import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn,
   createFold, foldStateFor, collapse as collapseEntry, expand as expandEntry,
   toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
-import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, readContextMeter, COMPLETION_ROWS, inputBoxCursor } from './chrome.mjs';
+import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, renderPrompt, readContextMeter, COMPLETION_ROWS, inputBoxCursor } from './chrome.mjs';
 import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
+import { pasteToken, expandChips, insertChip, chipSpanAt, chipSpanIn, takeChips, attachChips, pruneChips } from './paste-chips.mjs';
+import { appendHistory, HISTORY_CAP, loadHistory } from './history.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { completionContext, rankCandidates, applyCompletion, slashCandidates, fileCandidates, skillCandidates, conversationCandidates } from './complete.mjs';
 import { mergeCommands, CLIENT_COMMANDS, matchClientCommand, zagentVersion, runtimeLabel, quotaHomeLine } from './commands.mjs';
@@ -33,6 +36,16 @@ const DOUBLE_CTRL_C_MS = 2000;
 
 /** The most conservative choice the runtime offered, for every path that must refuse. */
 const denyResponse = (options) => options.at(-1)?.response ?? { decision: 'deny' };
+
+// A "/login <plan>-api-key <key>" command carries a credential as its last
+// argument. The kernel keeps it out of its own input history (its router's
+// api-key exclusion); ours matches: the key is masked while typing, the echo
+// shows [redacted], and the command never enters the recall list.
+const SECRET_PREFIX = /^\/login\s+\S+-api-key\s+/iu;
+const SECRET_COMMAND = /^\/login\s+\S+-api-key\s+\S/iu;
+const secretMaskFrom = (t) => { const m = SECRET_PREFIX.exec(t); return m ? m[0].length : -1; };
+const isSecretCommand = (t) => SECRET_COMMAND.test(t);
+const displayFor = (t) => isSecretCommand(t) ? `${t.slice(0, secretMaskFrom(t))}[redacted]` : t;
 
 export async function runTui(host = {}, { deps = null } = {}) {
   const stdout = host.stdout ?? process.stdout;
@@ -69,17 +82,23 @@ export async function runTui(host = {}, { deps = null } = {}) {
     activity: 'working',
     permission: null,          // {request, options, selected, resolve}
     attachments: [],           // images pasted with ctrl+v, sent with the next prompt
+    pastes: [],                // {token, text} — large pastes shown as `[Pasted ~N lines]` chips
     recallDepth: 0,            // how far back in the runtime's own input history
     completion: null,          // {type, items, index, context}
     chooser: null,             // {title, items, index, pick}
+    prompt: null,              // {title, value, cursor, mask, command} — a selection item's input spec
     completionSeq: 0,          // guards against a slow file lookup overwriting a newer one
     queue: [],                 // typed while a turn runs; drained in order when it ends
     queueItem: 0,              // selected follow-up in the queue list
     queueAction: 0,            // 0 send now, 1 edit, 2 cancel
     fold: createFold(),
     userTurn: -1,              // selection index over user-prompt turns; -1 = none
-    history: [],
-    historyIndex: -1,
+    // Persisted across sessions at ~/.zcode/cli/history.jsonl — the runtime's
+    // own recallPreviousInput is asked first, this is the floor under it.
+    history: loadHistory({ home: host.home }),
+    historyIndex: 0,           // set to history.length right below
+    draft: '',                 // the half-typed input stashed while recalling
+    draftChips: [],
     lastCtrlC: 0,
     abort: null,
     mcp: null,                 // {connected, failed, total}
@@ -88,6 +107,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     skills: listSkills({ cwd: host.workspaceDirectory || process.cwd() }),
     conversations: [],
   };
+  ui.historyIndex = ui.history.length;
   void listConversationsAsync({}).then((rows) => { if (!exiting) ui.conversations = rows; }).catch(() => {});
 
   // G4: the context window is knowable before the first turn — the host's own
@@ -142,25 +162,35 @@ export async function runTui(host = {}, { deps = null } = {}) {
     const foldOf = (entry, i) => foldStateFor(ui.fold, entry, i);
     const { commit, live } = composeFrame(state, theme, screen.width, { str, foldOf });
     const tail = ui.permission
-      ? renderPermission(ui.permission.request, ui.permission.selected, theme, screen.width)
+      ? renderPermission(ui.permission.request, ui.permission.selected, theme, screen.width, ui.permission.options)
+      : ui.prompt
+      ? renderPrompt(ui.prompt, theme, screen.width)
       : ui.chooser
       ? renderChooser(ui.chooser, theme, screen.width)
       : renderFooter(state, ui.input.value, theme, screen.width, {
-          mode: ui.mode, model: ui.model, effort: ui.effort, busy: ui.busy, queue: ui.queue,
+          mode: ui.mode, model: ui.model, effort: ui.effort, busy: ui.busy,
+          // Queued commands are painted verbatim — an api-key command must show
+          // the same [redacted] echo the transcript will.
+          queue: ui.queue.map(q => ({ ...q, text: displayFor(q?.text ?? q) })),
           queueItem: ui.queueItem, queueAction: ui.queueAction, userTurn: ui.userTurn,
           completion: ui.completion, completionRows: completionPageRows(), str,
           spinnerFrame: ui.spinnerFrame, activity: ui.activity,
           mcp: ui.mcp, goal: ui.goal, agents: getSubagentCount(state),
           cursor: ui.input.cursor,
+          // Measured on the SANITIZED text the box will paint — a stripped
+          // control byte before the key would otherwise shift the boundary and
+          // leave leading secret chars visible.
+          maskFrom: secretMaskFrom(sanitizeText(ui.input.value)),
         });
     // Park the hardware cursor inside the input box — the whole point of the
     // tracked cursor is that the user can SEE where the next keystroke lands.
     // The box is the last block before the one-line status, so its top is
     // tail.length - 1 - box height.
     let cursor = null;
-    if (!ui.permission && !ui.chooser) {
+    if (!ui.permission && !ui.chooser && !ui.prompt) {
       const spot = inputBoxCursor(ui.input.value, theme, screen.width,
-        { busy: ui.busy, str, cursor: ui.input.cursor });
+        { busy: ui.busy, str, cursor: ui.input.cursor,
+          maskFrom: secretMaskFrom(sanitizeText(ui.input.value)) });
       if (spot) cursor = { line: live.length + tail.length - 1 - spot.rows + spot.row, col: spot.col };
     }
     screen.paint(commit, [...live, ...tail], cursor);
@@ -271,8 +301,11 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // doing either again on submit shows the line twice. Counted, not boolean, so
   // a busy queue and repeated identical forwards stay exact.
   const forwarded = new Map();
+  // A client command that forwards its line to the runtime (/workflow) re-enters
+  // enqueueOrSubmit with runtime:true — the typed line's chips travel along.
+  let pendingChips = null;
 
-  function enqueueOrSubmit(text, { trusted = false, runtime = false } = {}) {
+  function enqueueOrSubmit(text, { trusted = false, runtime = false, activity, cancelNotice } = {}) {
     if (exiting) return;
     clearCompletion();
     let trimmed = sanitizeText(text).trim();
@@ -288,9 +321,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
     // /stop and /status must work mid-turn, and /exit already left above.
     const client = runtime ? null : matchClientCommand(trimmed);
     if (client) {
+      pendingChips = takeChips(ui.pastes, trimmed);
       ui.input = { value: '', cursor: 0 };
-      ui.history.push(trimmed);
-      ui.historyIndex = ui.history.length;
+      ui.pastes = pruneChips(ui.pastes, '');
+      recordHistory(trimmed, pendingChips);
       addUserEntry(state, trimmed);
       draw();
       void Promise.resolve(client.command.run(cmdCtx, client.args))
@@ -299,7 +333,8 @@ export async function runTui(host = {}, { deps = null } = {}) {
           if (exiting) return;
           addNotice(state, `${client.command.name}: ${String(e?.message ?? e).slice(0, 200)}`, 'error');
           draw();
-        });
+        })
+        .finally(() => { pendingChips = null; });   // never forwarded — release them
       return;
     }
     // A bare /effort, /model or /mode is a request to choose, not a command to run.
@@ -308,7 +343,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       ui.input = { value: '', cursor: 0 };
       draw();
       // If the runtime cannot offer a list, fall through to the plain command.
-      void openPicker(picker).then(opened => { if (!opened) void submit(trimmed); });
+      void openPicker(picker).then(opened => { if (!opened) { recordHistory(trimmed); void submit(trimmed); } });
       return;
     }
     // G9: a slash word matching NOTHING in the merged palette used to reach the
@@ -319,12 +354,16 @@ export async function runTui(host = {}, { deps = null } = {}) {
     if (!trusted && trimmed.startsWith('/')
         && Array.isArray(host.slashCommands) && host.slashCommands.length > 0) {
       const name = (/^\/+([^\s/]+)/.exec(trimmed)?.[1] ?? '').toLowerCase();
+      // A "/login <plan>-api-key <key>" must never take this branch even when a
+      // kernel build doesn't advertise /login: the gate records history and
+      // echoes verbatim — the key would land in recall and scrollback.
       const known = name !== '' && !trimmed.startsWith('//')
-        && merged.some(c => c.name === name || (c.aliases ?? []).includes(name));
+        && (isSecretCommand(trimmed)
+          || merged.some(c => c.name === name || (c.aliases ?? []).includes(name)));
       if (!known) {
+        recordHistory(trimmed);
         ui.input = { value: '', cursor: 0 };
-        ui.history.push(trimmed);
-        ui.historyIndex = ui.history.length;
+        ui.pastes = pruneChips(ui.pastes, '');
         addUserEntry(state, trimmed);
         const names = merged.map(c => `/${c.name}`).join(' ');
         addCommandEntry(state, `Unknown command: ${trimmed.split(/\s/)[0]}. Available commands: ${names}`);
@@ -332,24 +371,54 @@ export async function runTui(host = {}, { deps = null } = {}) {
         return;
       }
     }
+    // Chips bound to this message leave the buffer with it — a queued entry
+    // drains to the full payload and a history recall can re-attach them, while
+    // no later keystroke can prune a queued paste away. A runtime-forwarded
+    // send never touches the buffer table: it inherits the typed line's chips
+    // (pendingChips) or nothing — generated text must not steal buffer chips.
+    const chips = runtime ? pendingChips ?? [] : takeChips(ui.pastes, trimmed);
+    if (runtime) pendingChips = null;
     ui.input = { value: '', cursor: 0 };
+    ui.pastes = pruneChips(ui.pastes, '');
     if (runtime) {
       forwarded.set(trimmed, (forwarded.get(trimmed) ?? 0) + 1);
-    } else {
-      ui.history.push(trimmed);
-      ui.historyIndex = ui.history.length;
+    } else if (!isSecretCommand(trimmed)) {
+      // An api-key command never enters history — up-arrow would put the key
+      // back into the input, a later recall would carry it anywhere, and
+      // recordHistory persists it to ~/.zcode/cli/history.jsonl on disk.
+      recordHistory(trimmed, chips);
     }
     if (ui.busy) {
-      ui.queue.push(trimmed);
+      ui.queue.push({ text: trimmed, chips, activity, cancelNotice });
       ui.queueItem = ui.queue.length - 1;
       ui.queueAction = 0;
       draw();
       return;
     }
-    void submit(trimmed);
+    void submit(trimmed, chips, { activity, cancelNotice });
   }
 
-  async function submit(text) {
+  // History entries carry the compact text plus its paste chips so recall can
+  // restore both — a recalled chip still expands on resubmit. Entries are also
+  // appended to ~/.zcode/cli/history.jsonl so the NEXT session's up-arrow has
+  // something to find. A consecutive duplicate is submitted but not re-recorded
+  // (shell-style) — recalling it twice in a row would look like a stuck key.
+  // NOTE: the chips default MUTATES ui.pastes (takeChips removes what it finds);
+  // pass an explicit chips list when the buffer table must stay intact.
+  function recordHistory(text, chips = takeChips(ui.pastes, text)) {
+    if (ui.history.at(-1)?.text !== text) {
+      ui.history.push({ text, chips });
+      if (ui.history.length > HISTORY_CAP) ui.history.splice(0, ui.history.length - HISTORY_CAP);
+      appendHistory({ text, chips }, { home: host.home });
+    }
+    ui.historyIndex = ui.history.length;
+    ui.draft = ''; ui.draftChips = [];
+    // A submit ends recall navigation — a stale host recallDepth would make the
+    // next up-arrow skip entries AND defeat the draft-stash guard below.
+    ui.recallDepth = 0;
+  }
+
+  async function submit(text, chips = [], { activity, cancelNotice } = {}) {
     if (exiting) return;
     const trimmed = text.trim();
     if (isQuit(trimmed)) { quit(); return; }   // also covers the queue drain
@@ -358,7 +427,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     // drained queue re-append every message (queue [a,b] -> history a,b,a,b).
     const fwd = forwarded.get(trimmed) ?? 0;
     if (fwd > 0) forwarded.set(trimmed, fwd - 1);
-    else addUserEntry(state, trimmed);
+    else addUserEntry(state, displayFor(trimmed));
     // Kernel session-switch commands change which session later envelopes
     // describe; until a main-turn model_request re-latches the real one, a
     // stale id would aim /rename, /archive and /delete at the session the user
@@ -368,7 +437,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
       state.sessionId = sessionSwitch[1] === 'resume' && sessionSwitch[2] ? sessionSwitch[2] : null;
     }
     ui.busy = true;
-    ui.activity = trimmed.startsWith('/') ? 'running command' : 'working';
+    // A picked selection item may name what the wait is (e.g. login's "Waiting
+    // for browser authorization...") — far better than a generic spinner while
+    // the kernel polls for the OAuth callback.
+    ui.activity = activity ?? (trimmed.startsWith('/') ? 'running command' : 'working');
     const abort = new AbortController();
     ui.abort = abort;
     startSpinner();
@@ -378,7 +450,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
       // submitPrompt, not sendInput: the kernel's sendInput wrapper dereferences
       // an undefined `result` on this build and throws before the turn starts
       // (verified 2026-09-07 — receipt official-tui-seam-2026-09-07.md).
-      const payload = ui.attachments.length ? { text: trimmed, attachments: [...ui.attachments] } : trimmed;
+      // Chips stay compact in the transcript, queue and history; only the
+      // payload the runtime receives expands back to the pasted text.
+      const expanded = expandChips(chips, trimmed);
+      const payload = ui.attachments.length ? { text: expanded, attachments: [...ui.attachments] } : expanded;
       ui.attachments = [];
       const result = await host.submitPrompt(payload, {
         abortSignal: abort.signal,
@@ -398,7 +473,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       const message = String(error?.message ?? error);
       if (exiting) return;
       if (abort.signal.aborted) {
-        addNotice(state, 'interrupted', 'muted');
+        addNotice(state, cancelNotice ?? 'interrupted', 'muted');
       } else {
         addNotice(state, `error: ${message}`, 'error');
         // "Turn execution failed" on its own tells the user nothing. When the
@@ -432,7 +507,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       : ui.abortedByUser ? undefined
       : ui.queue.shift();
     ui.abortedByUser = false;
-    if (next !== undefined) await submit(next);
+    if (next !== undefined) await submit(next.text, next.chips, { activity: next.activity, cancelNotice: next.cancelNotice });
   }
 
   /**
@@ -499,6 +574,13 @@ export async function runTui(host = {}, { deps = null } = {}) {
         value: typeof i.command === 'string' && i.command !== '' ? i.command : i.id,
         label: typeof i.primary === 'string' && i.primary !== '' ? i.primary : String(i.id ?? i.command ?? ''),
         note: [i.secondary, i.meta].filter(v => typeof v === 'string' && v !== '').join('  '),
+        // The kernel's login items carry two extras: `input` asks for text
+        // before the command can run (the api-key entries send
+        // {input:{mask:true,...}} — the bare command alone answers with a
+        // usage error), and `pending` names the wait while the picked
+        // command's turn runs.
+        input: i.input && typeof i.input === 'object' ? i.input : null,
+        pending: i.pending && typeof i.pending === 'object' ? i.pending : null,
       }))
       .filter(i => typeof i.value === 'string' && i.value !== '');
     if (items.length === 0) {
@@ -518,10 +600,95 @@ export async function runTui(host = {}, { deps = null } = {}) {
       // pick made while busy must queue rather than silently drop. trusted:
       // the kernel's own follow-up command must skip the unknown-command gate —
       // a kernel pick for a command it never advertised is still the kernel's.
-      pick: (item) => { enqueueOrSubmit(item.value, { trusted: true }); },
+      pick: (item) => {
+        if (item.input) { openTextPrompt(item, () => openSelection(selection)); return; }
+        const text = (v) => typeof v === 'string' && v !== '' ? v : undefined;
+        // The pending status names what the wait is. A slash command never
+        // starts a turn, so the status-line spinner label never shows — put it
+        // in the transcript where the authorize URL lands below it.
+        if (text(item.pending?.status)) addNotice(state, item.pending.status, 'muted');
+        // The pick is not the user's draft — a line typed while the command
+        // result was on the wire must survive the submit's input clear.
+        const draft = ui.input, pastes = ui.pastes;
+        enqueueOrSubmit(item.value, {
+          trusted: true,
+          activity: text(item.pending?.status),
+          cancelNotice: text(item.pending?.cancelStatus),
+        });
+        ui.input = draft; ui.pastes = pastes;
+      },
     };
     draw();
     return true;
+  }
+
+  /**
+   * A selection item carrying an `input` spec needs a value before its command
+   * can run. Enter submits `<command> <value>`; Esc/ctrl-c backs out. When the
+   * spec masks (the api-key entries), the value paints as mask glyphs — a
+   * credential must never reach the screen, and the redaction on the submit
+   * path keeps it out of the transcript and history too.
+   */
+  function openTextPrompt(item, reopen) {
+    if (exiting) return;
+    const spec = item.input;
+    const opt = (k) => typeof spec[k] === 'string' && spec[k] !== '' ? spec[k] : undefined;
+    ui.prompt = {
+      title: opt('primary') ?? item.label,
+      detail: opt('secondary'),
+      placeholder: opt('placeholder'),
+      hint: opt('help'),
+      mask: spec.mask === true,
+      emptyStatus: opt('emptyStatus'),
+      cancelStatus: opt('cancelStatus'),
+      submitStatus: opt('submitStatus'),
+      command: item.value,
+      pending: item.pending,
+      reopen,
+      value: '', cursor: 0,
+    };
+    draw();
+  }
+
+  function onPromptKey(event) {
+    const p = ui.prompt;
+    if (!p) return;
+    const text = (v) => typeof v === 'string' && v !== '' ? v : undefined;
+    switch (event.name) {
+      case 'enter': {
+        const value = p.value.trim();
+        if (value === '') {
+          if (p.emptyStatus) addNotice(state, p.emptyStatus, 'warning');
+          draw();
+          return;
+        }
+        ui.prompt = null;
+        // The spec's submitStatus ("Saving API key...") is the activity while
+        // the configure call is in flight; item-level pending still wins if a
+        // kernel sends both.
+        enqueueOrSubmit(`${p.command} ${value}`, {
+          trusted: true,
+          activity: text(p.pending?.status) ?? p.submitStatus,
+          cancelNotice: text(p.pending?.cancelStatus),
+        });
+        return;
+      }
+      // Esc backs out to the selection the prompt came from — the kernel's own
+      // help text for the api-key items promises exactly that.
+      case 'escape': case 'ctrl-c':
+        ui.prompt = null;
+        if (p.cancelStatus) addNotice(state, p.cancelStatus, 'muted');
+        if (p.reopen) { p.reopen(); return; }
+        draw();
+        return;
+      default: {
+        // applyKey returns the same object on a no-op key — the prompt shares
+        // the editor's movement/erase/paste vocabulary verbatim.
+        const next = applyKey(p, event);
+        if (next !== p) { ui.prompt = { ...p, ...next }; draw(); }
+        return;
+      }
+    }
   }
 
   /** Tool arguments are rendered in the prompt; their string values are untrusted. */
@@ -544,7 +711,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   function askPermission(request, context) {
     const options = permissionOptions(request);
     if (exiting || context?.abortSignal?.aborted) return Promise.resolve(denyResponse(options));
-    const remembered = lookupGrant(request);
+    const remembered = lookupGrant(request, { home: host.home });
     if (remembered) return Promise.resolve(remembered);
     return new Promise((resolve) => {
       const onAbort = () => settle(denyResponse(options));
@@ -553,7 +720,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
         ui.permission = null;
         context?.abortSignal?.removeEventListener?.('abort', onAbort);
         const option = options.find((o) => o.response === response);
-        if (option) rememberGrant(request, option);
+        if (option) rememberGrant(request, option, { home: host.home });
         draw();
         resolve(response);
       };
@@ -687,7 +854,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       if (!items.length) return false;
       ui.chooser = { title: str.effortTitle, detail: str.effortDetail,
         items, index: Math.max(0, items.findIndex(i => i.value === ui.effort)),
-        pick: (item) => { void submit(`/effort ${item.value}`); } };
+        pick: (item) => { recordHistory(`/effort ${item.value}`); void submit(`/effort ${item.value}`); } };
       draw();
       return true;
     }
@@ -696,7 +863,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       if (!items.length) return false;
       ui.chooser = { title: str.modelTitle, items,
         index: Math.max(0, items.findIndex(i => i.value === ui.model)),
-        pick: (item) => { void submit(`/model ${item.value}`); } };
+        pick: (item) => { recordHistory(`/model ${item.value}`); void submit(`/model ${item.value}`); } };
       draw();
       return true;
     }
@@ -704,7 +871,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       const items = skillCandidates(ui.skills);
       if (!items.length) return false;
       ui.chooser = { title: '/skill', items: items.map(s => ({ value: s.value, label: `$${s.value}`, note: s.hint ?? '' })),
-        index: 0, pick: (item) => { void submit(`$${item.value}`); } };
+        index: 0, pick: (item) => { recordHistory(`$${item.value}`); void submit(`$${item.value}`); } };
       draw();
       return true;
     }
@@ -719,7 +886,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
           note: v && typeof v === 'object' ? String(v.status ?? '') : '',
         })),
         index: 0,
-        pick: (item) => { void submit(`/mcp ${item.value}`); },
+        pick: (item) => { recordHistory(`/mcp ${item.value}`); void submit(`/mcp ${item.value}`); },
       };
       draw();
       return true;
@@ -734,7 +901,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
           { value: 'clear', label: 'clear', note: '' },
         ],
         index: 0,
-        pick: (item) => { void submit(`/goal ${item.value}`); },
+        pick: (item) => { recordHistory(`/goal ${item.value}`); void submit(`/goal ${item.value}`); },
       };
       draw();
       return true;
@@ -794,14 +961,16 @@ export async function runTui(host = {}, { deps = null } = {}) {
 
   function applyQueueAction(index, action) {
     if (index < 0 || index >= ui.queue.length) return;
-    const text = ui.queue[index];
+    const entry = ui.queue[index];
     ui.queue.splice(index, 1);
     ui.queueItem = Math.min(ui.queueItem, Math.max(0, ui.queue.length - 1));
     if (action === 0) {
-      if (ui.busy) ui.queue.unshift(text);
-      else void submit(text);
+      if (ui.busy) ui.queue.unshift(entry);
+      else void submit(entry.text, entry.chips, { activity: entry.activity, cancelNotice: entry.cancelNotice });
     } else if (action === 1) {
-      ui.input = { value: text, cursor: text.length };
+      ui.input = { value: entry.text, cursor: entry.text.length };
+      attachChips(ui.pastes, entry.text, entry.chips);
+      ui.pastes = pruneChips(ui.pastes, entry.text);
     }
     draw();
   }
@@ -849,6 +1018,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     interrupt();
     ui.queue.length = 0;
     clearCompletion();
+    ui.prompt = null;
     denyPendingPermission();
     stopSpinner();
     clearTimeout(escapeTimer);
@@ -887,8 +1057,14 @@ export async function runTui(host = {}, { deps = null } = {}) {
       interrupt();
       return;
     }
-    if (ui.chooser) return void onChooserKey(event);
+    // Dispatch order matches draw()'s tail priority — permission, then prompt,
+    // then chooser — so keys always go to the surface actually painted.
     if (ui.permission) return onPermissionKey(event);
+    // A modal text prompt (the login api-key entry) owns every key until Enter
+    // or Esc resolves it — including ctrl-c, which cancels the prompt like the
+    // chooser rather than counting toward exit.
+    if (ui.prompt) return void onPromptKey(event);
+    if (ui.chooser) return void onChooserKey(event);
 
     if (event.name === 'ctrl-c') {
       const now = Date.now();
@@ -989,6 +1165,19 @@ export async function runTui(host = {}, { deps = null } = {}) {
         draw();
         return;
       }
+      // Inside a multi-line draft the arrows move the cursor first (applyKey
+      // returns the same object at the boundary) — a stray up must not clobber
+      // a half-typed draft with a history entry.
+      const moved = applyKey(ui.input, event);
+      if (moved !== ui.input) { ui.input = moved; draw(); return; }
+      // Leaving the live input for history: stash the draft (and its chips) so
+      // navigating back past the newest entry restores it, not an empty box.
+      if (ui.historyIndex === ui.history.length && (ui.recallDepth ?? 0) === 0) {
+        ui.draft = ui.input.value;
+        const held = takeChips(ui.pastes, ui.draft);
+        attachChips(ui.pastes, ui.draft, held);       // take+attach = copy, not move
+        ui.draftChips = held;
+      }
       // The runtime keeps input history that OUTLIVES the session; ours died with
       // it. Ask the host first and fall back to the in-memory list.
       const step = event.name === 'up' ? 1 : -1;
@@ -1002,8 +1191,14 @@ export async function runTui(host = {}, { deps = null } = {}) {
         if (ui.history.length === 0) return;
         const next = event.name === 'up' ? ui.historyIndex - 1 : ui.historyIndex + 1;
         ui.historyIndex = Math.min(ui.history.length, Math.max(0, next));
-        const recalled = ui.history[ui.historyIndex] ?? '';
-        ui.input = { value: recalled, cursor: recalled.length };
+        // Past the newest entry sits the stashed draft — never an empty box.
+        const recalled = ui.historyIndex === ui.history.length
+          ? { text: ui.draft, chips: ui.draftChips }
+          : ui.history[ui.historyIndex];
+        const text = typeof recalled === 'string' ? recalled : recalled?.text ?? '';
+        ui.input = { value: text, cursor: text.length };
+        if (typeof recalled === 'object') attachChips(ui.pastes, text, recalled?.chips);
+        ui.pastes = pruneChips(ui.pastes, text);
         draw(); void refreshCompletion();
       };
       if (typeof host.recallPreviousInput === 'function') {
@@ -1018,21 +1213,96 @@ export async function runTui(host = {}, { deps = null } = {}) {
               return;
             }
             ui.input = { value: text, cursor: text.length };
+            ui.pastes = pruneChips(ui.pastes, text);
             draw(); void refreshCompletion();
           })
-          .catch(() => { recallLocal(); });       // a broken host must not disable history
+          .catch(() => {
+            ui.recallDepth = Math.max(0, ui.recallDepth - step);   // same unwind as the null path
+            recallLocal();                      // a broken host must not disable history
+          });
         return;
       }
       recallLocal();
       return;
     }
 
-    if (typeof event.text === 'string' && event.text.length >= 2000) {
-      addNotice(state, str.longPaste(event.text.length), 'muted');
+    // A cursor parked inside a chip token would let the next edit split the
+    // literal and strand the payload — snap the insert point past the chip.
+    // Arrows never rest inside a chip (snapped below), so this guards every
+    // other cursor source: home/end on a chip-filled line, future click-to-
+    // place, any path that assigns ui.input.cursor directly.
+    const parked = chipSpanAt(ui.pastes, ui.input.value, ui.input.cursor);
+    if (parked) ui.input = { value: ui.input.value, cursor: parked.end };
+
+    // A large paste arrives as ONE text event (bracketed paste) and collapses
+    // to a `[Pasted ~N lines]` chip in the buffer; ui.pastes holds the payload
+    // (sanitized, same as any submitted text) and submit() expands it. Small
+    // pastes still land as literal text.
+    if (typeof event.text === 'string') {
+      const token = pasteToken(event.text);
+      if (token !== null) {
+        const { value, cursor } = ui.input;
+        insertChip(ui.pastes, value.slice(0, cursor) + token + value.slice(cursor),
+          cursor, token, sanitizeText(event.text));
+        event = { text: token };
+      }
     }
     const before = ui.input;
-    ui.input = applyKey(ui.input, event);
-    if (ui.input !== before) { draw(); void refreshCompletion(); }
+    // A delete-ish key touching a chip removes the WHOLE chip — editing the
+    // token into a broken literal is how placeholders leak into prompts.
+    const delRange = (() => {
+      const { value, cursor } = ui.input;
+      if (event.name === 'backspace') return cursor > 0 ? [cursor - 1, cursor] : null;
+      if (event.name === 'delete') return cursor < value.length ? [cursor, cursor + 1] : null;
+      if (event.name === 'ctrl-u') {
+        const start = cursor === 0 ? 0 : value.lastIndexOf('\n', cursor - 1) + 1;
+        return cursor > start ? [start, cursor] : null;
+      }
+      if (event.name === 'ctrl-w') {
+        const start = value.slice(0, cursor).replace(/\S+\s*$/u, '').length;
+        return start < cursor ? [start, cursor] : null;
+      }
+      return null;
+    })();
+    if (delRange) {
+      // ctrl-u on a real draft is a data-loss key: record the doomed input so
+      // up-arrow brings it back. The chips are COPIED (take+attach) — taking
+      // them here would blind the atomic chip delete below to the span.
+      // Never a secret command: a wiped api-key must not be resurrected from
+      // recall, and recordHistory writes history.jsonl to disk.
+      if (event.name === 'ctrl-u' && delRange[1] - delRange[0] >= 20
+          && !isSecretCommand(ui.input.value)) {
+        const held = takeChips(ui.pastes, ui.input.value);
+        attachChips(ui.pastes, ui.input.value, held);
+        recordHistory(ui.input.value, held);
+      }
+      const span = chipSpanIn(ui.pastes, ui.input.value, delRange[0], delRange[1]);
+      if (span) {
+        ui.pastes.splice(span.index, 1);
+        const { value } = ui.input;
+        ui.input = { value: value.slice(0, span.start) + value.slice(span.end), cursor: span.start };
+      }
+    }
+    if (ui.input === before) ui.input = applyKey(ui.input, event);
+    // Arrows skip a chip atomically: a mid-chip landing snaps past the token
+    // in the direction of travel, so the cursor can never rest inside one.
+    if (event.name === 'left' || event.name === 'right') {
+      const inside = chipSpanAt(ui.pastes, ui.input.value, ui.input.cursor);
+      if (inside) ui.input = { value: ui.input.value, cursor: event.name === 'left' ? inside.start : inside.end };
+    }
+    if (ui.pastes.length > 0) ui.pastes = pruneChips(ui.pastes, ui.input.value);
+    // An edit while a recall is showing makes the buffer the new live draft:
+    // adopt it (chips included) and reset the nav state, or the next up-arrow
+    // would judge "leaving the live input" off a recalled entry's stale slot.
+    if (ui.input !== before && (ui.historyIndex < ui.history.length || (ui.recallDepth ?? 0) > 0)) {
+      ui.historyIndex = ui.history.length;
+      ui.recallDepth = 0;
+      ui.draft = ui.input.value;
+      const held = takeChips(ui.pastes, ui.draft);
+      attachChips(ui.pastes, ui.draft, held);
+      ui.draftChips = held;
+    }
+    if (ui.input !== before || parked) { draw(); void refreshCompletion(); }
   }
 
   // MCP servers fail silently otherwise: the probe on this machine found
@@ -1138,14 +1408,45 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // is ours, and any death that skips exit() — a fault, an outside kill — must
   // still hand back a sane terminal. Pre-fix the only release was exit(), so an
   // uncaught error left the shell in raw mode with bracketed paste armed.
+  let fatalInFlight = false;
   const onFatal = (err) => {
+    if (fatalInFlight) return;               // a second fault mid-flush: once is enough
+    fatalInFlight = true;
     try { stdin.setRawMode?.(false); } catch {}
-    screen.writeRaw('\x1b[?2004l');
     // The stack belongs to the runtime's diagnostic log — on the user's screen
     // it is exactly the stack-on-screen defect the journeys already gate.
     logDiagnostic(`fatal: ${err?.stack || err}`);
-    try { process.stderr.write(`zagent: fatal: ${String(err?.message || err).split('\n')[0].slice(0, 300)}\n`); } catch {}
-    process.exit(1);
+    // process.exit() drops writes still queued on a piped stream — and the
+    // paste-off is exactly the byte the user's next shell needs. A stream that
+    // exposes its fd takes the write synchronously, bypassing the queue;
+    // otherwise the write callback (fired on flush OR error) gates the exit.
+    // The backstop is armed FIRST: a throwing fd getter below must not skip it.
+    process.exitCode = 1;
+    setTimeout(() => process.exit(1), 400).unref();
+    let pending = 2;
+    const fin = () => { if (--pending === 0) process.exit(1); };
+    const once = (f) => { let done = false; return () => { if (!done) { done = true; f(); } }; };
+    const flush = (stream, text) => {
+      const finOnce = once(fin);             // a sink may both call back AND return undefined
+      if (typeof stream?.fd === 'number') {
+        try {
+          // writeSync counts BYTES, not chars — a CJK error line must not
+          // miscompare and land twice. A short write drops the tail on
+          // purpose: queueing the full text would duplicate the prefix, and
+          // the process is dying anyway.
+          if (writeSync(stream.fd, text) > 0) return void finOnce();
+        } catch {}
+      }
+      // A sink that ignores the callback returns undefined: it already has the
+      // text, so that side is done. A real stream returns a boolean and its
+      // callback does the counting.
+      try { if (stream?.write?.(text, finOnce) === undefined) finOnce(); }
+      catch { finOnce(); }
+    };
+    // Each flush is independently fallible — a throwing fd getter on a
+    // hostile host.stdout must not skip the stderr line.
+    try { flush(stdout, '\x1b[?2004l'); } catch {}
+    try { flush(process.stderr, `zagent: fatal: ${String(err?.message || err).split('\n')[0].slice(0, 300)}\n`); } catch {}
   };
   // Raw mode turns a terminal ctrl-c into the 0x03 byte, so an observed SIGINT
   // is always an outside kill — it takes SIGTERM's graceful finish, not the
@@ -1188,9 +1489,56 @@ export async function runTui(host = {}, { deps = null } = {}) {
   exit();
 }
 
-// Imported by the kernel's login path; absent exports break module load.
-export const loginFailureDiagnostic = () => undefined;
-export const shouldSuspendForLoginCommand = () => false;
-export const shouldUseNoBrowserForLogin = () => false;
-export const suppressTuiAiSdkWarnings = () => {};
-export const suspendedZaiLoginCommand = () => undefined;
+// --- the module's login-helper exports -----------------------------------------
+// Part of the '@zcode/tui' contract: the kernel loads this module as a whole
+// and the vendored implementation exports these for its suspended login flow.
+// Semantics ported verbatim from the runtime's own @zcode/tui build so any
+// consumer sees the same behaviour.
+
+/**
+ * SSH or a display-less Linux session cannot open a browser; the suspended
+ * login child is told to print the authorize URL instead.
+ */
+export function shouldUseNoBrowserForLogin(env = process.env, platform = process.platform) {
+  if (env.SSH_CONNECTION?.trim() || env.SSH_TTY?.trim()) return true;
+  if (platform !== 'linux') return false;
+  return !env.DISPLAY?.trim() && !env.WAYLAND_DISPLAY?.trim();
+}
+
+/** The one /login form whose OAuth flow runs as a suspended child process. */
+export function shouldSuspendForLoginCommand(command) {
+  return command === '/login zai-coding-plan';
+}
+
+/**
+ * The suspended login child: the zcode-app-cli launcher when both of its env
+ * vars are set (it wraps the runtime), else the running runtime itself.
+ */
+export function suspendedZaiLoginCommand(env = process.env, runtimeExecutable = process.execPath, runtimeEntry = process.argv[1]) {
+  const executable = env.ZCODE_APP_CLI_EXECUTABLE?.trim();
+  const launcher = env.ZCODE_APP_CLI_ENTRY?.trim();
+  if (executable && launcher) return { program: executable, args: [launcher, 'login', '--oauth'] };
+  if (!runtimeEntry) throw new Error('Unable to locate the ZCode runtime entry point.');
+  return { program: runtimeExecutable, args: [runtimeEntry, 'login'] };
+}
+
+/**
+ * The line worth showing when a suspended login child fails: the first
+ * conventional error line, else the last thing it said. stderr is read first;
+ * stdout only when the child said nothing on stderr.
+ */
+export function loginFailureDiagnostic(stdout, stderr) {
+  const lines = (stderr || stdout).trim().split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  return lines.find((line) => /^(?:error:|failed\b|invalid\b|unknown\b)/iu.test(line)) ?? lines.at(-1);
+}
+
+/**
+ * The AI SDK paints its warning banner through console.info when no handler is
+ * installed — terminal garbage inside a TUI. Suppress only the default; a
+ * runtime-installed structured handler is left alone.
+ */
+export function suppressTuiAiSdkWarnings() {
+  if (typeof globalThis.AI_SDK_LOG_WARNINGS === 'function') return;
+  try { globalThis.AI_SDK_LOG_WARNINGS = false; } catch {}
+}
+suppressTuiAiSdkWarnings();

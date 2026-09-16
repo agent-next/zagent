@@ -1,7 +1,7 @@
 // E6 — memory parity (r10: runtime-exact algorithm, legacy migration, locked appends).
 // GLOBAL audit 2026-09-06: UPSTREAM ZCode uses project-only memory (bundle + live tree
 // show memories/projects/… only; headless runs skip extraction — a /tmp probe wrote
-// nothing). zmax INTENTIONALLY retains the global load/save/append API below as a LOCAL
+// nothing). zagent INTENTIONALLY retains the global load/save/append API below as a LOCAL
 // feature — not a parity claim; do not remove it on parity grounds.
 // Workspace-id scheme copied from the runtime's rules (cx-verified spec, 2026-09-06):
 // resolve(path) → basename → lowercase → keep [a-z0-9._-] → trim edge hyphens →

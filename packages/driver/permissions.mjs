@@ -22,10 +22,11 @@ export function deny(p, message = 'denied by client') {
 
 // Remote chat bridges (feishu/wechat/telegram): the requester is a chat message,
 // not a person at the terminal — high-risk tools are denied there by default.
-// ZMAX_BRIDGE_ALLOW_HIGH_RISK=1 opts back in. The deny still answers with the
+// ZAGENT_BRIDGE_ALLOW_HIGH_RISK=1 opts back in (legacy ZMAX_ name still read).
+// The deny still answers with the
 // request's own deny option response (the only shape the runtime accepts).
 export function bridgeAutoAllow(p, env = process.env) {
-  if (p?.riskLevel === 'high' && env.ZMAX_BRIDGE_ALLOW_HIGH_RISK !== '1') {
+  if (p?.riskLevel === 'high' && env.ZAGENT_BRIDGE_ALLOW_HIGH_RISK !== '1' && env.ZMAX_BRIDGE_ALLOW_HIGH_RISK !== '1') {
     return deny(p, 'high-risk tool denied on remote bridge');
   }
   return autoAllow(p);
@@ -72,8 +73,8 @@ export function blockedLine(p) {
 // commands like rm / git push) remembers the exact command string, never a glob.
 // Stored at ~/.zcode/cli/grants.json with mode 0600. TUI later: lookupGrant first,
 // rememberGrant after the user picks an allow_always / deny-always style option.
-export function grantsPath() {
-  return path.join(os.homedir(), '.zcode', 'cli', 'grants.json');
+export function grantsPath({ home } = {}) {
+  return path.join(home ?? os.homedir(), '.zcode', 'cli', 'grants.json');
 }
 
 export function isAlwaysOptionId(id) {
@@ -112,9 +113,9 @@ function grantStoreKey(request) {
   return createHash('sha256').update(`${tool}\0${grantFingerprint(request)}`).digest('hex');
 }
 
-function loadGrantFile() {
+function loadGrantFile({ home } = {}) {
   try {
-    const obj = JSON.parse(readFileSync(grantsPath(), 'utf8'));
+    const obj = JSON.parse(readFileSync(grantsPath({ home }), 'utf8'));
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { version: 1, grants: {} };
     const grants = obj.grants && typeof obj.grants === 'object' && !Array.isArray(obj.grants) ? obj.grants : {};
     return { version: 1, grants };
@@ -123,8 +124,8 @@ function loadGrantFile() {
   }
 }
 
-function saveGrantFile(obj) {
-  const dest = grantsPath();
+function saveGrantFile(obj, { home } = {}) {
+  const dest = grantsPath({ home });
   mkdirSync(path.dirname(dest), { recursive: true });
   const tmp = `${dest}.${process.pid}.tmp`;
   try {
@@ -137,21 +138,28 @@ function saveGrantFile(obj) {
   }
 }
 
-export function lookupGrant(request) {
-  const rec = loadGrantFile().grants[grantStoreKey(request)];
+export function lookupGrant(request, { home } = {}) {
+  const rec = loadGrantFile({ home }).grants[grantStoreKey(request)];
   return rec?.response ?? null;
 }
 
-export function rememberGrant(request, option) {
+export function rememberGrant(request, option, { home } = {}) {
   const id = optionIdOf(option);
   if (!isAlwaysOptionId(id)) return null;
   const response = option && typeof option === 'object' && option.response !== undefined
     ? option.response
     : request?.options?.find(o => optionIdOf(o) === id)?.response;
   if (response === undefined) return null;
+  // Replay must not re-deliver a consumed update: 3.12.1's synthesized
+  // allow_always carries suggestedPermissionUpdates, which the kernel applies
+  // on the first reply — re-sending them on every later auto-answer could
+  // re-add a rule the user has since revoked.
+  const stored = response && typeof response === 'object' && 'permissionUpdates' in response
+    ? Object.fromEntries(Object.entries(response).filter(([k]) => k !== 'permissionUpdates'))
+    : response;
   const toolName = request?.toolName ?? request?.tool ?? '';
-  const file = loadGrantFile();
-  file.grants[grantStoreKey(request)] = { toolName, optionId: id, response };
-  saveGrantFile(file);
+  const file = loadGrantFile({ home });
+  file.grants[grantStoreKey(request)] = { toolName, optionId: id, response: stored };
+  saveGrantFile(file, { home });
   return response;
 }

@@ -96,7 +96,7 @@ async function openPrintClient(cwd) {
 // One headless turn on a fresh session with the requested selection. `client`
 // is injectable for tests; the CLI path opens (and always closes) its own.
 // Permissions get autoAllow — the kernel's -p contract is "default yolo for
-// --prompt" and zmaxd does the same. A user-chosen --mode still applies via
+// --prompt" and zagentd does the same. A user-chosen --mode still applies via
 // session/setMode (kernel-side enforcement); plan approval prompts hit the
 // client's default decline handler, so headless plan mode produces the plan.
 export async function runPrintOnce(sel, { client, createClient = openPrintClient, timeoutMs = 600_000 } = {}) {

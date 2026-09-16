@@ -1,5 +1,5 @@
 // The command table. One source of truth, because it is read three ways: the
-// `help` palette prints all of it, `bin/zmax` answers `zagent <cmd> --help` from
+// `help` palette prints all of it, `bin/zagent` answers `zagent <cmd> --help` from
 // it, and the README's table is checked against it by a test. The README used to
 // drift — it omitted `offpeak` and `task`, which have shipped and worked for a
 // while, and it understated the Node requirement.
@@ -40,7 +40,7 @@ export const COMMANDS = [
 // parseArgs table plus its manually pre-parsed flags — identical on 3.11.2 and
 // 3.12.1 — verified by executing each against both builds (2026-09-15), plus
 // two zagent extensions the kernel has no flags for: --model/--effort, consumed
-// by zmax-print.mjs's protocol path rather than forwarded. The official --help
+// by zagent-print.mjs's protocol path rather than forwarded. The official --help
 // lists six options its parser rejects outright: --print, --max-turns,
 // --allowed-tools, --permission-mode, --settings, --allow-main-worktree-yolo.
 // They are NOT here: accepting them would forward a guaranteed "Unknown option"

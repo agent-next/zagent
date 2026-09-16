@@ -53,7 +53,7 @@ export function remoteStatus({ home = os.homedir(), env = process.env } = {}) {
 }
 
 export function connectDeniedReason(env = process.env, { live = false } = {}) {
-  if (env.ZMAX_TEST_SANDBOX || env.CI || env.GITHUB_ACTIONS) {
+  if (env.ZAGENT_TEST_SANDBOX || env.CI || env.GITHUB_ACTIONS) {
     return 'live websocket connect is blocked in CI/test (would hang the gate)';
   }
   if (!live && env.ZAGENT_REMOTE_CONNECT !== '1') {

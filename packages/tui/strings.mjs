@@ -35,6 +35,7 @@ const EN = {
   needsPermission: (tool) => `${tool} needs permission`,
   chooseHint: 'up/down/tab or 1-9 to choose · enter to confirm · esc to cancel',
   denyHint: 'up/down/tab or 1-9 to choose · enter to confirm · esc to deny',
+  promptHint: 'enter to confirm · esc to cancel',
   sendNow: 'send now',
   editQueued: 'edit',
   cancelQueued: 'cancel',
@@ -54,7 +55,6 @@ const EN = {
   mcpOk: (ok, n) => `mcp ${ok}/${n}`,
   mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} failed`,
   agents: (n) => `agents ${n}`,
-  longPaste: (n) => `long paste kept (${n} chars) — GUI would chip this as an attachment`,
 };
 
 const ZH = {
@@ -82,6 +82,7 @@ const ZH = {
   needsPermission: (tool) => `${tool} 需要授权`,
   chooseHint: '上下键/tab 或 1-9 选择 · enter 确认 · esc 取消',
   denyHint: '上下键/tab 或 1-9 选择 · enter 确认 · esc 拒绝',
+  promptHint: 'enter 确认 · esc 取消',
   sendNow: '发送',
   editQueued: '编辑',
   cancelQueued: '取消',
@@ -101,7 +102,6 @@ const ZH = {
   mcpOk: (ok, n) => `mcp ${ok}/${n}`,
   mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} 失败`,
   agents: (n) => `子代理 ${n}`,
-  longPaste: (n) => `长粘贴已保留（${n} 字）— GUI 会收成附件`,
 };
 
 /** `auto` and anything unrecognised fall back to English. */

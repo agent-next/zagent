@@ -25,7 +25,7 @@ Interoperability and reverse engineering
 
 Credits
 - TUI foundation: kingsword09/zcode-cli (zcode-app-cli), MIT-claimed — our launcher
-  hands off to the user's own install of it; see packages/cli/zmax.mjs.
+  hands off to the user's own install of it; see packages/cli/zagent.mjs.
 
 Disclaimer of warranty and liability
 - Provided "AS IS", WITHOUT WARRANTY OF ANY KIND. To the maximum extent permitted

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zcodes — session/task panel: lists runtime sessions (live via protocol) joined with
+// zagent-sessions — session/task panel: lists runtime sessions (live via protocol) joined with
 // GUI task titles (read-only tasks-index.sqlite). Parity: GUI task list, minimal.
 import { ZCodeProtocolClient } from '../packages/driver/zcode-protocol.mjs';
 import { DatabaseSync } from 'node:sqlite';

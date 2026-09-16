@@ -6,7 +6,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { conversationFileChanges, conversationFileRewindPreview, conversationSnapshot, conversationTopic, defaultSessionForRewind, forkSession, isRowActionUnavailable, isStaleConversationBase, isV4SurfaceUnavailable, listSessionCheckpoints, noCheckpointYet, pickConversationRow, resumeSession, subscribeConversation, unsubscribeConversation } from '../driver/rewind.mjs';
-import { recentSession } from './zmax-goal.mjs';
+import { recentSession } from './zagent-goal.mjs';
 import { NOT_RUNNING, isNotRunning } from './session-errors.mjs';
 
 export const USAGE = 'usage: zagent rewind [list|latest|<checkpointId>|changes|preview [<checkpointId>]] [--message <id>] [--session <id>] [--json]';

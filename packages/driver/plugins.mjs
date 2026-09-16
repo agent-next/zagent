@@ -18,7 +18,22 @@ const cmpSemver = (a, b) => {
   if (!va.pre && !vb.pre) return 0;
   if (!va.pre) return 1;               // release > prerelease
   if (!vb.pre) return -1;
-  return va.pre < vb.pre ? -1 : va.pre > vb.pre ? 1 : 0;
+  const as = va.pre.split('.'), bs = vb.pre.split('.');
+  const n = Math.max(as.length, bs.length);
+  for (let i = 0; i < n; i++) {
+    if (i >= as.length) return -1;
+    if (i >= bs.length) return 1;
+    const ai = as[i], bi = bs[i];
+    const an = /^\d+$/.test(ai), bn = /^\d+$/.test(bi);
+    if (an && bn) {
+      const d = Number(ai) - Number(bi);
+      if (d) return d < 0 ? -1 : 1;
+      continue;
+    }
+    if (an !== bn) return an ? -1 : 1;
+    if (ai !== bi) return ai < bi ? -1 : 1;
+  }
+  return 0;
 };
 
 export function marketplaceVersions(marketplaceJson) {

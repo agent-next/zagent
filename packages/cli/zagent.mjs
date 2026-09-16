@@ -16,7 +16,7 @@ import os from 'node:os';
 
 import { findRuntime, kernelEnv } from '../driver/runtime.mjs';
 import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs';
-import { buildLaunchArgs, tuiPreference } from '../driver/tui-launch.mjs';
+import { buildLaunchArgs, tuiPreference, tuiNodeSupported, TUI_NODE_FLOOR, nodeSqliteSupported, NODE_SQLITE_FLOOR } from '../driver/tui-launch.mjs';
 import { provisionStandaloneAccounts } from '../driver/account-provider.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine } from '../driver/doctor.mjs';
@@ -68,7 +68,7 @@ async function chooseSignIn() {
       return k ? { key: k } : null;
     }
     if (pick === '1') {
-      const bin = fileURLToPath(new URL('../../bin/zmax', import.meta.url));
+      const bin = fileURLToPath(new URL('../../bin/zagent', import.meta.url));
       const r = spawnSync(NODE, [bin, 'login'], { stdio: 'inherit' });
       if ((r.status ?? 1) === 0 && oauthSignedIn()) return { oauth: true };
       return null;
@@ -150,7 +150,7 @@ const rt = findRuntime();
 // error before any credential/runtime gates so `zagent --model x` never shows
 // the sign-in card for what is really a flag mistake.
 const { hasSelection, isPrintInvocation, splitSelection, runPrintOnce, printEnvelope } =
-  await import(new URL('./zmax-print.mjs', import.meta.url).href);
+  await import(new URL('./zagent-print.mjs', import.meta.url).href);
 if (hasSelection(args) && !isPrintInvocation(args)) {
   console.error('zagent: --model/--effort apply to headless -p runs; inside the TUI use /model and /effort');
   process.exit(2);
@@ -161,7 +161,8 @@ if (args[0] === 'doctor' || !rt) {
     || oauthSignedIn(); // the kernel OAuth store is a credential too (G1)
   const fixes = [];
   const warnings = [];
-  let invalidConfig = false;
+  let invalidConfig = false; // the config FILE is broken — drives the config: line
+  let unhealthy = false;     // setup is broken some other way — drives only the exit code
   let cfgJson = null;
   if (rt && (args[1] === 'fix' || args.includes('--fix')) && !existsSync(cfg) && haveKey) {
     ensureConfig(); fixes.push('config created');
@@ -210,11 +211,16 @@ if (args[0] === 'doctor' || !rt) {
     // Ask the launcher rather than re-deriving its rule: a hand-copied verdict
     // would keep reporting healthy after the launcher's rule changed.
     const launch = buildLaunchArgs({ entry: rt.entry, args: [], preference: tuiPreference() });
+    // An old Node (below the engines floor, e.g. a stale /usr/local/bin/node on
+    // macOS) cannot load the built-in TUI — the child dies on registerHooks.
+    const unsupported = launch.tui === 'zagent' && !tuiNodeSupported();
     const source = launch.tui === 'zagent' ? 'built in'
       : launch.ships ? 'runtime-provided' : 'NONE';
     console.log(`TUI: ${source}${source === 'NONE'
-      ? ' — ZAGENT_TUI=runtime is set but this runtime ships no @zcode/tui; unset it' : ''}`);
-    if (source === 'NONE') invalidConfig = true; // interactive use is broken; do not exit 0
+      ? ' — ZAGENT_TUI=runtime is set but this runtime ships no @zcode/tui; unset it'
+      : unsupported ? ` — needs Node ${TUI_NODE_FLOOR} (have ${process.version}); headless -p still works${
+          launch.ships ? '; or ZAGENT_TUI=runtime' : ''}` : ''}`);
+    if (source === 'NONE' || unsupported) unhealthy = true; // interactive use is broken; do not exit 0
   }
   if (rt && args.includes('--capabilities')) {
     const { ZCodeProtocolClient } = await import(new URL('../driver/zcode-protocol.mjs', import.meta.url).href);
@@ -244,9 +250,9 @@ if (args[0] === 'doctor' || !rt) {
   console.log(logDirLine());
   for (const w of warnings) console.log(`warn: ${w}`);
   if (fixes.length) console.log(`fixed: ${fixes.join(', ')}`);
-  process.exit(rt && !invalidConfig && (existsSync(cfg) || haveKey) ? 0 : 1); // doctor must fail when the diagnosis is unhealthy
+  process.exit(rt && !invalidConfig && !unhealthy && (existsSync(cfg) || haveKey) ? 0 : 1); // doctor must fail when the diagnosis is unhealthy
 }
-// login/logout are kernel passthroughs (see bin/zmax): they manage the OAuth
+// login/logout are kernel passthroughs (see bin/zagent): they manage the OAuth
 // credential a user picks INSTEAD of the API key, so they must not die on the
 // "no GLM Coding Plan credential" check ensureConfig performs first.
 if (args[0] !== 'login' && args[0] !== 'logout') {
@@ -264,7 +270,7 @@ if (args[0] !== 'login' && args[0] !== 'logout') {
 }
 // --model/--effort have no kernel -p flag (its parseArgs table rejects both);
 // selection is protocol-side (session/create takes model+thoughtLevel). Those
-// invocations divert to the app-server runner in zmax-print.mjs; every other
+// invocations divert to the app-server runner in zagent-print.mjs; every other
 // -p keeps the kernel path below (including its empty-envelope retry wrapper —
 // this path reports real errors instead, so it needs none).
 if (hasSelection(args)) { // !isPrintInvocation already exited above
@@ -310,6 +316,17 @@ if (headlessJson) {
   const launch = buildLaunchArgs({ entry: rt.entry, args, preference: tuiPreference() });
   if (launch.tui === 'runtime' && !launch.ships) {
     console.error("zagent: ZAGENT_TUI=runtime, but this runtime ships no '@zcode/tui'. Unset it to use zagent's own TUI.");
+    process.exit(1);
+  }
+  if (!nodeSqliteSupported()) {
+    console.error(`zagent: the kernel needs node:sqlite (Node ${NODE_SQLITE_FLOOR}); this is ${process.version} — nothing works, headless included.`);
+    console.error('  Upgrade Node (macOS: brew install node, or nvm install --lts).');
+    process.exit(1);
+  }
+  if (launch.tui === 'zagent' && !tuiNodeSupported()) {
+    console.error(`zagent: the built-in TUI needs Node ${TUI_NODE_FLOOR}; this is ${process.version}.`);
+    console.error(`  Upgrade Node (macOS: brew install node, or nvm install --lts). Headless still works: zagent -p "…"${
+      launch.ships ? " Or use the runtime's own TUI: ZAGENT_TUI=runtime zagent" : ''}`);
     process.exit(1);
   }
   // A headless run's stderr is teed so a provider business error can be explained

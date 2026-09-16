@@ -16,21 +16,21 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * CRLF line endings.
  */
 export const allowed = file => ['package.json', 'package-lock.json', 'VERSION', 'README.md', 'LICENSE', 'NOTICE',
-  'bin/zmax', 'bin/zcodes', 'bin/zquota',
+  'bin/zagent', 'bin/zagent-sessions', 'bin/zagent-quota',
   // This script itself: the exported package's `npm test` runs it, so it ships.
   'scripts/verify-public-package.mjs'].includes(file)
   || /^packages\/(driver|cli|tui)\/[\w-]+\.mjs$/.test(file)
   || /^skills\/[\w-]+\/SKILL\.md$/.test(file);
 
-// These name the INTERNAL filenames (zmax-*, zmaxd*), which were deliberately not
-// renamed when the product became zagent. A rename-time find/replace turned them
-// into zagent-*, which matches nothing on disk — so the block was dead for
-// zmax-wechat, zmax-compact, zmaxd and zmaxd-compact.
+// These name the INTERNAL filenames. History: an earlier rename-time find/replace
+// turned these patterns into zagent-* while the files were still zmax-*, which
+// matched nothing on disk — the block was dead until the zmax->zagent rename
+// made the filenames match for real. Keep this list in sync with packages/cli.
 // fake-host / journey / journey-entry / screen-replay are the hermetic PTY test
 // harness. They are dev infrastructure — a published CLI has no business shipping
 // a scriptable fake of its own runtime — but they do not start with "test", so the
 // release gate would otherwise demand they be added to files[].
-export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|chat-turns|daemon-request|zmax-(?:telegram|feishu|wechat|compact)|zmaxd[^/]*|fake-host|journey|journey-entry|screen-replay)\.mjs$/;
+export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|chat-turns|daemon-request|zagent-(?:telegram|feishu|wechat|compact)|zagentd[^/]*|fake-host|journey|journey-entry|screen-replay)\.mjs$/;
 
 export function installationPaths(prefix, pkg, platform = process.platform) {
   const paths = platform === 'win32' ? path.win32 : path.posix;
@@ -110,7 +110,7 @@ const run = (cmd, args, cwd = fixture, expected = 0, invocation = {}) => {
     assert(allowed(file), `unexpected npm payload: ${file}`);
     assert(!forbidden.test(file), `private/test/experimental payload: ${file}`);
   }
-  for (const file of ['bin/zmax', 'VERSION', 'packages/cli/zmax.mjs', 'packages/driver/zcode-protocol.mjs'])
+  for (const file of ['bin/zagent', 'VERSION', 'packages/cli/zagent.mjs', 'packages/driver/zcode-protocol.mjs'])
     assert(files.includes(file), `required package file missing: ${file}`);
   // Naming four paths is not enough: npm pack silently omits any listed file that
   // does not exist, so the payload must contain everything files[] promised.

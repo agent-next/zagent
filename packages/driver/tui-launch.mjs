@@ -6,14 +6,39 @@
 // resolve hook, which leaves the kernel byte-for-byte untouched.
 
 import { existsSync } from 'node:fs';
+import * as nodeModule from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const TUI_LOADER = fileURLToPath(new URL('../tui/loader.mjs', import.meta.url));
 
-/** Interactive means: no headless flag and no subcommand of our own. */
+// The loader named-imports module.registerHooks, which first shipped in Node
+// 22.15.0 / 23.5.0 (the package's engines floor). On older Node the child dies at
+// link time with a bare SyntaxError — a named import CANNOT be probed by import,
+// so check the namespace here in the parent before spawning. Users hit this on
+// macOS whenever an old /usr/local/bin/node wins PATH over the Homebrew one.
+export const TUI_NODE_FLOOR = '>=22.15.0 (or >=23.5.0)';
+export function tuiNodeSupported(m = nodeModule) {
+  return typeof m.registerHooks === 'function';
+}
+
+// The kernel child is always spawned with --experimental-sqlite and itself
+// imports node:sqlite — both first shipped in Node 22.5.0. Below that NOTHING
+// works, headless included: the child dies on the flag before reaching the
+// kernel, so the TUI-floor guard's "headless -p still works" would overclaim.
+export const NODE_SQLITE_FLOOR = '>=22.5.0';
+export function nodeSqliteSupported(v = process.versions.node) {
+  const [maj, min] = v.split('.').map(Number);
+  return maj > 22 || (maj === 22 && min >= 5);
+}
+
+/** Interactive means: no headless flag and no kernel passthrough that never
+ *  touches '@zcode/tui' (the kernel's only import of it is a lazy `await import`
+ *  on the TUI path — verified against the desktop bundle). Excluding
+ *  login/logout also keeps them working on Node below the registerHooks floor. */
 export function isInteractive(args = []) {
-  return !args.some(a => a === '-p' || a === '--print' || a === '--prompt' || a === 'app-server');
+  return !args.some(a => a === '-p' || a === '--print' || a === '--prompt'
+    || a === 'app-server' || a === 'login' || a === 'logout');
 }
 
 /**

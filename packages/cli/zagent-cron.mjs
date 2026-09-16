@@ -48,7 +48,7 @@ if (cmd === 'add') {
     // Worst case inside the child: 2 runtime attempts (120s each) + 8s backoff;
     // 300s covers that plus margin. On timeout the whole process tree is killed.
     const r = await runTimedProcess(process.execPath,
-      [`${ROOT}/packages/cli/zmax.mjs`, '-p', j.prompt, '--json', ...(mode ? ['--mode', mode] : [])],
+      [`${ROOT}/packages/cli/zagent.mjs`, '-p', j.prompt, '--json', ...(mode ? ['--mode', mode] : [])],
       { cwd: j.workspace, timeoutMs: 300000 });
     const ok = r.status === 0 && (() => { try { return !!JSON.parse(r.stdout ?? '').response; } catch { return false; } })();
     const err = ok ? null : `rc=${r.status}${r.timedOut ? ' timed-out' : ''} ${String(r.stderr ?? '').slice(-120)}`;

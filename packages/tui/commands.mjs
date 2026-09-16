@@ -245,7 +245,7 @@ export function quotaHomeLine(report) {
   return (typeof report.level === 'string' && report.level ? `plan ${report.level} · ` : '') + first;
 }
 
-/** In-process mirror of the checks `zagent doctor` runs (packages/cli/zmax.mjs). */
+/** In-process mirror of the checks `zagent doctor` runs (packages/cli/zagent.mjs). */
 export function doctorLines({ env = process.env, home = os.homedir(), cwd = process.cwd(), exists = existsSync } = {}) {
   const lines = [];
   const rt = safeRuntime();

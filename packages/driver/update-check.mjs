@@ -95,7 +95,7 @@ export function checkLatest({ home = os.homedir(), ttlMs = CACHE_TTL_MS, fresh =
 
 /** Passive checks (the doctor hint) never spawn npm inside the test sandbox or
  *  CI — the child would escape the offline gate — and honor an explicit
- *  opt-out for airgapped shells. zmax-remote's live connect makes the same
+ *  opt-out for airgapped shells. zagent-remote's live connect makes the same
  *  exception. The explicit `zagent update` command always checks. */
 export const passiveCheckAllowed = (env = process.env) =>
-  !env.ZMAX_TEST_SANDBOX && !env.CI && !env.GITHUB_ACTIONS && env.ZAGENT_UPDATE_CHECK !== '0';
+  !env.ZAGENT_TEST_SANDBOX && !env.CI && !env.GITHUB_ACTIONS && env.ZAGENT_UPDATE_CHECK !== '0';

@@ -144,8 +144,12 @@ export function addUserEntry(state, text) {
 export function applyEvent(state, event) {
   const type = str(event?.type, '(untyped)');
   const p = event?.payload ?? {};
-  // The session id rides on the envelope; latch the first non-empty one.
-  if (!state.sessionId) state.sessionId = str(event?.sessionId) || null;
+  // The session id rides on the envelope; latch the first non-empty one. The
+  // kernel's login flow emits its authorize assistant_message on the pseudo
+  // session 'local-login' — latching it would aim /rename & friends at a
+  // session that does not exist until the first real model turn.
+  const sid = str(event?.sessionId);
+  if (!state.sessionId && sid && sid !== 'local-login') state.sessionId = sid;
   switch (type) {
     case 'turn_started':
       state.turn = {
@@ -236,6 +240,26 @@ export function applyEvent(state, event) {
         state.contextBreakdown = p.contextUsageBreakdown;
       }
       state.currentMessageId = null;
+      break;
+    }
+
+    // A complete, non-streamed assistant text. The kernel's in-band /login
+    // (host.login / host.loginBigmodel) announces the OAuth authorize URL this
+    // way — payload {content} on sessionId 'local-login', id
+    // 'local-login-authorize-<ts>' — so dropping it left the login sitting on a
+    // spinner with no URL to open. Keyed by the envelope id so a repeated emit
+    // updates in place instead of duplicating.
+    case 'assistant_message': {
+      const content = str(p.content);
+      if (content === '') break;
+      const id = str(event?.id) || 'assistant_message';
+      let entry = findEntry(state, 'assistant', id);
+      if (!entry) {
+        entry = { kind: 'assistant', id, text: '', done: true };
+        state.entries.push(entry);
+      }
+      entry.text = content;
+      entry.done = true;
       break;
     }
 

@@ -14,7 +14,7 @@ zagent is **not** ZCode and **not** 0.1. It is the missing `@zcode/tui` plus CLI
 | `zagent --version` / `za --version` | npm package version (0.0.xx). **0.1.x is owner-only — do not ship it.** |
 | `zagent doctor` | runtime path, key, degraded posture |
 | `zagent inspect [--storage] [--json]` | merged config, skills, tasks, plugins, wiki; `--storage` = ~/.zcode category sizes (read-only) |
-| Binary names `zagent` and `za` | same entry; internal files still say `zmax` |
+| Binary names `zagent` and `za` | same entry; internal files still say `zagent` |
 | `zagent@0.1.0` on npm | **deprecated mistake** — use latest 0.0.xx |
 
 Need the official GUI for ADE panes (browser/PDF/Office preview, CUA, workflow **panel**). zagent will not grow those.

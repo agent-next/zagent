@@ -23,30 +23,30 @@ const [command, ...rest] = process.argv.slice(2);
 
 /** Subcommand -> the script that implements it, and whether it needs node:sqlite. */
 const ROUTES = {
-  quota: ['bin/zquota'],
+  quota: ['bin/zagent-quota'],
   // --no-warnings: node prints "SQLite is an experimental feature" on stderr for
   // every run, which is noise the user can do nothing about and which corrupts
   // otherwise-parseable output.
-  sessions: ['bin/zcodes', '--experimental-sqlite', '--no-warnings'],
-  diff: ['packages/cli/zmax-diff.mjs'],
-  onboard: ['packages/cli/zmax-onboard.mjs'],
-  cron: ['packages/cli/zmax-cron.mjs', '--experimental-sqlite', '--no-warnings'],
-  automation: ['packages/cli/zmax-automation.mjs', '--experimental-sqlite', '--no-warnings'],
-  task: ['packages/cli/zmax-task.mjs', '--experimental-sqlite', '--no-warnings'],
-  memory: ['packages/cli/zmax-memory.mjs'],
-  offpeak: ['packages/cli/zmax-offpeak.mjs'],
-  models: ['packages/cli/zmax-models.mjs'],
-  help: ['packages/cli/zmax-help.mjs'],
-  plugins: ['packages/cli/zmax-plugins.mjs'],
-  hooks: ['packages/cli/zmax-hooks.mjs'],
-  inspect: ['packages/cli/zmax-inspect.mjs', '--experimental-sqlite', '--no-warnings'],
-  import: ['packages/cli/zmax-import.mjs'],
-  goal: ['packages/cli/zmax-goal.mjs', '--experimental-sqlite', '--no-warnings'],
-  subagents: ['packages/cli/zmax-subagents.mjs', '--experimental-sqlite', '--no-warnings'],
-  usage: ['packages/cli/zmax-usage.mjs', '--experimental-sqlite', '--no-warnings'],
-  rewind: ['packages/cli/zmax-rewind.mjs', '--experimental-sqlite', '--no-warnings'],
-  remote: ['packages/cli/zmax-remote.mjs'],
-  update: ['packages/cli/zmax-update.mjs'],
+  sessions: ['bin/zagent-sessions', '--experimental-sqlite', '--no-warnings'],
+  diff: ['packages/cli/zagent-diff.mjs'],
+  onboard: ['packages/cli/zagent-onboard.mjs'],
+  cron: ['packages/cli/zagent-cron.mjs', '--experimental-sqlite', '--no-warnings'],
+  automation: ['packages/cli/zagent-automation.mjs', '--experimental-sqlite', '--no-warnings'],
+  task: ['packages/cli/zagent-task.mjs', '--experimental-sqlite', '--no-warnings'],
+  memory: ['packages/cli/zagent-memory.mjs'],
+  offpeak: ['packages/cli/zagent-offpeak.mjs'],
+  models: ['packages/cli/zagent-models.mjs'],
+  help: ['packages/cli/zagent-help.mjs'],
+  plugins: ['packages/cli/zagent-plugins.mjs'],
+  hooks: ['packages/cli/zagent-hooks.mjs'],
+  inspect: ['packages/cli/zagent-inspect.mjs', '--experimental-sqlite', '--no-warnings'],
+  import: ['packages/cli/zagent-import.mjs'],
+  goal: ['packages/cli/zagent-goal.mjs', '--experimental-sqlite', '--no-warnings'],
+  subagents: ['packages/cli/zagent-subagents.mjs', '--experimental-sqlite', '--no-warnings'],
+  usage: ['packages/cli/zagent-usage.mjs', '--experimental-sqlite', '--no-warnings'],
+  rewind: ['packages/cli/zagent-rewind.mjs', '--experimental-sqlite', '--no-warnings'],
+  remote: ['packages/cli/zagent-remote.mjs'],
+  update: ['packages/cli/zagent-update.mjs'],
 };
 
 /** Present in the source repo, deliberately not part of this distribution. */
@@ -81,7 +81,7 @@ if (command === '--version' || command === '-V' || command === '-v' || command =
   }
   process.exit(0);
 }
-if (command === '--help' || command === '-h') run('packages/cli/zmax-help.mjs');
+if (command === '--help' || command === '-h') run('packages/cli/zagent-help.mjs');
 if (SOURCE_ONLY.has(command)) {
   console.error(`zagent: ${command} is source-only experimental functionality, not included in this public candidate.`);
   process.exit(2);
@@ -129,7 +129,7 @@ if (Object.hasOwn(ROUTES, command)) {
   const args = sep === -1 ? rest : [...rest.slice(0, sep), ...rest.slice(sep + 1)];
   run(script, nodeArgs, args);
 }
-// Commands forwarded to packages/cli/zmax.mjs. 'doctor' is implemented there;
+// Commands forwarded to packages/cli/zagent.mjs. 'doctor' is implemented there;
 // 'login'/'logout'/'app-server' are kernel subcommands we deliberately expose
 // unchanged ('app-server' is a headless entry — tui-launch.mjs isInteractive).
 // Anything else that names a command gets OUR error — a typo used to reach the
@@ -141,7 +141,7 @@ if (command && !command.startsWith('-') && !MAIN_ENTRY_COMMANDS.has(command)) {
   console.error("Run 'zagent help' for the command list.");
   process.exit(2);
 }
-// Option-led invocations packages/cli/zmax.mjs understands — the kernel entry
+// Option-led invocations packages/cli/zagent.mjs understands — the kernel entry
 // flags it and tui-launch.mjs treat as theirs, so `zagent --mode plan -p "…"`
 // reaches the runtime exactly like `zcode` would. ENTRY_FLAGS is the kernel's
 // own parser table, verified by execution (see commands.mjs). `--capabilities`
@@ -156,4 +156,4 @@ if (command && command.startsWith('-') && !entryFlag(command)) {
 }
 // What remains: no arguments (interactive TUI), the entry flags above, and the
 // routed allowlists.
-run('packages/cli/zmax.mjs', [], process.argv.slice(2));
+run('packages/cli/zagent.mjs', [], process.argv.slice(2));

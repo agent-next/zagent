@@ -115,6 +115,10 @@ const lineBounds = (value, cursor) => {
   const end = value.indexOf('\n', cursor);
   return { start, end: end === -1 ? value.length : end };
 };
+// Snap a code-unit offset back to its grapheme's start — a column-preserved
+// vertical move can land inside a surrogate pair and the next insert corrupts it.
+const graphemeStart = (value, at) =>
+  at <= 0 ? 0 : at >= value.length ? value.length : (segments.segment(value).containing(at)?.index ?? at);
 export function applyKey(state, event) {
   const { value, cursor } = state;
   if (event.text != null) {
@@ -132,6 +136,26 @@ export function applyKey(state, event) {
     // change, so a new object for a no-op arrow key forced a full frame.
     case 'left': return cursor === 0 ? state : { value, cursor: adjacentBoundary(value, cursor, -1) };
     case 'right': return cursor === value.length ? state : { value, cursor: adjacentBoundary(value, cursor, 1) };
+    // up/down move WITHIN a multi-line draft, keeping the column where it fits;
+    // at the boundary they return the same object so the caller can fall
+    // through to history recall instead of clobbering the draft.
+    case 'up': {
+      const { start } = lineBounds(value, cursor);
+      if (start === 0) return state;
+      const prevEnd = start - 1;
+      const prevStart = value.lastIndexOf('\n', start - 2) + 1;
+      const target = Math.min(prevStart + (cursor - start), prevEnd);
+      return { value, cursor: graphemeStart(value, target) };
+    }
+    case 'down': {
+      const { start, end } = lineBounds(value, cursor);
+      if (end === value.length) return state;
+      const nextStart = end + 1;
+      const nextNl = value.indexOf('\n', nextStart);
+      const nextEnd = nextNl === -1 ? value.length : nextNl;
+      const target = Math.min(nextStart + (cursor - start), nextEnd);
+      return { value, cursor: graphemeStart(value, target) };
+    }
     // home/end act on the CURRENT line, which is what they mean in a multi-line box.
     case 'home': {
       const { start } = lineBounds(value, cursor);
