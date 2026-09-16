@@ -3,7 +3,7 @@
 // rendered from the runtime's own change artifacts. No sessionId: list sessions that have them.
 import { sessionDiffArtifacts, sessionsWithDiffs, renderDiff } from '../driver/diffs.mjs';
 const argv = process.argv.slice(2);
-if (argv.length > 1) { console.error('usage: zagent diff [sessionId]'); process.exit(2); } // r6 #5
+if (argv.length > 1 || argv[0]?.startsWith('-')) { console.error('usage: zagent diff [sessionId]'); process.exit(2); } // r6 #5
 const sid = argv[0];
 if (!sid) {
   const s = sessionsWithDiffs();

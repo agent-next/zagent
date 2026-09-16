@@ -146,11 +146,12 @@ sent only to your own provider endpoint.
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
 | `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | Inspect or restore workspace checkpoints (undo a turn's file edits) |
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
+| `zagent commit-msg [--model provider/model\|model] [--effort <level>] [--json]` | Generate a commit message for staged (or unstaged) changes (ZCode 3.12.x+) |
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | Inspect or modify runtime task records |
-| `zagent cron add\|list\|tick` | Scheduled prompts (local crontab) |
+| `zagent cron add\|list [--json]\|remove [--json]\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
 | `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
-| `zagent plugins` | Manage local plugins |
+| `zagent plugins [name] [--json]` | Manage local plugins; `plugins install <name>` installs one |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |
 | `$using-zagent` | Bundled skill: what zagent is, how to tell it from the GUI, how to drive it |

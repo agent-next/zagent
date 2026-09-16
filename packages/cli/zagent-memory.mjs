@@ -8,6 +8,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 const [cmd, ...rest] = process.argv.slice(2);
 const cwd = process.cwd();
+const usage = () => { console.error('usage: zagent memory [show|index|append <text>]'); process.exit(2); };
+// Unknown verbs must not silently fall through to `show` — 'memory bogus'
+// used to print this workspace's memory and exit 0.
+if (cmd !== undefined && cmd !== 'show' && cmd !== 'index' && cmd !== 'append') usage();
+if (cmd !== 'append' && rest.length) usage();
 
 if (cmd === 'index') {
   const base = `${os.homedir()}/.zcode/cli/memories/projects`;
@@ -18,7 +23,7 @@ if (cmd === 'index') {
   });
   console.log(rows.length ? rows.join('\n') : 'no memories anywhere');
 } else if (cmd === 'append') {
-  if (!rest.length) { console.error('usage: zagent memory append <text>'); process.exit(2); }
+  if (!rest.join(' ').trim()) { console.error('usage: zagent memory append <text>'); process.exit(2); }
   const line = rest.join(' ');
   // r10: retry under the exclusive lock (another append in flight), bounded
   let ok = false;
@@ -31,7 +36,7 @@ if (cmd === 'index') {
   }
   if (!ok) { console.error('append: lock busy after retries'); process.exit(1); }
   console.log(`appended to ${cwd} memory`);
-} else { // show (default)
+} else { // show (default) — cmd is 'show' or undefined here
   let m; try { m = loadProjectMemory(cwd); }
   catch (e) { console.error(`memory read failed: ${e.message}`); process.exit(2); } // r10 #4: IO errors ≠ 'no memory'
   if (!m) { console.log(`No memory for ${cwd}. Add one with: zagent memory append "…"`); process.exit(0); }

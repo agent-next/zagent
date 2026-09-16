@@ -6,12 +6,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadJobs, mutateJobs, dueJobs, jobsLine, parseCron, claimJob, completeJob, runTimedProcess, logAutomation } from '../driver/automation.mjs';
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
+const USAGE = 'usage: zagent cron add <id> <5-field-cron> <prompt...> | list [--json] | remove <id> [--json] | tick';
 const [cmd, ...rest] = process.argv.slice(2);
+const asJson = rest.includes('--json');
+const positional = rest.filter(a => !a.startsWith('-'));
+const unknownFlags = rest.some(a => a.startsWith('-') && a !== '--json');
+const usage = () => { console.error(USAGE); process.exit(2); };
 const beat = line => logAutomation(line);
 
 if (cmd === 'add') {
   const [id, cron, ...prompt] = rest;
-  if (!id || !cron || !prompt.length || !parseCron(cron)) { // strict shared parser (r7 #4)
+  // A dash-prefixed id would be unremovable (remove parses it as a flag).
+  if (!id || id.startsWith('-') || !cron || !prompt.join(' ').trim() || !parseCron(cron)) { // strict shared parser (r7 #4)
     console.error('usage: zagent cron add <id> <5-field-cron> <prompt...>  (cron: m h dom mon dow — *, lists a,b, ranges a-b, steps */n or a-b/n, names JAN..DEC SUN..SAT; bounds 0-59 0-23 1-31 1-12 0-7)');
     process.exit(2);
   }
@@ -23,13 +29,23 @@ if (cmd === 'add') {
   if (!added) { console.error(`id '${id}' exists`); process.exit(2); }
   console.log(`added ${id}: '${cron}' → ${prompt.join(' ').slice(0, 60)}\nschedule in crontab: * * * * * zagent cron tick`);
 } else if (cmd === 'list') {
-  console.log(jobsLine(loadJobs()));
+  if (unknownFlags || positional.length) usage();
+  const jobs = loadJobs();
+  if (asJson) console.log(JSON.stringify({ count: jobs.length, jobs }, null, 2));
+  else console.log(jobsLine(jobs));
 } else if (cmd === 'remove') {
-  mutateJobs(jobs => {
-    for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].id === rest[0]) jobs.splice(i, 1);
+  if (unknownFlags || positional.length !== 1 || !positional[0].trim()) usage();
+  const id = positional[0];
+  const removed = mutateJobs(jobs => {
+    let n = 0;
+    for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].id === id) { jobs.splice(i, 1); n++; }
+    return n;
   });
-  console.log(`removed ${rest[0]}`);
+  if (asJson) console.log(JSON.stringify({ id, deleted: removed > 0 }));
+  else console.log(removed ? `removed ${id}` : `nothing deleted: ${id} not found`);
+  if (!removed) process.exit(1);
 } else if (cmd === 'tick') {
+  if (rest.length) usage();
   const tickAt = new Date();
   const due = dueJobs(loadJobs(), tickAt);
   beat(`tick due=${due.length}`);
@@ -60,6 +76,4 @@ if (cmd === 'add') {
     console.log(`${ok ? 'ok' : 'FAIL'} ${d.id} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
   }
   process.exit(failed ? 1 : 0);
-} else {
-  console.error('usage: zagent cron add|list|remove|tick'); process.exit(2);
-}
+} else usage();

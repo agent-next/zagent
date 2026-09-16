@@ -22,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sessionDiffArtifacts, renderDiff, undoPreview, undoApply } from '../driver/diffs.mjs';
+import { modelOptionId, modelOptionMatches } from './pickers.mjs';
 import { openTasksDb, findTask, updateTask, tasksDbPath } from '../driver/tasks-index.mjs';
 import { loadGlobalMemory, loadProjectMemory } from '../driver/memory.mjs';
 import { codingPlanStatus } from '../driver/quota.mjs';
@@ -341,7 +342,10 @@ export function lastTurnToolCallIds(state) {
 /** The current model's contextWindow from the host's own catalog; null if absent. */
 function modelWindow(ctx) {
   const opts = Array.isArray(ctx.host?.modelOptions) ? ctx.host.modelOptions : [];
-  const cur = opts.find(m => m?.id === ctx.ui?.model || m?.alias === ctx.ui?.model);
+  const cur = ctx.ui?.model
+    ? (opts.find(m => modelOptionId(m) === ctx.ui.model || m?.alias === ctx.ui.model)
+       ?? opts.find(m => modelOptionMatches(m, ctx.ui.model)))
+    : undefined;
   const w = cur?.contextWindow ?? opts.find(m => Number.isFinite(m?.contextWindow))?.contextWindow;
   return Number.isFinite(w) && w > 0 ? w : null;
 }

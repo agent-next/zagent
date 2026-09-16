@@ -47,6 +47,7 @@ const ROUTES = {
   rewind: ['packages/cli/zagent-rewind.mjs', '--experimental-sqlite', '--no-warnings'],
   remote: ['packages/cli/zagent-remote.mjs'],
   update: ['packages/cli/zagent-update.mjs'],
+  'commit-msg': ['packages/cli/zagent-commit-msg.mjs'],
 };
 
 /** Present in the source repo, deliberately not part of this distribution. */

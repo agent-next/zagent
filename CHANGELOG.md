@@ -2,6 +2,25 @@
 
 This file is the public-facing release log for the npm package `zagent`.
 
+## Unreleased
+
+## 0.0.218 — 2026-09-16
+
+- `zagent commit-msg` drafts a commit message from your staged (or
+  unstaged) diff and prints it fence-free, ready to pipe into
+  `git commit -m`; `--model` picks the provider/model.
+- Busy TUI turns now interrupt with armed double-Esc: Esc once arms it
+  (the status hint says so), Esc again within 5 s aborts the turn.
+- `zagent cron list --json` emits real JSON; cron verbs reject extra
+  arguments instead of ignoring them.
+- The TUI `/model` picker reads the 3.12.x kernel registry correctly —
+  media flags render instead of `[object Object]` and the current-model
+  marker matches exact ids.
+- `zagent inspect` lists the plugins actually installed, sorted.
+- `models`, `diff`, `plugins`, `doctor`, `inspect`, `onboard`, `memory`,
+  `cron`, and `task` reject stray arguments as usage errors, and
+  `plugins --json` always emits a JSON envelope.
+
 ## 0.0.217 — 2026-09-16
 
 - `zagent models test zai/glm-5.3` works — the provider/model spec that

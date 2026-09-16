@@ -39,4 +39,9 @@ const isMain = (() => {
   try { return import.meta.url === pathToFileURL(realpathSync(path.resolve(process.argv[1] ?? ''))).href; }
   catch { return false; }
 })();
+// Any arg is a typo — 'onboard bogus' used to run the live smoke turn anyway.
+if (isMain && process.argv.length > 2) {
+  console.error('usage: zagent onboard');
+  process.exit(2);
+}
 if (isMain) runOnboard();

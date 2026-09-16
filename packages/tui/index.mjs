@@ -18,7 +18,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, renderPrompt, readContextMeter, COMPLETION_ROWS, inputBoxCursor } from './chrome.mjs';
-import { effortItems, modelItems, parseModes, pickerFor } from './pickers.mjs';
+import { effortItems, modelItems, modelOptionId, modelOptionMatches, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { pasteToken, expandChips, insertChip, chipSpanAt, chipSpanIn, takeChips, attachChips, pruneChips } from './paste-chips.mjs';
@@ -34,6 +34,9 @@ import { listSkills, listConversationsAsync, mcpSummary } from '../driver/catalo
 
 const SPINNER_MS = 90;
 const DOUBLE_CTRL_C_MS = 2000;
+// Armed-interrupt window (opencode parity): the first Esc while a turn runs
+// only flips the status hint; a second inside the window aborts.
+const ESC_INTERRUPT_MS = 5000;
 
 /** The most conservative choice the runtime offered, for every path that must refuse. */
 const denyResponse = (options) => options.at(-1)?.response ?? { decision: 'deny' };
@@ -101,6 +104,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     draft: '',                 // the half-typed input stashed while recalling
     draftChips: [],
     lastCtrlC: 0,
+    escArmedAt: 0,             // last Esc during a turn; inside the window the next one aborts
     abort: null,
     mcp: null,                 // {connected, failed, total}
     workflows: new Map(),      // runId -> {kind, status}; fed by subscribeWorkflowEvents
@@ -114,11 +118,12 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // G4: the context window is knowable before the first turn — the host's own
   // modelOptions carry it (the /model picker shows it). Seed the meter so the
   // footer and /context can show the window while 'used' is still unreported;
-  // latchMeter merges, so a real kernel sighting overwrites the seed. Exact
-  // id/alias match only — seeding another model's window would be a lie.
+  // latchMeter merges, so a real kernel sighting overwrites the seed.
+  // modelOptionMatches/alias only — seeding another model's window would be a lie.
   const modelWindowFor = (model) => {
-    const m = (Array.isArray(host.modelOptions) ? host.modelOptions : [])
-      .find(o => o?.id === model || o?.alias === model);
+    const opts = Array.isArray(host.modelOptions) ? host.modelOptions : [];
+    const m = opts.find(o => modelOptionId(o) === model || o?.alias === model)
+      ?? opts.find(o => modelOptionMatches(o, model));
     return Number.isFinite(m?.contextWindow) && m.contextWindow > 0 ? m.contextWindow : null;
   };
   let seededWindow = modelWindowFor(ui.model);
@@ -132,6 +137,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // and would submit line-by-line. The collector buffers the flood; the flush
   // timer re-inserts it as one text event (chip-eligible) once it goes quiet.
   const pasteBurst = createPasteBurst(deps?.pasteBurst);
+  const escInterruptMs = deps?.escInterruptMs ?? ESC_INTERRUPT_MS;
 
   const clearCompletion = () => { ui.completionSeq += 1; ui.completion = null; };
 
@@ -181,6 +187,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
           queueItem: ui.queueItem, queueAction: ui.queueAction, userTurn: ui.userTurn,
           completion: ui.completion, completionRows: completionPageRows(), str,
           spinnerFrame: ui.spinnerFrame, activity: ui.activity,
+          escArmed: ui.escArmedAt !== 0 && Date.now() - ui.escArmedAt < escInterruptMs,
           mcp: ui.mcp, goal: ui.goal, agents: getSubagentCount(state),
           cursor: ui.input.cursor,
           // Measured on the SANITIZED text the box will paint — a stripped
@@ -499,6 +506,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       denyPendingPermission();
       ui.busy = false;
       ui.abort = null;
+      ui.escArmedAt = 0;
       stopSpinner();
       // The reducer owns turn.active and the status line renders the spinner from
       // it, so stopping the animation is not the same as ending the turn: an
@@ -868,7 +876,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       const items = modelItems(host.modelOptions, ui.model);
       if (!items.length) return false;
       ui.chooser = { title: str.modelTitle, items,
-        index: Math.max(0, items.findIndex(i => i.value === ui.model)),
+        index: Math.max(0, items.findIndex(i => i.current)),
         pick: (item) => { recordHistory(`/model ${item.value}`); void submit(`/model ${item.value}`); } };
       draw();
       return true;
@@ -1093,7 +1101,21 @@ export async function runTui(host = {}, { deps = null } = {}) {
 
     if (event.name === 'escape') {
       clearCompletion();
-      if (ui.busy) { interrupt(); return; }
+      if (ui.busy) {
+        // Armed double-Esc: one stray press — a reflexive palette-dismiss or a
+        // misread chord — must not kill a turn. The first arms and the status
+        // hint flips to "esc again to interrupt"; only a second inside the
+        // window aborts.
+        const now = Date.now();
+        if (ui.escArmedAt !== 0 && now - ui.escArmedAt < escInterruptMs) { ui.escArmedAt = 0; interrupt(); return; }
+        ui.escArmedAt = now;
+        // The status hint only renders while the reducer marks the turn active;
+        // a host that never emitted turn_started would swallow the press silently.
+        if (!state.turn?.active) addNotice(state, str.interruptAgain ?? str.interrupt, 'muted');
+        draw();
+        return;
+      }
+      ui.escArmedAt = 0;
       if (ui.queue.length > 0) { applyQueueAction(ui.queue.length - 1, 1); return; }
       // G9: Esc dismissed the palette but left a bare '/', so typing /help next
       // produced '//help' and the kernel's unknown-command reply. An input that

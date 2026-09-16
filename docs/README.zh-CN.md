@@ -95,11 +95,12 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
 | `zagent rewind [list\|latest\|<checkpointId>\|changes\|preview [<checkpointId>]] [--message id] [--session id] [--json]` | 查看或恢复 workspace checkpoint（撤销某轮的文件改动） |
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
+| `zagent commit-msg [--model provider/model\|model] [--effort <level>] [--json]` | 为已暂存（或未暂存）改动生成 commit message（ZCode 3.12.x+） |
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | 查看或修改 runtime 任务记录 |
-| `zagent cron add\|list\|tick` | 定时 prompt（本地 crontab） |
+| `zagent cron add\|list [--json]\|remove [--json]\|tick` | 定时 prompt（本地 crontab） |
 | `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
 | `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
-| `zagent plugins` | 管理本地插件 |
+| `zagent plugins [name] [--json]` | 管理本地插件；`plugins install <name>` 安装插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
 | `zagent inspect [--storage] [--json]` | 打印 runtime/配置/skills；`--storage` = ~/.zcode 分类体积（只读） |
 | `$using-zagent` | 随包装的 skill：zagent 是什么、怎么和 GUI 区分、怎么用 |

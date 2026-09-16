@@ -9,6 +9,7 @@ import path from 'node:path';
 import { findRuntime } from '../driver/runtime.mjs';
 import { listSkills, listConversationsAsync } from '../driver/catalog.mjs';
 import { inspectWiki } from '../driver/repo-wiki.mjs';
+import { installedPlugins } from '../driver/plugins.mjs';
 
 // --storage mirrors the 3.12.1 resource manager's classifier (app.asar storage
 // scan): file patterns win first, then the longest directory prefix, else
@@ -118,6 +119,11 @@ function fileNote(p) {
 
 const json = process.argv.includes('--json');
 const home = os.homedir();
+// Only --json/--storage are valid — 'inspect bogus' used to be silently ignored.
+if (process.argv.slice(2).some(a => a !== '--json' && a !== '--storage')) {
+  console.error('usage: zagent inspect [--storage] [--json]');
+  process.exit(2);
+}
 
 if (process.argv.includes('--storage')) {
   // Same root rule as the kernel: ZCODE_DATA_BASE_DIR replaces HOME, then /.zcode.
@@ -153,11 +159,7 @@ const report = {
   },
   skills: skills.map(s => s.value),
   conversations: conversations.map(c => ({ id: c.value, title: c.hint })),
-  plugins: (() => {
-    const dir = path.join(home, '.zcode', 'plugins');
-    if (!existsSync(dir)) return [];
-    try { return readdirSync(dir).filter(n => !n.startsWith('.')); } catch { return []; }
-  })(),
+  plugins: Object.entries(installedPlugins({ home })).map(([n, p]) => `${n}@${p.version}`).sort(),
   wiki: inspectWiki({ home, cwd }),
 };
 

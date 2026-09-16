@@ -163,7 +163,9 @@ export function statusFields(state, theme, options = {}) {
     const frame = spin[(options.spinnerFrame ?? 0) % spin.length];
     const elapsed = formatDuration(Math.max(0, (options.now ?? Date.now()) - turn.startedAt));
     fields.push(field(`${frame} ${options.activity ?? str.working}${elapsed ? ` ${elapsed}` : ''}`, theme.accent));
-    fields.push(field(str.interrupt, theme.faint));
+    // Armed double-Esc: the first press flips the hint to confirm the second.
+    // A host-supplied str may predate interruptAgain — fall back, never blank.
+    fields.push(field(options.escArmed ? (str.interruptAgain ?? str.interrupt) : str.interrupt, theme.faint));
   } else {
     fields.push(field(`${MODE_MARK[options.mode] ?? '⏵'} ${options.mode ?? 'build'}`, theme.muted));
     if (options.model) fields.push(field(options.model, theme.faint));

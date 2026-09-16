@@ -158,6 +158,13 @@ if (hasSelection(args) && !isPrintInvocation(args)) {
   console.error('zagent: --model/--effort apply to headless -p runs; inside the TUI use /model and /effort');
   process.exit(2);
 }
+// 'doctor bogus' used to run the full diagnosis and exit 0 — a mistyped arg
+// must not be swallowed. (The !rt fallback below stays permissive: bin/zagent
+// already validated the command name upstream.)
+if (args[0] === 'doctor' && args.slice(1).some(a => a !== 'fix' && a !== '--fix' && a !== '--capabilities')) {
+  console.error('usage: zagent doctor [fix|--fix|--capabilities]');
+  process.exit(2);
+}
 if (args[0] === 'doctor' || !rt) {
   const cfg = `${os.homedir()}/.zcode/cli/config.json`;
   const haveKey = !!(process.env.ZAI_API_KEY || existsSync(`${os.homedir()}/.config/ccz/.api_key`))

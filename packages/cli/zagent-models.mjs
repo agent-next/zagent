@@ -173,6 +173,12 @@ if (process.argv[2] === 'test') {
 }
 
 const q = process.argv[2];
+// A query is a model/provider substring — never a flag. `models --json` used to
+// search for a model literally named '--json' and report "no model matching".
+if (q?.startsWith('-') || process.argv.length > 3) {
+  console.error('usage: zagent models [query|test <provider/model|model> [--json]]');
+  process.exit(2);
+}
 const catalog = loadCatalog();
 if (!catalog) {
   console.error('no provider catalog found for the installed runtime');
