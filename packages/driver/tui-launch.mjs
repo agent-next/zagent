@@ -38,6 +38,7 @@ export function nodeSqliteSupported(v = process.versions.node) {
  *  login/logout also keeps them working on Node below the registerHooks floor. */
 export function isInteractive(args = []) {
   return !args.some(a => a === '-p' || a === '--print' || a === '--prompt'
+    || a.startsWith('-p=') || a.startsWith('--print=') || a.startsWith('--prompt=')
     || a === 'app-server' || a === 'login' || a === 'logout');
 }
 

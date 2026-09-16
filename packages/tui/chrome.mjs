@@ -162,10 +162,20 @@ export function statusFields(state, theme, options = {}) {
     const spin = theme.glyph.spinner;
     const frame = spin[(options.spinnerFrame ?? 0) % spin.length];
     const elapsed = formatDuration(Math.max(0, (options.now ?? Date.now()) - turn.startedAt));
-    fields.push(field(`${frame} ${options.activity ?? str.working}${elapsed ? ` ${elapsed}` : ''}`, theme.accent));
+    // W5 turn-status phases: a host-named activity wins; otherwise the phase is
+    // 'waiting' until the first observable output, 'responding' after — the
+    // working-vs-stuck answer at a glance. Host str builds may predate the keys.
+    const phase = options.activity
+      ?? (turn.responded ? (str.responding ?? str.working) : (str.waiting ?? str.working));
+    fields.push(field(`${frame} ${phase}${elapsed ? ` ${elapsed}` : ''}`, theme.accent));
     // Armed double-Esc: the first press flips the hint to confirm the second.
     // A host-supplied str may predate interruptAgain — fall back, never blank.
     fields.push(field(options.escArmed ? (str.interruptAgain ?? str.interrupt) : str.interrupt, theme.faint));
+    // The ⇣ received-bytes counter sits after the interrupt hint: under width
+    // pressure the hint (the way OUT of a stuck turn) outranks the counter.
+    if (Number.isFinite(turn.streamBytes) && turn.streamBytes > 0) {
+      fields.push(field(`${theme.glyph.download ?? '⇣'}${formatTokens(turn.streamBytes)}`, theme.faint));
+    }
   } else {
     fields.push(field(`${MODE_MARK[options.mode] ?? '⏵'} ${options.mode ?? 'build'}`, theme.muted));
     if (options.model) fields.push(field(options.model, theme.faint));
@@ -315,6 +325,28 @@ export function renderCompletions(completion, theme, width, max = COMPLETION_ROW
   return lines;
 }
 
+// Rows renderFooter paints below the input box — the status line plus the
+// contextual hint bar. index.mjs parks the hardware cursor with this count.
+export const FOOTER_ROWS_BELOW_BOX = 2;
+
+/**
+ * Contextual hint bar (W5): one faint row under the status line naming the
+ * keys that are real in the current state — send/newline while idle,
+ * interrupt/exit while a turn runs, "esc again" while the interrupt is armed.
+ * It never names a binding that does not exist: shift+tab only steps queue
+ * items today, so no mode hint until the binding lands.
+ */
+export function renderHintBar(theme, width, options = {}) {
+  const str = options.str ?? theme.str ?? stringsFor();
+  const armed = options.escArmed === true;
+  // A host-supplied str may predate the keys — fall back, never blank.
+  const text = options.busy
+    ? (typeof str.hintBusy === 'function' ? str.hintBusy(armed)
+      : `${armed ? (str.interruptAgain ?? str.interrupt) : str.interrupt} · ctrl+c twice to exit`)
+    : (typeof str.hintIdle === 'string' ? str.hintIdle : 'enter send · alt+enter newline · ? shortcuts');
+  return [`  ${theme.faint(clip(sanitizeText(text, { keepNewlines: false }), Math.max(8, width - 2)))}`];
+}
+
 export function renderFooter(state, value, theme, width, options = {}) {
   return [
     ...renderUserPeek(state.entries, options.userTurn, theme, width, options.str),
@@ -324,6 +356,7 @@ export function renderFooter(state, value, theme, width, options = {}) {
     }),
     ...renderInputBox(value, theme, width, options),
     ...renderStatus(state, theme, width, options),
+    ...renderHintBar(theme, width, options),
   ];
 }
 

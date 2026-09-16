@@ -4,6 +4,20 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.220 — 2026-09-16
+
+- The TUI transcript collapses consecutive read/list/search tool calls
+  under a single `Explored` cell, and long tool output keeps its head
+  and tail around the `… +N lines` marker instead of head-only.
+- Turn status names the phase (`waiting`/`responding`) and counts
+  received bytes; a contextual hint bar shows interrupt keys while a
+  turn runs, and exiting names the session and how to resume it.
+- Headless `-p` no longer retries the kernel's own argv-validation
+  rejections, and `--prompt`/`-p=`/`--print=` spellings behave exactly
+  like `-p`.
+- `offpeak`, `stat`, and `cron` reject stray arguments as usage errors;
+  `cron add` honors `--json` and `stat --attach` pre-flights its paths.
+
 ## 0.0.219 — 2026-09-16
 
 - `zagent -p`/`--prompt` with a missing, empty, or flag-shaped value now

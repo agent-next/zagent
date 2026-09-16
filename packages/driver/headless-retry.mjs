@@ -21,6 +21,27 @@ const exhausted = e => {
     : null;
 };
 
+// Kernel argv-validation failures are deterministic for identical args — the
+// retry just respawns the same rejection 8s later and then misreports 'empty
+// output' while the real diagnostic sat on stderr (observed on the installed
+// build: `--mode bogus`, `--cwd /nonexistent`). Signatures verified by
+// executing the installed kernel (3.12.1 / zcode 0.16.5; receipts:
+// w2a-headless-flags-20260915.md + argv-rejections-20260916.md), each
+// line-anchored: kernel-side 'Unknown option', 'Unsupported --<flag> value:',
+// '--<flag> path is not accessible:', '--<flag> must be one of …',
+// '--<flag> requires …', '--<flag> cannot be used with …', 'Error: Session
+// not found:'; Node util.parseArgs verbatim 'Option '<x>' argument missing' /
+// 'does not take an argument' ([^']+ spans combined '-p, --prompt <value>'
+// forms) and 'Unexpected argument'; plus any 'Usage:' dump. Gated on empty
+// stdout so envelope-bearing attempts keep their retry semantics — the
+// residual false-positive surface is a spawned tool echoing one of these
+// parser phrasings at line start while producing no stdout.
+export const argvError = r => String(r.stdout ?? '').trim().length === 0
+    && /^Unsupported --|^Unknown option |^--[\w-]+ path is not accessible: |^--[\w-]+ must be one of |^--[\w-]+ requires |^--[\w-]+ cannot be used with |^Error: Session not found: |^Option '[^']+' (argument missing|does not take an argument)|^Unexpected argument |^Usage:/m
+      .test(String(r.stderr ?? ''))
+  ? { retry: false, terminal: true, reason: 'kernel argument validation failed — retrying replays an identical rejection' }
+  : null;
+
 export function decideRetry(stdout, exitCode, spawnError, { jsonMode = true } = {}) {
   if (spawnError) return { retry: false, terminal: true, reason: `spawn ${spawnError}` }; // r5 #6: ENOENT etc are deterministic — never retried
   const text = String(stdout ?? '').trim();
@@ -43,8 +64,9 @@ export function runHeadlessWithRetry(cmd, args, { cwd, env, maxAttempts = 2, bac
     const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', maxBuffer, timeout: attemptTimeoutMs });
     const verdict = decideRetry(r.stdout, r.status, r.error?.code);
     // The kernel reports plan-window exhaustion on stderr — decideRetry only sees
-    // stdout. An EXHAUSTED-class signature there makes the retry unwinnable too.
-    if (verdict.retry) Object.assign(verdict, exhausted(String(r.stderr ?? '')) ?? {});
+    // stdout. An EXHAUSTED-class signature there makes the retry unwinnable too;
+    // an argv-validation signature makes it literally identical.
+    if (verdict.retry) Object.assign(verdict, exhausted(String(r.stderr ?? '')) ?? argvError(r) ?? {});
     last = r; lastVerdict = verdict;
     onAttempt?.(attempt, verdict, r.status, (r.stdout ?? '').length);
     // r5 #1/#5: spawn errors terminal; retry only transient shapes, ONE extra attempt

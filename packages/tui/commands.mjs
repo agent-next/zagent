@@ -30,6 +30,7 @@ import { listHooks, formatHooksText } from '../driver/hooks-cli.mjs';
 import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine } from '../driver/doctor.mjs';
 import { findRuntime } from '../driver/runtime.mjs';
 import { formatDuration, formatTokens } from './render.mjs';
+import { hhmm } from './events.mjs';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ISSUES_URL = 'https://github.com/agent-next/zagent/issues/new';
@@ -208,11 +209,6 @@ export function formatQuota(report, { bars = false } = {}) {
   const monthly = pools.find(p => p?.type === 'TIME_LIMIT');
   const others = pools.filter(p => p !== fiveHour && p !== monthly);
   const bar = (p) => (bars && p?.usedPercent != null ? `${quotaBar(p.usedPercent)} ` : '');
-  const hm = (iso) => {
-    const d = new Date(iso);
-    return Number.isFinite(d.getTime())
-      ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : null;
-  };
   const day = (iso) => {
     const d = new Date(iso);
     return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null;
@@ -221,7 +217,7 @@ export function formatQuota(report, { bars = false } = {}) {
   // TOKENS_LIMIT is the rolling window (number = its length in hours, 5 live).
   lines.push(fiveHour
     ? `${fiveHour.number ?? 5}-hour window: ${bar(fiveHour)}${fiveHour.usedPercent == null ? 'not reported' : `${fiveHour.usedPercent}% used`}` +
-      `${fiveHour.nextResetAt && hm(fiveHour.nextResetAt) ? ` · resets ${hm(fiveHour.nextResetAt)}` : ''}`
+      `${fiveHour.nextResetAt && hhmm(fiveHour.nextResetAt) ? ` · resets ${hhmm(fiveHour.nextResetAt)}` : ''}`
     : '5-hour window: not reported');
   // TIME_LIMIT is the monthly tool-call allowance: used/limit are call counts.
   lines.push(monthly
@@ -603,6 +599,7 @@ export const CLIENT_COMMANDS = [
       if (t.error) return ctx.notice(t.error, 'warning');
       try {
         updateTask(t.db, t.task, { title });
+        ctx.state.title = title;         // the exit summary shows this name on the way out
         ctx.print(`renamed ${t.task.task_id} → ${title}`);
       } finally { t.db.close(); }
     },

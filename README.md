@@ -6,12 +6,18 @@
 
 [![npm](https://img.shields.io/npm/v/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![downloads](https://img.shields.io/npm/dm/zagent.svg)](https://www.npmjs.com/package/zagent)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.15-brightgreen.svg)](package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/agent-next/zagent/blob/master/LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.15-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/package.json)
 [![CI](https://github.com/agent-next/zagent/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-next/zagent/actions/workflows/ci.yml)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/CONTRIBUTING.md)
 
-English · [中文](docs/README.zh-CN.md)
+English · [中文](https://github.com/agent-next/zagent/blob/master/docs/README.zh-CN.md)
+
+Requires Node ≥ 22.15 · a ZCode runtime install · a GLM Coding Plan
+
+<img src="https://raw.githubusercontent.com/agent-next/zagent/master/docs/screenshot.png" alt="zagent TUI: a real turn — streaming reply, thinking fold, Read/Edit tool calls with results, and a summary with file:line references" width="800">
+
+*A real session: the model reads `parser.py`, asks before it edits, and summarizes what changed with file:line references. This is a captured PTY session, not a mockup.*
 
 </div>
 
@@ -21,6 +27,8 @@ npx zagent -p "Add a --json flag to cli.py and update the tests"
 
 > **Unofficial.** Not affiliated with or endorsed by Z.ai. zagent ships **no** Z.ai binaries —
 > it drives the ZCode runtime you already installed, on your own account.
+
+**[Why](#why-this-exists) · [Quick start](#quick-start) · [Commands](#commands) · [How it works](#how-it-works) · [Compatibility](#compatibility) · [FAQ](#faq) · [Changelog](https://github.com/agent-next/zagent/blob/master/CHANGELOG.md)**
 
 ## Why this exists
 
@@ -43,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.214 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.220 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 
@@ -66,7 +74,7 @@ I'll replace the if/elif chain with a dispatch table…
     }
 
 plan max · 5-hour window: 23% used · resets 14:25
-build · account:zai/GLM-5.3 · max · mcp 0/2
+>> build · account:zai/GLM-5.3 · max · mcp 0/2
 ```
 
 ## What you get
@@ -78,6 +86,10 @@ build · account:zai/GLM-5.3 · max · mcp 0/2
 | **Your plan, your machine** | Runs on your own GLM Coding Plan and your own installed runtime. Nothing bundled, nothing phoned home. |
 | **The rest of the product** | Quota, sessions, per-turn diffs, memory, scheduled prompts, and plugins — all from the CLI. |
 | **Cross-platform** | Runtime discovery on Linux, macOS and Windows. |
+
+Mutating tools ask first — Allow once, Allow always, or Deny, straight from the TUI:
+
+<img src="https://raw.githubusercontent.com/agent-next/zagent/master/docs/permission.png" alt="zagent permission card: Edit needs permission — Allow once / Allow always / Deny" width="800">
 
 ## Highlights
 
@@ -91,6 +103,10 @@ build · account:zai/GLM-5.3 · max · mcp 0/2
   rate and streaks from the same data the desktop app shows.
 - **Your CLIs, imported** — `zagent import` brings Claude Code instructions, commands and
   skills over.
+
+A turn as it happens — prompt, thinking fold, streaming reply, tool calls:
+
+<img src="https://raw.githubusercontent.com/agent-next/zagent/master/docs/demo.gif" alt="zagent demo: a live turn from prompt to summary" width="800">
 
 ## Quick start
 
@@ -113,10 +129,17 @@ zagent update                  # stay on the latest release
   in `$(npm prefix -g)/bin`.
 - **A GLM Coding Plan** and your own installed **ZCode runtime** — the ZCode desktop app, or the
   third-party `zcode-app-cli`. Either works for both headless and interactive use: zagent brings
-  its own TUI, so no third-party package is required. Verified against ZCode desktop 3.11.2 and
-  3.12.1 — headless `-p` works with existing credentials; the interactive TUI on 3.12.1 additionally
-  needs the new `account-provider` credential that only a 3.12.1-era sign-in writes (a 3.11.2-era
-  credential store is not migrated by the kernel).
+  its own TUI, so no third-party package is required.
+
+### Compatibility
+
+Verified against ZCode desktop 3.11.2 and 3.12.1:
+
+| Capability | ZCode 3.11.x | ZCode 3.12.x |
+|---|---|---|
+| Headless `zagent -p` | ✓ | ✓ |
+| Interactive TUI | not verified | ✓ — needs a 3.12.1-era sign-in (a 3.11.2-era credential store is not migrated by the kernel; sign in once from the desktop app) |
+| `commit-msg`, `automation`, `usage stats`, `offpeak tools` | — | ✓ |
 
 ### Authentication — your GLM Coding Plan
 
@@ -148,9 +171,9 @@ sent only to your own provider endpoint.
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent commit-msg [--model provider/model\|model] [--effort <level>] [--json]` | Generate a commit message for staged (or unstaged) changes (ZCode 3.12.x+) |
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | Inspect or modify runtime task records |
-| `zagent cron add\|list [--json]\|remove [--json]\|tick` | Scheduled prompts (local crontab) |
+| `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
-| `zagent offpeak [--refresh\|--json\|tools [on\|off]]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
+| `zagent offpeak [--refresh] [--json]\|tools [on\|off] [--json]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
 | `zagent plugins [name] [--json]` | Manage local plugins; `plugins install <name>` installs one |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |
@@ -209,13 +232,28 @@ reads reset-card availability without consuming a card.
 Task, memory, diff, and quota output can contain private workspace, prompt, or account data.
 Redact before sharing logs, and never commit credentials or config files.
 
+## FAQ
+
+- **Is this an official Z.ai product?** No. zagent is unofficial, not affiliated with or endorsed
+  by Z.ai, and ships none of its binaries — see the [NOTICE](https://github.com/agent-next/zagent/blob/master/NOTICE).
+- **Does it cost anything beyond my plan?** No. It runs on the GLM Coding Plan you already pay
+  for, not a metered API key.
+- **Where do my credentials live?** In a local `0600` config (`~/.zcode/cli/config.json`). They
+  are sent only to your own provider endpoint — there is no zagent telemetry.
+- **Which ZCode versions work?** Headless works on 3.11.x and 3.12.x; the TUI is verified on
+  3.12.1 and needs a 3.12.1-era sign-in — see [Compatibility](#compatibility).
+
+## Changelog
+
+Every release is documented: [CHANGELOG.md](https://github.com/agent-next/zagent/blob/master/CHANGELOG.md) · [Releases](https://github.com/agent-next/zagent/releases).
+
 ## Contributing
 
-Issues and PRs are welcome — see [CONTRIBUTING](CONTRIBUTING.md) and [SECURITY](SECURITY.md).
+Issues and PRs are welcome — see [CONTRIBUTING](https://github.com/agent-next/zagent/blob/master/CONTRIBUTING.md) and [SECURITY](https://github.com/agent-next/zagent/blob/master/SECURITY.md).
 Questions and ideas go in [Discussions](https://github.com/agent-next/zagent/discussions).
 
 ## License
 
-[MIT](LICENSE) — for **non-commercial**, personal interoperability and research. You are
-responsible for complying with Z.ai's terms for your own account. See [NOTICE](NOTICE) for the
+[MIT](https://github.com/agent-next/zagent/blob/master/LICENSE) — for **non-commercial**, personal interoperability and research. You are
+responsible for complying with Z.ai's terms for your own account. See [NOTICE](https://github.com/agent-next/zagent/blob/master/NOTICE) for the
 interoperability disclaimer.

@@ -31,7 +31,7 @@ export function hasSelection(args) {
 }
 
 export function isPrintInvocation(args) {
-  return args.includes('-p') || args.some(a => a === '--prompt' || a.startsWith('--prompt='));
+  return args.includes('-p') || args.some(a => a === '--prompt' || a.startsWith('--prompt=') || a.startsWith('-p='));
 }
 
 // Pull the selection/presentation flags out of argv; `rest` keeps the prompt
@@ -44,7 +44,7 @@ export function splitSelection(args) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     const [name, eq] = a.includes('=') ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a, undefined];
-    if (a === '-p' || name === '--prompt') {
+    if (name === '-p' || name === '--prompt') {
       sel.prompt = eq !== undefined ? eq : args[++i];
       if (typeof sel.prompt !== 'string' || !sel.prompt || sel.prompt.startsWith('-'))
         throw new Error('-p/--prompt requires a prompt text');

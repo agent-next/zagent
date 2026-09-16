@@ -7,6 +7,7 @@
 
 import { sanitizeText } from './sanitize.mjs';
 import { explainProviderError, EXHAUSTED, RETRYABLE } from '../driver/provider-errors.mjs';
+import { TOOL_GROUPS } from '../driver/zcode-protocol.mjs';
 
 /** Envelope every runtime event shares: {id, sessionId, turnId, type, timestamp, traceId, sequenceNumber, payload}. */
 
@@ -56,29 +57,33 @@ const str = (v, fallback = '') => (typeof v === 'string' ? sanitizeText(v) : fal
 /**
  * Tool output is stored to display a handful of lines, but arrived in full and
  * was kept forever: 500 results of 50 KB retained 24 MB to show 6 lines each.
- * Keep a bounded head plus the count of what was dropped, so both memory and the
- * per-frame re-split are bounded.
+ * Keep a bounded head+tail plus the count of what was dropped, so both memory
+ * and the per-frame re-split are bounded. The tail matters: the end of a long
+ * output is where the error or final result lives — a head-only keep drops
+ * exactly the lines a human scrolls for.
  */
-const RESULT_HEAD_LINES = 64;
+const RESULT_KEEP_LINES = 64;
+const RESULT_TAIL_LINES = 16;
 /** Also a byte cap: one 50 KB minified line is zero "extra lines" and still 50 KB. */
-const RESULT_HEAD_BYTES = 8 * 1024;
+const RESULT_KEEP_BYTES = 8 * 1024;
 
 function boundResult(text) {
-  const lines = text.split('\n');
+  let lines = text.split('\n');
   if (lines.at(-1) === '') lines.pop();
   let dropped = 0;
-  if (lines.length > RESULT_HEAD_LINES) {
-    dropped = lines.length - RESULT_HEAD_LINES;
-    lines.length = RESULT_HEAD_LINES;
+  if (lines.length > RESULT_KEEP_LINES) {
+    dropped = lines.length - RESULT_KEEP_LINES;
+    lines = lines.slice(0, RESULT_KEEP_LINES - RESULT_TAIL_LINES)
+      .concat(lines.slice(-RESULT_TAIL_LINES));
   }
-  let head = lines.join('\n');
-  if (head.length > RESULT_HEAD_BYTES) {
-    const cut = head.slice(0, RESULT_HEAD_BYTES);
+  let kept = lines.join('\n');
+  if (kept.length > RESULT_KEEP_BYTES) {
+    const cut = kept.slice(0, RESULT_KEEP_BYTES);
     // Count the lines the byte cut removed as well, so the tally stays honest.
-    dropped += head.slice(RESULT_HEAD_BYTES).split('\n').length - 1;
-    head = cut;
+    dropped += kept.slice(RESULT_KEEP_BYTES).split('\n').length - 1;
+    kept = cut;
   }
-  return { text: head, dropped };
+  return { text: kept, dropped };
 }
 const num = (v, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
@@ -110,13 +115,30 @@ const STREAM_CHANNEL = new Map([
 /** Side-queries (session_title, and anything else the runtime adds) never reach the transcript. */
 const isMainTurn = (source) => source === undefined || source === 'main_turn';
 
-function streamEntry(state, id, channel) {
+function streamEntry(state, id, channel, event) {
   const found = findEntry(state, channel, id);
   if (found) return found;
-  const entry = { kind: channel, id, text: '', done: false };
+  const entry = { kind: channel, id, text: '', done: false, at: stampOf(event) };
   state.entries.push(entry);
   return entry;
 }
+
+/** The entry's block timestamp: the envelope's own stamp when it carries one.
+ * A numeric stamp (or a digit-only string) inside the plausible epoch-millis
+ * window reads as epoch millis; numeric-looking stamps outside it (epoch
+ * seconds, year-like strings, 0/negative/overflow) fall back to receipt time —
+ * a wrong-looking stamp is worse than none. Other unusable stamps are kept raw
+ * (hhmm fails safe to no stamp) and an absent one falls back to receipt time. */
+const EPOCH_MS_FLOOR = 1e12;   // 2001-09-09 — no kernel predates this
+const stampOf = (event) => {
+  const t = event?.timestamp;
+  const s = str(t);
+  const n = typeof t === 'number' ? t : /^\d+$/.test(s) ? Number(s) : NaN;
+  const d = new Date(n);
+  if (Number.isFinite(d.getTime()) && n >= EPOCH_MS_FLOOR && n <= 8.64e15) return d.toISOString();
+  if (Number.isFinite(n) || s === '') return new Date().toISOString();
+  return s;
+};
 
 /** The newest entry of a channel that has not settled yet. */
 function lastOpen(state, kind) {
@@ -137,7 +159,7 @@ function findEntry(state, kind, id) {
 }
 
 export function addUserEntry(state, text) {
-  state.entries.push({ kind: 'user', text: sanitizeText(text) });
+  state.entries.push({ kind: 'user', text: sanitizeText(text), at: new Date().toISOString() });
   return state;
 }
 
@@ -156,6 +178,9 @@ export function applyEvent(state, event) {
         turnId: str(event?.turnId), active: true, startedAt: Date.now(),
         entryStart: state.entries.length,
         usage: null, retries: 0, toolCalls: 0, errors: 0,
+        // W5 turn-status phases: 'waiting' until the first observable model
+        // output, 'responding' after; streamBytes is the ⇣ received counter.
+        responded: false, streamBytes: 0,
       };
       break;
 
@@ -188,6 +213,15 @@ export function applyEvent(state, event) {
         break;
       }
       if (!isMainTurn(source)) break;
+      // Bill received wire bytes and flip the phase for ANY main-turn delta —
+      // including kinds with no renderer (tool_input_*): the wire carried
+      // them, so the turn is producing even when nothing paints yet. Raw
+      // bytes, not the sanitized text that reaches the transcript.
+      const rawDelta = typeof p.delta === 'string' ? p.delta : '';
+      if (state.turn && rawDelta !== '') {
+        state.turn.responded = true;
+        state.turn.streamBytes += Buffer.byteLength(rawDelta, 'utf8');
+      }
       // Absent kind and UNKNOWN kind are different cases and must not share a rule.
       //   * absent — every live event carries a kind, so this is an older or
       //     different runtime; prose is the graceful reading and such a stream
@@ -204,7 +238,7 @@ export function applyEvent(state, event) {
       // was retired. model_complete retains its separate authoritative path.
       const prior = findEntry(state, 'assistant', id) ?? findEntry(state, 'thinking', id);
       if (prior?.done) break;
-      streamEntry(state, id, channel).text += delta;
+      streamEntry(state, id, channel, event).text += delta;
       break;
     }
 
@@ -216,6 +250,7 @@ export function applyEvent(state, event) {
       // SECOND entry holding the same text, so every message printed twice.
       // It therefore settles the newest still-open entry instead.
       const content = str(p.content);
+      if (state.turn) state.turn.responded = true;
       // Locate by the id latched when this message's stream opened. Using "the
       // newest OPEN entry" was not enough: kind='finish' settles the entry first,
       // so model_complete found nothing open and appended a duplicate of the whole
@@ -226,12 +261,17 @@ export function applyEvent(state, event) {
       const id = state.currentMessageId;
       let entry = (id == null ? undefined : findEntry(state, 'assistant', id)) ?? lastOpen(state, 'assistant');
       if (!entry && content !== '') {
-        entry = { kind: 'assistant', id: id ?? str(p.assistantMessageId, 'complete'), text: '', done: false };
+        entry = { kind: 'assistant', id: id ?? str(p.assistantMessageId, 'complete'), text: '', done: false, at: stampOf(event) };
         state.entries.push(entry);
       }
       if (!entry) break;
       // Authoritative text for the message; streaming deltas can be lossy on reconnect.
-      if (content && content.length >= entry.text.length) entry.text = content;
+      if (content && content.length >= entry.text.length) {
+        // Bill only what the deltas had not already delivered — an unsynced
+        // answer counts in full, a replayed complete never double-counts.
+        if (state.turn) state.turn.streamBytes += Buffer.byteLength(content.slice(entry.text.length), 'utf8');
+        entry.text = content;
+      }
       entry.done = true;
       entry.stopReason = str(p.stopReason) || undefined;
       const thought = (id == null ? undefined : findEntry(state, 'thinking', id)) ?? lastOpen(state, 'thinking');
@@ -255,8 +295,14 @@ export function applyEvent(state, event) {
       const id = str(event?.id) || 'assistant_message';
       let entry = findEntry(state, 'assistant', id);
       if (!entry) {
-        entry = { kind: 'assistant', id, text: '', done: true };
+        entry = { kind: 'assistant', id, text: '', done: true, at: stampOf(event) };
         state.entries.push(entry);
+      }
+      if (state.turn && sid !== 'local-login') {
+        state.turn.responded = true;
+        // A repeated emit updates in place — bill only what grew, never twice
+        // (a same-length rewrite bills 0 but still replaces the text).
+        state.turn.streamBytes += Buffer.byteLength(content.slice(entry.text.length), 'utf8');
       }
       entry.text = content;
       entry.done = true;
@@ -268,7 +314,7 @@ export function applyEvent(state, event) {
       const attempt = num(p.attempt, 0);
       if (attempt > 1 && state.turn) {
         state.turn.retries = attempt - 1;
-        state.entries.push({ kind: 'notice', level: 'warning', text: retryNotice(p, attempt, state.quotaReport) });
+        state.entries.push({ kind: 'notice', level: 'warning', text: retryNotice(p, attempt, state.quotaReport), at: stampOf(event) });
       }
       break;
     }
@@ -278,11 +324,16 @@ export function applyEvent(state, event) {
         kind: 'tool', id: str(p.toolCallId), name: str(p.toolName, 'tool'),
         input: sanitizeInput(p.input), display: p.display ?? null,
         status: 'scheduled', resultText: '', resultDropped: 0, durationMs: null, truncated: false,
+        at: stampOf(event),
       };
+      // The GUI's grouping lens (TOOL_GROUPS.explore): read/list/search calls
+      // collapse under one `Explored` cell — the member set the screen writer
+      // renders compact, the same classification turn summaries already use.
+      if (TOOL_GROUPS.explore.includes(tool.name)) tool.explore = true;
       state.entries.push(tool);
       // A call with no id can never be matched to its result — untrackable.
       if (tool.name === 'Agent' && tool.id) state.subagents.add(tool.id);
-      if (state.turn) state.turn.toolCalls += 1;
+      if (state.turn) { state.turn.toolCalls += 1; state.turn.responded = true; }
       break;
     }
 
@@ -403,12 +454,13 @@ export function getSubagentCount(state) {
 }
 
 export function addNotice(state, text, level = 'muted') {
-  state.entries.push({ kind: 'notice', level, text: sanitizeText(text) });
+  state.entries.push({ kind: 'notice', level, text: sanitizeText(text), at: new Date().toISOString() });
   return state;
 }
 
-/** HH:MM in 24-hour local time — the same stamp /status, /quota and G4 print. */
-const hhmm = (at) => {
+/** HH:MM in 24-hour local time — the same stamp /status, /quota, G4 and the
+ * config-gated block timestamps print (render.mjs shares it). */
+export const hhmm = (at) => {
   const d = new Date(at);
   return Number.isFinite(d.getTime())
     ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : null;
@@ -459,7 +511,7 @@ export function retryNotice(p, attempt, report) {
 
 /** Slash-command output is runtime text, and equally untrusted. */
 export function addCommandEntry(state, text) {
-  state.entries.push({ kind: 'command', text: sanitizeText(text), done: true });
+  state.entries.push({ kind: 'command', text: sanitizeText(text), done: true, at: new Date().toISOString() });
   return state;
 }
 

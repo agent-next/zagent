@@ -20,6 +20,16 @@ import { defaultWindow, inOffPeak, campaignActive, minutesUntilWindow, routeToFl
   fetchWindow, cachedWindow, readToolPolicy, writeToolPolicy } from '../driver/offpeak.mjs';
 
 const args = process.argv.slice(2);
+const USAGE = 'usage: zagent offpeak [--refresh] [--json] | zagent offpeak tools [on|off] [--json]';
+const positional = [];
+for (const a of args) {
+  if (a === '--json' || a === '--refresh') continue;
+  if (a.startsWith('-')) { console.error(USAGE); process.exit(2); }
+  positional.push(a);
+}
+// `tools` is the only positional — a stray word silently running the window
+// check would answer a question that was never asked.
+if (positional.length && positional[0] !== 'tools') { console.error(USAGE); process.exit(2); }
 const asJson = args.includes('--json');
 const refresh = args.includes('--refresh');
 
@@ -30,9 +40,9 @@ const refresh = args.includes('--refresh');
 // that accept the field. The RPC call here is the official surface — it also
 // serves as the capability check, so the store is only written when the
 // connected runtime actually honored the toggle.
-const positional = args.filter(a => !a.startsWith('-'));
 if (positional[0] === 'tools') {
   const rest = positional.slice(1);
+  if (refresh) { console.error('usage: zagent offpeak tools [on|off] [--json]'); process.exit(2); }
   if (rest.length > 1 || (rest.length === 1 && rest[0] !== 'on' && rest[0] !== 'off')) {
     console.error('usage: zagent offpeak tools [on|off] [--json]');
     process.exit(2);

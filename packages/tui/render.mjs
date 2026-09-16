@@ -14,6 +14,7 @@
 import { renderMarkdown } from './markdown.mjs';
 import { stringWidth, clipToWidth } from './width.mjs';
 import { stringsFor } from './strings.mjs';
+import { hhmm } from './events.mjs';
 
 const CONTINUE_INDENT = '     ';
 const RESULT_INDENT = '  ';
@@ -85,8 +86,27 @@ export function toolSummary(entry) {
 
 const STATUS_TOKEN = { ok: 'success', error: 'error', running: 'accent', scheduled: 'faint' };
 
+/** theme.mjs only ever emits SGR — enough to measure a rendered line. */
+const SGR = /\x1b\[[0-9;]*m/gu;
+const visibleWidth = (line) => stringWidth(String(line ?? '').replace(SGR, ''));
+
 /** @returns {string[]} rendered lines for one transcript entry */
 export function renderEntry(entry, theme, width, options = {}) {
+  const lines = renderEntryLines(entry, theme, width, options);
+  // Config-gated audit trail: a faint HH:MM right-aligned on the entry's first
+  // line — or its last when the header already fills the row (a wrapped prompt's
+  // first line is greedy-full). A candidate line that fills the row keeps its
+  // content whole: the stamp yields rather than clipping transcript text.
+  const at = options.timestamps ? hhmm(entry?.at) : null;
+  if (!at || lines.length === 0) return lines;
+  const idx = [0, lines.length - 1].find(i => width - visibleWidth(lines[i]) - at.length >= 1);
+  if (idx === undefined) return lines;
+  const room = width - visibleWidth(lines[idx]) - at.length;
+  return lines.map((l, i) => (i === idx ? `${l}${' '.repeat(room)}${theme.faint(at)}` : l));
+}
+
+/** @returns {string[]} rendered lines for one transcript entry */
+function renderEntryLines(entry, theme, width, options = {}) {
   const maxResultLines = options.maxResultLines ?? 6;
   const g = theme.glyph;
   const inner = Math.max(8, width - 2);
@@ -149,6 +169,36 @@ export function renderEntry(entry, theme, width, options = {}) {
   if (entry.kind === 'tool') {
     const paint = theme[STATUS_TOKEN[entry.status] ?? 'faint'];
     const summary = toolSummary(entry);
+    const s2 = options.str ?? stringsFor();
+
+    // Explore-group member (codex's exec cell): consecutive read/list/search
+    // calls collapse under one `Explored` cell — the run's head carries the
+    // header, every member one compact `Name args` line, and no per-call result
+    // body (the noise is the point of the group). A failure still earns a
+    // one-line excerpt; folded, the head collapses to header + call count.
+    if (entry.explore === true) {
+      if (options.fold === 'collapsed') {
+        if (options.exploreHead !== true) return [];
+        return [
+          `${theme.accent(g.assistant)} ${theme.strong(s2.explored)}`,
+          `${RESULT_INDENT}   ${theme.faint(s2.exploredCalls(options.exploreRun || 1))}`,
+        ];
+      }
+      const member = clipToWidth(`${entry.name}${summary ? ` ${summary}` : ''}`, Math.max(4, inner - 5));
+      const lines = [];
+      // The header is a group label, not a status: a fixed paint keeps the
+      // eagerly-committed line stable when the member settles (r1 MINOR).
+      if (options.exploreHead === true) lines.push(`${theme.accent(g.assistant)} ${theme.strong(s2.explored)}`);
+      lines.push(options.exploreHead === true
+        ? `${RESULT_INDENT}${theme.faint(g.arm)} ${theme.muted(member)}`
+        : `${RESULT_INDENT}  ${theme.muted(member)}`);
+      if (entry.status === 'error') {
+        const first = String(entry.resultText ?? '').split('\n').map(l => l.trim()).find(l => l !== '');
+        if (first) lines.push(`${RESULT_INDENT}    ${theme.error(clipToWidth(first, Math.max(4, inner - 6)))}`);
+      }
+      return lines;
+    }
+
     // The header must not wrap: a one-line summary is the whole point, and a
     // wrapped one would desync the screen writer while the tool is still live.
     // Budget in cells: glyph + space + name + "(args)" + timing must fit `inner`.
@@ -168,22 +218,32 @@ export function renderEntry(entry, theme, width, options = {}) {
     if (body.at(-1) === '') body.pop();   // a trailing newline, not blank lines inside the output
     if (body.length === 0) return lines;
     if (options.fold === 'collapsed') {
-      const s2 = options.str ?? stringsFor();
       const hidden = body.length + (entry.resultDropped ?? 0);
       if (hidden > 0) lines.push(`${RESULT_INDENT}   ${theme.faint(s2.linesHidden(hidden))}`);
       return lines;
     }
-    const head2 = body.slice(0, maxResultLines);
+    // Head+tail (codex's head+tail exec split, opencode collapseToolOutput):
+    // the conclusion of a long output — where an error or final result lands —
+    // matters as much as its start, and a head-only cap hides exactly that.
+    // The budget stays maxResultLines, split symmetric first-N + last-N around
+    // one omission marker, so a flood costs the same rows as the old cap.
+    const tailN = Math.floor(maxResultLines / 2);
+    const overflow = body.length > maxResultLines;
+    const head2 = body.slice(0, overflow ? maxResultLines - tailN : maxResultLines);
+    const tail2 = overflow && tailN > 0 ? body.slice(-tailN) : [];
     for (const [i, raw] of head2.entries()) {
       const text = clipToWidth(raw, Math.max(4, inner - 5));
       lines.push(i === 0
         ? `${RESULT_INDENT}${theme.faint(g.result)}  ${theme.muted(text)}`
         : `${RESULT_INDENT}   ${theme.muted(text)}`);
     }
-    const hidden = body.length - head2.length + (entry.resultDropped ?? 0);
-    const s2 = options.str ?? stringsFor();
+    const hidden = body.length - head2.length - tail2.length + (entry.resultDropped ?? 0);
     if (hidden > 0) lines.push(`${RESULT_INDENT}   ${theme.faint(s2.linesHidden(hidden))}`);
     else if (entry.truncated) lines.push(`${RESULT_INDENT}   ${theme.faint(s2.truncatedByRuntime)}`);
+    for (const raw of tail2) {
+      const text = clipToWidth(raw, Math.max(4, inner - 5));
+      lines.push(`${RESULT_INDENT}   ${theme.muted(text)}`);
+    }
     return lines;
   }
 

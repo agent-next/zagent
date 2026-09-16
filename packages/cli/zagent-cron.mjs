@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadJobs, mutateJobs, dueJobs, jobsLine, parseCron, claimJob, completeJob, runTimedProcess, logAutomation } from '../driver/automation.mjs';
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
-const USAGE = 'usage: zagent cron add <id> <5-field-cron> <prompt...> | list [--json] | remove <id> [--json] | tick';
+const USAGE = 'usage: zagent cron add <id> <5-field-cron> <prompt...> [--json] | list [--json] | remove <id> [--json] | tick';
 const [cmd, ...rest] = process.argv.slice(2);
 const asJson = rest.includes('--json');
 const positional = rest.filter(a => !a.startsWith('-'));
@@ -15,19 +15,26 @@ const usage = () => { console.error(USAGE); process.exit(2); };
 const beat = line => logAutomation(line);
 
 if (cmd === 'add') {
-  const [id, cron, ...prompt] = rest;
+  // A trailing --json is the output flag — anywhere else it stays prompt text:
+  // the positional prompt is free text and interior dash words are legal.
+  const addJson = rest[rest.length - 1] === '--json';
+  const addArgs = addJson ? rest.slice(0, -1) : rest;
+  const [id, cron, ...prompt] = addArgs;
   // A dash-prefixed id would be unremovable (remove parses it as a flag).
   if (!id || id.startsWith('-') || !cron || !prompt.join(' ').trim() || !parseCron(cron)) { // strict shared parser (r7 #4)
-    console.error('usage: zagent cron add <id> <5-field-cron> <prompt...>  (cron: m h dom mon dow — *, lists a,b, ranges a-b, steps */n or a-b/n, names JAN..DEC SUN..SAT; bounds 0-59 0-23 1-31 1-12 0-7)');
+    console.error('usage: zagent cron add <id> <5-field-cron> <prompt...> [--json]  (cron: m h dom mon dow — *, lists a,b, ranges a-b, steps */n or a-b/n, names JAN..DEC SUN..SAT; bounds 0-59 0-23 1-31 1-12 0-7)');
     process.exit(2);
   }
+  const job = { id, cron, prompt: prompt.join(' '), workspace: process.cwd(), lastAttemptMs: null, lastSuccessMs: null, status: 'idle', createdAtMs: Date.now() };
   const added = mutateJobs(jobs => {
     if (jobs.some(j => j.id === id)) return false;
-    jobs.push({ id, cron, prompt: prompt.join(' '), workspace: process.cwd(), lastAttemptMs: null, lastSuccessMs: null, status: 'idle', createdAtMs: Date.now() });
+    jobs.push(job);
     return true;
   });
-  if (!added) { console.error(`id '${id}' exists`); process.exit(2); }
-  console.log(`added ${id}: '${cron}' → ${prompt.join(' ').slice(0, 60)}\nschedule in crontab: * * * * * zagent cron tick`);
+  if (addJson) console.log(JSON.stringify({ id, added }));
+  if (!added) { if (!addJson) console.error(`id '${id}' exists`); process.exit(2); }
+  if (!addJson)
+    console.log(`added ${id}: '${cron}' → ${prompt.join(' ').slice(0, 60)}\nschedule in crontab: * * * * * zagent cron tick`);
 } else if (cmd === 'list') {
   if (unknownFlags || positional.length) usage();
   const jobs = loadJobs();

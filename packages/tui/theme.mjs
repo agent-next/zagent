@@ -61,8 +61,10 @@ export const GLYPH = Object.freeze({
   assistant: '⏺',   // ⏺ turn/tool marker
   result: '⎿',      // ⎿ tool-result continuation
   user: '>',
+  arm: '└',        // └ explore-cell member connector
   bulletPending: '○', // ○
   mask: '•',          // painted per secret character in the api-key prompt
+  download: '⇣',      // ⇣ received-bytes counter on the busy status line
   spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
   boxTL: '╭', boxTR: '╮', boxBL: '╰', boxBR: '╯',
   boxH: '─', boxV: '│',
@@ -70,7 +72,7 @@ export const GLYPH = Object.freeze({
 
 export const ASCII_GLYPH = Object.freeze({
   ...GLYPH,
-  assistant: '*', result: '\\_', bulletPending: 'o', mask: '*',
+  assistant: '*', result: '\\_', arm: '-', bulletPending: 'o', mask: '*', download: 'v',
   spinner: ['|', '/', '-', '\\'],
   boxTL: '+', boxTR: '+', boxBL: '+', boxBR: '+', boxH: '-', boxV: '|',
 });

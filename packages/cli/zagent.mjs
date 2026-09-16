@@ -11,6 +11,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 const NODE = process.execPath; // eslint-disable-line
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 
@@ -175,6 +176,32 @@ if (hasSelection(args) && !isPrintInvocation(args)) {
       console.error("zagent: -p/--prompt requires a prompt text (use --prompt=... if the prompt starts with '-')");
       process.exit(2);
     }
+
+    // --attach is forwarded verbatim; a missing file is only discovered inside
+    // the runtime — after a provider call is already spent. Stat it here so a
+    // typo fails as OUR usage error, not as inference that bills first.
+    const cwdEq = args.find(a => a.startsWith('--cwd='));
+    const cwdIdx = args.indexOf('--cwd');
+    const base = cwdEq !== undefined ? cwdEq.slice(6)
+      : (cwdIdx !== -1 && args[cwdIdx + 1] && !args[cwdIdx + 1].startsWith('-')) ? args[cwdIdx + 1]
+      : process.cwd();
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      let file, glued = false;
+      if (a === '--attach') file = args[++i];
+      else if (a.startsWith('--attach=')) { file = a.slice('--attach='.length); glued = true; }
+      else continue;
+      // The = form unambiguously supplies the value; only the space form can
+      // swallow a following flag as its "path".
+      if (!file || (!glued && file.startsWith('-'))) {
+        console.error('zagent: --attach requires a file path');
+        process.exit(2);
+      }
+      if (!existsSync(path.resolve(base, file))) {
+        console.error(`zagent: --attach file not found: ${file}`);
+        process.exit(2);
+      }
+    }
   }
 }
 // 'doctor bogus' used to run the full diagnosis and exit 0 — a mistyped arg
@@ -302,7 +329,8 @@ if (args[0] !== 'login' && args[0] !== 'logout') {
 // invocations divert to the app-server runner in zagent-print.mjs; every other
 // -p keeps the kernel path below (including its empty-envelope retry wrapper —
 // this path reports real errors instead, so it needs none).
-if (hasSelection(args)) { // !isPrintInvocation already exited above
+const selection = hasSelection(args); // hoisted — the tail gates on it twice below
+if (selection) { // !isPrintInvocation already exited above
   let sel;
   try { sel = splitSelection(args); }
   catch (e) { console.error(`zagent: ${e.message}`); process.exit(2); }
@@ -325,7 +353,11 @@ if (hasSelection(args)) { // !isPrintInvocation already exited above
 }
 // Headless JSON runs retry on empty/error-envelope output (product-level parity with
 // harnesses that retry internally; 2 of 3 gate-verdict failures were 429 envelopes).
-const headlessJson = args.includes('-p') && args.includes('--json');
+// hasSelection above only SCHEDULES its exit (async write callback) — without
+// gating both kernel paths here, `-p --model/--effort --json` fell through and
+// spawned the kernel a second time with flags its parseArgs rejects (the "empty
+// output" retries + kernel usage dump seen on the installed build).
+const headlessJson = !selection && isPrintInvocation(args) && args.includes('--json');
 if (headlessJson) {
   const { runHeadlessWithRetry } = await import(new URL('../driver/headless-retry.mjs', import.meta.url).href);
   const entry = rt.entry;
@@ -341,7 +373,7 @@ if (headlessJson) {
   // through to the interactive spawn and the runtime ran TWICE (two concatenated JSON
   // envelopes — the m5 4/4 regression root cause).
   process.stdout.write(r.stdout, done); // r6 #1: write-true ≠ flushed; callback form is the only safe exit
-} else { // interactive/other paths — the headless branch schedules its own exit above
+} else if (!selection) { // selection owns its args — the interactive spawn must not see them either
   const launch = buildLaunchArgs({ entry: rt.entry, args, preference: tuiPreference() });
   if (launch.tui === 'runtime' && !launch.ships) {
     console.error("zagent: ZAGENT_TUI=runtime, but this runtime ships no '@zcode/tui'. Unset it to use zagent's own TUI.");
@@ -362,7 +394,7 @@ if (headlessJson) {
   // after it. Hitting the plan's 5-hour window printed 63 lines of stack trace with
   // the only actionable fact — when it resets — buried in the first one. The TUI
   // keeps plain inherited stdio; nothing about its rendering changes.
-  const headless = args.includes('-p');
+  const headless = isPrintInvocation(args);
   // The kernel TUI resolves providers in standalone mode: it reads only the
   // `account-provider:*` credential records, which a pre-3.12.1 store lacks —
   // the "No model access configured" wall. Provision them from configured plan

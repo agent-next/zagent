@@ -10,7 +10,9 @@
 // exist or the module fails to load.
 
 import crypto from 'node:crypto';
-import { writeSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createTheme } from './theme.mjs';
 import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn,
   createFold, foldStateFor, collapse as collapseEntry, expand as expandEntry,
@@ -18,7 +20,7 @@ import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
 import { createFrameScheduler } from './frames.mjs';
-import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, renderPrompt, readContextMeter, COMPLETION_ROWS, inputBoxCursor } from './chrome.mjs';
+import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, renderPrompt, readContextMeter, COMPLETION_ROWS, inputBoxCursor, FOOTER_ROWS_BELOW_BOX } from './chrome.mjs';
 import { effortItems, modelItems, modelOptionId, modelOptionMatches, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
@@ -56,6 +58,16 @@ const secretMaskFrom = (t) => { const m = SECRET_PREFIX.exec(t); return m ? m[0]
 const isSecretCommand = (t) => SECRET_COMMAND.test(t);
 const displayFor = (t) => isSecretCommand(t) ? `${t.slice(0, secretMaskFrom(t))}[redacted]` : t;
 
+// ~/.zcode/cli/config.json {tui:{timestamps:true}} opts each transcript block
+// into a right-aligned faint HH:MM stamp (the W5 audit-trail row). Absent or
+// invalid config stays off — the default transcript is unchanged.
+const tuiTimestampsEnabled = ({ home } = {}) => {
+  try {
+    return JSON.parse(readFileSync(path.join(home || os.homedir(), '.zcode', 'cli', 'config.json'), 'utf8'))
+      ?.tui?.timestamps === true;
+  } catch { return false; }
+};
+
 export async function runTui(host = {}, { deps = null } = {}) {
   const stdout = host.stdout ?? process.stdout;
   const stdin = host.stdin ?? process.stdin;
@@ -71,7 +83,9 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // The popup never outgrows the terminal: 10 rows on a 12-row screen would
   // shove the transcript and the input box off the top. Page keys step by the
   // same guarded window so PgDn never skips rows the user never saw.
-  const completionPageRows = () => Math.min(COMPLETION_ROWS, Math.max(2, screen.height - 8));
+  // Reserve rows for the fixed chrome: box(3) + status(1) + hint(1) + the
+  // popup's own status line + a live transcript row still needing room = 9.
+  const completionPageRows = () => Math.min(COMPLETION_ROWS, Math.max(2, screen.height - 9));
   // host.locale is one of the members the TUI was handed and ignored. The runtime
   // supports en-US / zh-CN / auto, and this is a Chinese model's client.
   const str = stringsFor(host.locale);
@@ -88,7 +102,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     busy: false,
     abortedByUser: false,
     spinnerFrame: 0,
-    activity: 'working',
+    activity: null,             // status line derives the turn phase when unset
     permission: null,          // {request, options, selected, resolve}
     attachments: [],           // images pasted with ctrl+v, sent with the next prompt
     pastes: [],                // {token, text} — large pastes shown as `[Pasted ~N lines]` chips
@@ -174,10 +188,11 @@ export async function runTui(host = {}, { deps = null } = {}) {
     addNotice(state, str.noModelAccess, 'warning');
   }
 
+  const timestamps = deps?.timestamps ?? tuiTimestampsEnabled({ home: host.home });
   const paintNow = () => {
     if (exiting) return;
     const foldOf = (entry, i) => foldStateFor(ui.fold, entry, i);
-    const { commit, live } = composeFrame(state, theme, screen.width, { str, foldOf });
+    const { commit, live } = composeFrame(state, theme, screen.width, { str, foldOf, timestamps });
     const tail = ui.permission
       ? renderPermission(ui.permission.request, ui.permission.selected, theme, screen.width, ui.permission.options)
       : ui.prompt
@@ -202,14 +217,14 @@ export async function runTui(host = {}, { deps = null } = {}) {
         });
     // Park the hardware cursor inside the input box — the whole point of the
     // tracked cursor is that the user can SEE where the next keystroke lands.
-    // The box is the last block before the one-line status, so its top is
-    // tail.length - 1 - box height.
+    // The box is the last block before the status line and the hint bar, so
+    // its top is tail.length - FOOTER_ROWS_BELOW_BOX - box height.
     let cursor = null;
     if (!ui.permission && !ui.chooser && !ui.prompt) {
       const spot = inputBoxCursor(ui.input.value, theme, screen.width,
         { busy: ui.busy, str, cursor: ui.input.cursor,
           maskFrom: secretMaskFrom(sanitizeText(ui.input.value)) });
-      if (spot) cursor = { line: live.length + tail.length - 1 - spot.rows + spot.row, col: spot.col };
+      if (spot) cursor = { line: live.length + tail.length - FOOTER_ROWS_BELOW_BOX - spot.rows + spot.row, col: spot.col };
     }
     screen.paint(commit, [...live, ...tail], cursor);
   };
@@ -462,12 +477,18 @@ export async function runTui(host = {}, { deps = null } = {}) {
     const sessionSwitch = /^\/(new|resume|fork|rewind)\b(?:\s+(\S+))?/.exec(trimmed);
     if (sessionSwitch) {
       state.sessionId = sessionSwitch[1] === 'resume' && sessionSwitch[2] ? sessionSwitch[2] : null;
+      // The old session's title would mislabel the exit summary until (if) a
+      // session_title_updated for the new session arrives.
+      state.title = '';
     }
     ui.busy = true;
     // A picked selection item may name what the wait is (e.g. login's "Waiting
     // for browser authorization...") — far better than a generic spinner while
     // the kernel polls for the OAuth callback.
-    ui.activity = activity ?? (trimmed.startsWith('/') ? 'running command' : 'working');
+    // A null activity lets the status line name the reducer's turn phase
+    // (waiting -> responding) instead of a static label; only a host that
+    // knows better (a picked selection item) passes one.
+    ui.activity = activity ?? null;
     const abort = new AbortController();
     ui.abort = abort;
     startSpinner();
@@ -1069,6 +1090,15 @@ export async function runTui(host = {}, { deps = null } = {}) {
     try { stdin.setRawMode?.(false); } catch {}
     screen.writeRaw('\x1b[?2004l');
     stdin.pause?.();
+    // W5 exit summary: a session is a resumable object — the way out names it
+    // and hands back both ways in (the latest in this directory, or this id
+    // exactly). Only when the runtime actually started one — nothing to resume
+    // means no hint. Fatal exits keep their own diagnostic line instead.
+    const sid = [...sanitizeText(state.sessionId ?? '', { keepNewlines: false }).trim()].slice(0, 80).join('');
+    if (sid && !fatalInFlight) {
+      const title = [...sanitizeText(state.title ?? '', { keepNewlines: false }).replace(/\s+/g, ' ').replaceAll('"', "'").trim()].slice(0, 60).join('');
+      screen.writeRaw(`${theme.faint(`${str.sessionEnded(title, sid)}\n${str.resumeHint(sid)}`)}\n`);
+    }
   };
 
   function onKey(event) {

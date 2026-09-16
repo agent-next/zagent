@@ -20,6 +20,10 @@ const EN = {
     'shift+up selects an earlier turn · h folds it, l expands it',
   ],
   working: 'working',
+  // W5 turn-status phases: waiting = no model output observed yet, responding =
+  // streaming/tool activity has begun. The byte counter rides beside them.
+  waiting: 'waiting',
+  responding: 'responding',
   interrupt: 'esc to interrupt',
   interruptAgain: 'esc again to interrupt',
   exitTwice: 'press ctrl+c again to exit',
@@ -33,6 +37,10 @@ const EN = {
   reasoningHidden: (n) => `… +${n} line${n === 1 ? '' : 's'} of reasoning`,
   linesHidden: (n) => `… +${n} line${n === 1 ? '' : 's'}`,
   truncatedByRuntime: '… truncated by the runtime',
+  // Explored cell: consecutive read/list/search calls collapse under one header
+  // (codex's exec cell) — folded, the head shows the run's call count.
+  explored: 'Explored',
+  exploredCalls: (n) => `+${n} call${n === 1 ? '' : 's'}`,
   needsPermission: (tool) => `${tool} needs permission`,
   chooseHint: 'up/down/tab or 1-9 to choose · enter to confirm · esc to cancel',
   denyHint: 'up/down/tab or 1-9 to choose · enter to confirm · esc to deny',
@@ -56,6 +64,16 @@ const EN = {
   mcpOk: (ok, n) => `mcp ${ok}/${n}`,
   mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} failed`,
   agents: (n) => `agents ${n}`,
+  // W5 exit summary: a session is a resumable object — the way out names it
+  // and hands back both ways in (the latest session in this directory, or
+  // this id exactly).
+  sessionEnded: (title, id) => (title ? `session "${title}" (${id})` : `session ${id}`),
+  resumeHint: (id) => `resume: zagent -c · zagent --resume ${id}`,
+  // W5 contextual hint bar: one persistent row under the status line naming the
+  // keys that are real in the current state. It never names a binding that does
+  // not exist — shift+tab only steps queue items, so it is not a "mode" hint.
+  hintIdle: 'enter send · alt+enter newline · ? shortcuts',
+  hintBusy: (again) => `${again ? 'esc again to interrupt' : 'esc to interrupt'} · ctrl+c twice to exit`,
 };
 
 const ZH = {
@@ -68,6 +86,8 @@ const ZH = {
     'shift+up 选中更早的一轮 · h 折叠,l 展开',
   ],
   working: '处理中',
+  waiting: '等待响应',
+  responding: '回复中',
   interrupt: 'esc 中断',
   interruptAgain: '再按 esc 中断',
   exitTwice: '再按一次 ctrl+c 退出',
@@ -81,6 +101,8 @@ const ZH = {
   reasoningHidden: (n) => `… 另有 ${n} 行推理`,
   linesHidden: (n) => `… 另有 ${n} 行`,
   truncatedByRuntime: '… 已被 runtime 截断',
+  explored: '已检索',
+  exploredCalls: (n) => `共 ${n} 次调用`,
   needsPermission: (tool) => `${tool} 需要授权`,
   chooseHint: '上下键/tab 或 1-9 选择 · enter 确认 · esc 取消',
   denyHint: '上下键/tab 或 1-9 选择 · enter 确认 · esc 拒绝',
@@ -104,6 +126,10 @@ const ZH = {
   mcpOk: (ok, n) => `mcp ${ok}/${n}`,
   mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} 失败`,
   agents: (n) => `子代理 ${n}`,
+  sessionEnded: (title, id) => (title ? `会话“${title}”（${id}）` : `会话 ${id}`),
+  resumeHint: (id) => `恢复会话：zagent -c · zagent --resume ${id}`,
+  hintIdle: 'enter 发送 · alt+enter 换行 · ? 快捷键',
+  hintBusy: (again) => `${again ? '再按 esc 中断' : 'esc 中断'} · 连按两次 ctrl+c 退出`,
 };
 
 /** `auto` and anything unrecognised fall back to English. */
