@@ -20,7 +20,7 @@ import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs'
 import { buildLaunchArgs, tuiPreference, tuiNodeSupported, TUI_NODE_FLOOR, nodeSqliteSupported, NODE_SQLITE_FLOOR } from '../driver/tui-launch.mjs';
 import { provisionStandaloneAccounts } from '../driver/account-provider.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
-import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine } from '../driver/doctor.mjs';
+import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine, displayPath, displayText } from '../driver/doctor.mjs';
 import { checkLatest, compareVersions, installedVersion, passiveCheckAllowed } from '../driver/update-check.mjs';
 
 // G1 (ux-inventory §1/§9): every top CLI keeps a new user inside the product with
@@ -33,6 +33,7 @@ const SIGNIN_CARD = [
   '  3. quit',
 ];
 const printSignInCard = () => { for (const l of SIGNIN_CARD) console.error(l); };
+const CREDENTIAL_MSG = 'no GLM Coding Plan credential — run `zagent login` or export ZAI_API_KEY';
 
 // `zagent login` (kernel OAuth) writes ~/.zcode/v2/credentials.json; the
 // desktop/kernel provisions the plan key itself into v2/provider_config.json.
@@ -81,7 +82,7 @@ async function chooseSignIn() {
   } finally { rl.close(); }
 }
 
-function ensureConfig(forcedKey) { // same shape kingsword09's launcher creates; ours adds nothing secret
+async function ensureConfig(forcedKey) { // same shape kingsword09's launcher creates; ours adds nothing secret
   const dir = `${os.homedir()}/.zcode/cli`;
   const file = `${dir}/config.json`;
   if (existsSync(file)) { // migrate legacy provider key the TUI does not recognize
@@ -121,7 +122,13 @@ function ensureConfig(forcedKey) { // same shape kingsword09's launcher creates;
   // authenticates from its own v2 store; the plan key it provisioned is reused
   // here when present so /quota's config reader keeps working too.
   if (!key && oauthSignedIn()) key = provisionedPlanKey() ?? '';
-  if (!key && !oauthSignedIn()) { printSignInCard(); process.exit(2); } // exit 2 = "fixable usage error", like clap
+  if (!key && !oauthSignedIn()) {
+    printSignInCard();
+    // A `-p --json` caller parses stdout — it still gets a machine-readable
+    // error envelope; the card stays on stderr for the human behind the pipe.
+    await writeJsonCredentialError();
+    process.exit(2); // exit 2 = "fixable usage error", like clap
+  }
   key = key ?? '';
   // Launcher-native shape (provider key "zai" — what the TUI's /login and model picker
   // expect). The builtin:zai-coding-plan key is NOT recognized by the TUI (owner-verified
@@ -155,6 +162,19 @@ const rt = findRuntime();
 // the sign-in card for what is really a flag mistake.
 const { hasSelection, isPrintInvocation, splitSelection, runPrintOnce, printEnvelope } =
   await import(new URL('./zagent-print.mjs', import.meta.url).href);
+// The credential gate answers a JSON-asking headless run with a parseable
+// envelope on stdout — "--json" or "--output-format json|stream-json" on a
+// -p/--prompt invocation. Only pre-`--` tokens are flags; everything else
+// keeps the human-only card.
+const preSep = args.slice(0, args.indexOf('--') === -1 ? args.length : args.indexOf('--'));
+const jsonPrint = isPrintInvocation(preSep) && (preSep.includes('--json')
+  || preSep.some(a => /^--output-format=(?:json|stream-json)$/.test(a))
+  || preSep.some((a, i) => a === '--output-format' && ['json', 'stream-json'].includes(preSep[i + 1])));
+// num_turns is 0 here — the gate fires before any turn exists.
+const writeJsonCredentialError = () => !jsonPrint ? Promise.resolve()
+  : new Promise((res) => process.stdout.write(JSON.stringify(printEnvelope({
+    ok: false, sessionId: null, durationMs: 0, numTurns: 0,
+    error: CREDENTIAL_MSG, answer: CREDENTIAL_MSG })) + '\n', res));
 if (hasSelection(args) && !isPrintInvocation(args)) {
   console.error('zagent: --model/--effort apply to headless -p runs; inside the TUI use /model and /effort');
   process.exit(2);
@@ -212,6 +232,16 @@ if (args[0] === 'doctor' && args.slice(1).some(a => a !== 'fix' && a !== '--fix'
   process.exit(2);
 }
 if (args[0] === 'doctor' || !rt) {
+  // A `-p --json` run on a runtime-less machine keeps stdout machine-readable
+  // too: the diagnosis moves to stderr and the error envelope answers.
+  if (!rt && args[0] !== 'doctor' && jsonPrint) {
+    const msg = 'no ZCode runtime found — install zcode-app-cli or the ZCode desktop app';
+    console.error(`zagent: ${msg}`);
+    await new Promise((res) => process.stdout.write(JSON.stringify(printEnvelope({
+      ok: false, sessionId: null, durationMs: 0, numTurns: 0,
+      error: msg, answer: msg })) + '\n', res));
+    process.exit(1);
+  }
   const cfg = `${os.homedir()}/.zcode/cli/config.json`;
   const haveKey = !!(process.env.ZAI_API_KEY || existsSync(`${os.homedir()}/.config/ccz/.api_key`))
     || oauthSignedIn(); // the kernel OAuth store is a credential too (G1)
@@ -221,7 +251,7 @@ if (args[0] === 'doctor' || !rt) {
   let unhealthy = false;     // setup is broken some other way — drives only the exit code
   let cfgJson = null;
   if (rt && (args[1] === 'fix' || args.includes('--fix')) && !existsSync(cfg) && haveKey) {
-    ensureConfig(); fixes.push('config created');
+    await ensureConfig(); fixes.push('config created');
   }
   if (existsSync(cfg)) { // Validate local structure and warn when main has collapsed onto lite.
     try {
@@ -239,7 +269,7 @@ if (args[0] === 'doctor' || !rt) {
   // its internal string, so it is only a fallback and stays labeled.
   let rtVersion = rt?.version;
   if (rt && !rtVersion) { const k = kernelVersion(rt.entry); rtVersion = k ? `(kernel ${k})` : null; }
-  console.log(rt ? `runtime: ${rt.kind}${rtVersion ? ` ${rtVersion}` : ''} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  console.log(rt ? `runtime: ${rt.kind}${rtVersion ? ` ${rtVersion}` : ''} (${displayPath(rt.root)})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
   console.log(nodeLine());
   // The desktop's own updater stages the next build under its cache dir; a
   // pending update-info.json means the GUI swaps versions on next launch —
@@ -288,10 +318,10 @@ if (args[0] === 'doctor' || !rt) {
       console.log(`capabilities: ${capabilityLine(caps)}`);
       for (const m of caps.present) console.log(`  + ${m}`);
       for (const m of caps.absent) console.log(`  - ${m}`);
-    } catch (e) { console.error(`capabilities: probe failed (${String(e?.message ?? e).slice(0, 80)})`); }
+    } catch (e) { console.error(`capabilities: probe failed (${displayText(String(e?.message ?? e).slice(0, 80))})`); }
     finally { try { c?.close(); } catch {} } // r1: spawned runtime always terminated
   }
-  console.log(`config: ${invalidConfig ? 'INVALID CONFIG — repair the JSON object manually; existing file preserved' : existsSync(cfg) ? 'present' : !rt ? 'blocked: no runtime found (fix runtime first)' : haveKey ? 'will be created on first run (doctor --fix to do it now)' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'} (${cfg})`);
+  console.log(`config: ${invalidConfig ? 'INVALID CONFIG — repair the JSON object manually; existing file preserved' : existsSync(cfg) ? 'present' : !rt ? 'blocked: no runtime found (fix runtime first)' : haveKey ? 'will be created on first run (doctor --fix to do it now)' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'} (${displayPath(cfg)})`);
   // G8 depth lines: which credential will actually be used, what extensions are
   // configured, and whether the machine itself is healthy — all read-only.
   const cred = doctorCredential({ config: cfgJson, hasConfig: existsSync(cfg) });
@@ -320,9 +350,13 @@ if (args[0] !== 'login' && args[0] !== 'logout') {
   // already in place, so ensureConfig just writes the provider entry.
   const needChoice = !existsSync(cfgFile) && !haveCredential;
   const picked = needChoice ? await chooseSignIn() : null;
-  // The chooser already printed the card; a declined choice exits quietly.
-  if (needChoice && picked == null && process.stdin.isTTY && process.stderr.isTTY) process.exit(2);
-  ensureConfig(picked?.key); // oauth runs proceed with the kernel's own store
+  // The chooser already printed the card; a declined choice exits quietly —
+  // a `-p --json` decline still emits the error envelope (same contract).
+  if (needChoice && picked == null && process.stdin.isTTY && process.stderr.isTTY) {
+    await writeJsonCredentialError();
+    process.exit(2);
+  }
+  await ensureConfig(picked?.key); // oauth runs proceed with the kernel's own store
 }
 // --model/--effort have no kernel -p flag (its parseArgs table rejects both);
 // selection is protocol-side (session/create takes model+thoughtLevel). Those
@@ -341,7 +375,7 @@ if (selection) { // !isPrintInvocation already exited above
     if (asJson) write(JSON.stringify(printEnvelope(r)) + '\n', r.ok ? 0 : 1);
     else write((r.answer || `(turn ${r.ended})`) + '\n', r.ok ? 0 : 1);
   } catch (e) {
-    const msg = String(e?.message ?? e).slice(0, 300);
+    const msg = displayText(String(e?.message ?? e).slice(0, 300));
     if (asJson) write(JSON.stringify(printEnvelope({ ok: false, error: msg, sessionId: null, durationMs: 0 })) + '\n', 1);
     else {
       console.error(`zagent: ${msg}`);
@@ -368,7 +402,7 @@ if (!selection && rt
     && args.slice(0, args.indexOf('--') === -1 ? args.length : args.indexOf('--'))
         .some(a => a === '--browser-use' || a.startsWith('--browser-use='))
     && !kernelResolves(rt.entry, 'playwright-core')) {
-  console.error(`zagent: warning: --browser-use needs the kernel's pinned Playwright runtime, which '${rt.entry}' cannot resolve (no node_modules on its path).`);
+  console.error(`zagent: warning: --browser-use needs the kernel's pinned Playwright runtime, which '${displayPath(rt.entry)}' cannot resolve (no node_modules on its path).`);
   console.error('  Browser commands will fail inside the turn. Point ZCODE_RUNTIME at a full install that carries playwright-core (npm i -g zcode-app-cli).');
 }
 if (headlessJson) {
@@ -376,7 +410,7 @@ if (headlessJson) {
   const entry = rt.entry;
   const r = runHeadlessWithRetry(process.execPath, [entry, ...args], { cwd: process.cwd(), env: kernelEnv(entry),
     onAttempt: (a, v) => { if (v.retry) console.error(`zagent: attempt ${a} ${v.reason} — ${a < 2 ? 'retrying once' : 'giving up (exit 1)'}`); } });
-  if (r.stderr) process.stderr.write(String(r.stderr).slice(-2000)); // r5 #6: runtime diagnostics surfaced
+  if (r.stderr) process.stderr.write(displayText(String(r.stderr).slice(-2000))); // r5 #6: runtime diagnostics surfaced
   if ((r.exitCode ?? 1) !== 0) {
     const explained = explainProviderError(String(r.stderr ?? ''));
     if (explained) process.stderr.write(`\n${formatProviderError(explained)}\n`);

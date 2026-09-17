@@ -133,16 +133,16 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
 | `zagent bots [list\|show <id>\|status] [--json]` | 桌面端已配置的聊天 bot（只读） |
 | `zagent offpeak [--refresh] [--json]\|offpeak tools [on\|off] [--json]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
-| `zagent plugins [name] [--json]` | 管理本地插件；`plugins install <name>` 安装插件 |
+| `zagent plugins [list] [name] [--json]` | 管理本地插件；`plugins install <name>` 安装插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
 | `zagent inspect [--storage] [--json]` | 打印 runtime/配置/skills；`--storage` = ~/.zcode 分类体积（只读） |
 | `$using-zagent` | 随包装的 skill：zagent 是什么、怎么和 GUI 区分、怎么用 |
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | 从 Claude Code 导入说明、commands、skills |
-| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | 显示或控制当前会话目标 |
+| `zagent goal [list\|show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | 显示或控制当前会话目标 |
 | `zagent subagents [--session id] [--json]` | 列出运行中与已结束的子会话 |
 | `zagent usage [--session id] [--json]` | 会话 token 总量 + 上下文 baseline 分解 |
 | `zagent usage stats [--range all\|7d\|30d] [--json]` | 应用用量面板：总量、缓存命中率、连续天数、按模型/工具分解（ZCode 3.12.x+） |
-| `zagent remote [status\|connect] [--json]` | 本机 relay 设备 id / last ack（D1/D2；不提供第二设备控制） |
+| `zagent remote [status\|connect \[--live]] [--json]` | 本机 relay 设备 id / last ack（D1/D2；不提供第二设备控制） |
 | `zagent mcp` | 通过 stdio 以 MCP 工具形式提供 zagent，供其他 agent 调用 |
 
 `za` 是 `zagent` 的短别名。

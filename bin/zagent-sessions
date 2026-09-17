@@ -3,6 +3,7 @@
 // GUI task titles (read-only tasks-index.sqlite). Parity: GUI task list, minimal.
 import { ZCodeProtocolClient } from '../packages/driver/zcode-protocol.mjs';
 import { DatabaseSync } from 'node:sqlite';
+import { lstatSync } from 'node:fs';
 import os from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -18,8 +19,14 @@ if (args.some(a => a !== '--json')) {
 
 // 1) GUI task index (read-only): title + status + pin/archive state per task_id
 const tasks = new Map();
-try {
-  const db = new DatabaseSync(`${os.homedir()}/.zcode/v2/tasks-index.sqlite`, { readOnly: true });
+// The index file exists only after the runtime has written a task — a fresh
+// install has no file and that is an empty join, not a warning. A file that
+// IS present but unreadable or corrupt still reports.
+const tasksDb = `${os.homedir()}/.zcode/v2/tasks-index.sqlite`;
+let tasksDbPresent = true;
+try { lstatSync(tasksDb); } catch { tasksDbPresent = false; } // lstat: a dangling symlink still counts as present
+if (tasksDbPresent) try {
+  const db = new DatabaseSync(tasksDb, { readOnly: true });
   for (const r of db.prepare('SELECT task_id, title, task_status, pinned, archived, updated_at FROM tasks').all()) {
     tasks.set(r.task_id, r);
   }

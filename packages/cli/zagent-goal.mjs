@@ -1,22 +1,25 @@
 #!/usr/bin/env node
 // zagent goal — session/goal show|set|pause|resume|clear on the most recent
-// tasks-index row, or --session. Protocol key is `objective` (not `goal`).
+// tasks-index row, or --session; `list` enumerates those sessions offline.
+// Protocol key is `objective` (not `goal`).
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { goalShow, goalSet, goalControl, projectionOf } from '../driver/session-control.mjs';
-import { openTasksDb } from '../driver/tasks-index.mjs';
+import { openTasksDb, openTasksDbIfPresent, listTasks } from '../driver/tasks-index.mjs';
 import { NOT_RUNNING, isNotRunning } from './session-errors.mjs';
 
-export const USAGE = 'usage: zagent goal [show|set <text>|pause|resume|clear] [--session <id>] [--json]';
-const ACTIONS = new Set(['show', 'set', 'pause', 'resume', 'clear']);
+export const USAGE = 'usage: zagent goal list [--all] [--json] | show|set <text>|pause|resume|clear [--session <id>] [--json]';
+const ACTIONS = new Set(['list', 'show', 'set', 'pause', 'resume', 'clear']);
 
 export function parseGoalArgs(argv) {
   let json = false;
+  let all = false;
   let session;
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') { json = true; continue; }
+    if (a === '--all') { all = true; continue; }
     if (a === '--session') {
       const v = argv[++i];
       if (typeof v !== 'string' || !v.trim() || v.startsWith('-')) return { error: USAGE };
@@ -34,6 +37,11 @@ export function parseGoalArgs(argv) {
   }
   const action = positional[0] ?? 'show';
   if (!ACTIONS.has(action)) return { error: USAGE };
+  if (all && action !== 'list') return { error: USAGE };
+  if (action === 'list') {
+    if (session !== undefined || positional.length > 1) return { error: USAGE };
+    return { action, json, all };
+  }
   if (action === 'set') {
     const objective = positional.slice(1).join(' ').trim();
     if (!objective) return { error: USAGE };
@@ -103,6 +111,29 @@ export async function runGoal(argv, opts = {}) {
   if (parsed.error) {
     stderr.write(`${parsed.error}\n`);
     return 2;
+  }
+  // `goal list` answers from the task index alone — goals live inside a
+  // session's kernel process, so the honest list is the sessions `goal show
+  // --session <id>` can act on, not the goals themselves. No client needed.
+  if (parsed.action === 'list') {
+    const db = openTasksDbIfPresent({ home: opts.home, readOnly: true });
+    let rows = [];
+    try { rows = db ? listTasks(db, { includeArchived: parsed.all }) : []; }
+    catch { rows = []; } // a mismatched/corrupt store is zero sessions, like openTasksDbIfPresent
+    try { db?.close(); } catch {}
+    if (parsed.json) {
+      stdout.write(`${JSON.stringify({ count: rows.length, sessions: rows.map(r => ({
+        sessionId: r.task_id, title: r.title, status: r.task_status ?? null,
+        pinned: !!r.pinned, archived: !!r.archived,
+      })) }, null, 2)}\n`);
+    } else {
+      if (!rows.length) stdout.write('no sessions (run a task first)\n');
+      for (const r of rows) {
+        stdout.write(`${r.pinned ? '📌' : ' '} ${r.archived ? '[archived] ' : ''}${r.task_id}  ${r.title}  (${r.task_status ?? '?'})\n`);
+      }
+      if (rows.length) stderr.write("inspect a session's goal: zagent goal show --session <id>\n");
+    }
+    return 0;
   }
   let sessionId = parsed.session;
   if (!sessionId) {

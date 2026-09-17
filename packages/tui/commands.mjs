@@ -27,7 +27,7 @@ import { openTasksDb, findTask, updateTask, tasksDbPath } from '../driver/tasks-
 import { loadGlobalMemory, loadProjectMemory } from '../driver/memory.mjs';
 import { codingPlanStatus } from '../driver/quota.mjs';
 import { listHooks, formatHooksText } from '../driver/hooks-cli.mjs';
-import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine } from '../driver/doctor.mjs';
+import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine, displayPath } from '../driver/doctor.mjs';
 import { findRuntime } from '../driver/runtime.mjs';
 import { formatDuration, formatTokens } from './render.mjs';
 import { hhmm } from './events.mjs';
@@ -246,13 +246,13 @@ export function quotaHomeLine(report) {
 export function doctorLines({ env = process.env, home = os.homedir(), cwd = process.cwd(), exists = existsSync } = {}) {
   const lines = [];
   const rt = safeRuntime();
-  lines.push(rt ? `runtime: ${rt.kind} (${rt.root})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  lines.push(rt ? `runtime: ${rt.kind} (${displayPath(rt.root, home)})` : 'runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
   lines.push(nodeLine());
   lines.push('interactive TUI: zagent (built in)');
   const cfg = path.join(home, '.zcode', 'cli', 'config.json');
   let cfgJson = null;
   if (!exists(cfg)) {
-    lines.push(`config: missing — created on first run (${cfg})`);
+    lines.push(`config: missing — created on first run (${displayPath(cfg, home)})`);
   } else {
     let state = 'present';
     try {
@@ -267,7 +267,7 @@ export function doctorLines({ env = process.env, home = os.homedir(), cwd = proc
         lines.push(`warn: model.main == model.lite (${c.model.main}) — main should be the full model, lite the fast one`);
       }
     } catch { state = 'INVALID CONFIG — unreadable JSON; existing file preserved'; }
-    lines.push(`config: ${state} (${cfg})`);
+    lines.push(`config: ${state} (${displayPath(cfg, home)})`);
   }
   const cred = doctorCredential({ env, home, config: cfgJson, hasConfig: exists(cfg), exists });
   lines.push(`credential: ${cred ?? 'NONE'}`);
@@ -275,7 +275,7 @@ export function doctorLines({ env = process.env, home = os.homedir(), cwd = proc
   lines.push(`plugins: ${ext.plugins} installed`);
   lines.push(hooksLine(ext));
   lines.push(`mcp: ${ext.mcp} configured`);
-  const disk = diskLine(home);
+  const disk = diskLine(home, home);
   if (disk) lines.push(disk);
   lines.push(logDirLine(home, exists));
   return lines;
@@ -447,13 +447,15 @@ export const CLIENT_COMMANDS = [
       const rt = runtimeDescriptor(ctx.host);
       const t = ctx.state.totals ?? {};
       const mcp = ctx.ui.mcp;
+      const home = ctx.home ?? os.homedir();
       const lines = [
         `zagent ${ctx.version}`,
         `runtime: ${[[rt.kind, rt.version].filter(Boolean).join(' ') || null,
-          rt.kernel ? `kernel build ${rt.kernel}` : null, rt.entry].filter(Boolean).join(' · ') || 'not found'}`,
+          rt.kernel ? `kernel build ${rt.kernel}` : null,
+          rt.entry ? displayPath(rt.entry, home) : null].filter(Boolean).join(' · ') || 'not found'}`,
         `model: ${ctx.ui.model || '(runtime default)'} · effort ${ctx.ui.effort || '(default)'} · mode ${ctx.ui.mode}`,
         `session: ${ctx.state.sessionId ?? '(not started)'}`,
-        `cwd: ${ctx.workspace}${ctx.host.workspaceGitBranch ? ` · branch ${ctx.host.workspaceGitBranch}` : ''}`,
+        `cwd: ${displayPath(ctx.workspace, home)}${ctx.host.workspaceGitBranch ? ` · branch ${ctx.host.workspaceGitBranch}` : ''}`,
         mcp && mcp.total > 0
           ? `mcp: ${mcp.connected}/${mcp.total} connected${mcp.failed ? ` · ${mcp.failed} failed` : ''}`
           : 'mcp: none',

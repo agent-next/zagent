@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { displayPath, displayText } from './doctor.mjs';
 
 export const CUTOFF_START = '<!-- zagent-import:claude -->';
 export const CUTOFF_END = '<!-- /zagent-import:claude -->';
@@ -103,15 +104,6 @@ function copyTree(src, dest, destRoot, force) {
   return 'copied';
 }
 
-function displayPath(p, home) {
-  const abs = path.resolve(p);
-  const homeAbs = path.resolve(home);
-  if (abs === homeAbs) return '~';
-  if (abs.startsWith(homeAbs + path.sep))
-    return `~${abs.slice(homeAbs.length).split(path.sep).join('/')}`;
-  return abs.split(path.sep).join('/');
-}
-
 export function planImport({
   home = os.homedir(), cwd = process.cwd(), force = false,
 } = {}) {
@@ -199,11 +191,12 @@ export function renderImport(plan, { json = false, home = plan.home } = {}) {
       force: plan.force,
       sources: plan.sources.map((s) => ({
         id: s.id, label: s.label, kind: s.kind, exists: s.exists, count: s.count,
-        from: s.from, to: s.to,
+        from: displayPath(s.from, home), to: displayPath(s.to, home),
       })),
       items: plan.items.map((i) => ({
-        kind: i.kind, name: i.name, source: i.source, from: i.from, to: i.to,
-        action: i.action, ...(i.error ? { error: i.error } : {}),
+        kind: i.kind, name: i.name, source: i.source,
+        from: displayPath(i.from, home), to: displayPath(i.to, home),
+        action: i.action, ...(i.error ? { error: displayText(i.error, home) } : {}),
       })),
       summary: plan.summary,
     }, null, 2));
@@ -217,7 +210,7 @@ export function renderImport(plan, { json = false, home = plan.home } = {}) {
   }
   for (const i of plan.items) {
     const dest = displayPath(i.to, home);
-    lines.push(`  ${i.kind.padEnd(13)} ${i.name}  →  ${dest}  ${i.action}${i.error ? ` (${i.error})` : ''}`);
+    lines.push(`  ${i.kind.padEnd(13)} ${i.name}  →  ${dest}  ${i.action}${i.error ? ` (${displayText(i.error, home)})` : ''}`);
   }
   lines.push(`${plan.summary.found} found · ${plan.summary.written} written · ${plan.summary.skipped} skipped · ${plan.summary.errors} errors`);
   return redactSecrets(lines.join('\n'));

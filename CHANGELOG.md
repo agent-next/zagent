@@ -4,6 +4,19 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.230 — 2026-09-17
+
+- `--json` error paths emit the JSON error envelope on stdout: `-p
+  --json` credential/no-runtime gates and `quota --json`
+  failure/usage/refusal paths no longer fail silently; `zagent sessions`
+  on a fresh install stays quiet about an absent tasks index.
+- `zagent goal list [--all] [--json]` lists sessions read-only;
+  `zagent plugins list` is a verb; a bare `zagent mcp` prints guidance
+  and exits 2 instead of a silent 0.
+- Paths under the user's home now render as `~/...` in `doctor`,
+  `import`, `inspect`, TUI `/doctor` + `/status`, and `-p` error
+  output.
+
 ## 0.0.229 — 2026-09-17
 
 - On a credential-free machine, `quota balance`, `quota preview`, and the

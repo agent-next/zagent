@@ -8,8 +8,14 @@ import { normalizeReset, resetLine } from '../packages/driver/reset-shape.mjs';
 const args = process.argv.slice(2);
 let which = 'status', raw = false, days = 7, commandSeen = false, daysSeen = false, yes = false;
 let resetAction = null, resetType = null;
-function usage() {
-  console.error('usage: zagent quota [status|usage [--days 1..30]|balance|preview|reset [claim|use five-hour|use week]] [--json] [--yes]');
+async function usage() {
+  const u = 'usage: zagent quota [status|usage [--days 1..30]|balance|preview|reset [claim|use five-hour|use week]] [--json] [--yes]';
+  // --json: stdout stays machine-readable; a buffered console.log can be lost
+  // to process.exit, so the write is flushed first. An invalid token can end
+  // the parse before --json is reached, so scan the raw argv, not `raw`.
+  if (raw || args.includes('--json'))
+    await new Promise((res) => process.stdout.write(JSON.stringify({ error: u }) + '\n', res));
+  console.error(u);
   process.exit(2);
 }
 for (let i = 0; i < args.length; i++) {
@@ -18,7 +24,7 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--days' && !daysSeen) {
     daysSeen = true;
     const value = args[++i];
-    if (!/^(?:[1-9]|[12][0-9]|30)$/.test(value ?? '')) usage();
+    if (!/^(?:[1-9]|[12][0-9]|30)$/.test(value ?? '')) await usage();
     days = Number(value);
   } else if (!commandSeen && ['status', 'usage', 'balance', 'preview', 'reset'].includes(args[i])) {
     which = args[i]; commandSeen = true;
@@ -27,16 +33,18 @@ for (let i = 0; i < args.length; i++) {
   } else if (which === 'reset' && resetAction === 'use' && !resetType &&
              ['five-hour', 'week'].includes(args[i])) {
     resetType = args[i];
-  } else usage();
+  } else await usage();
 }
-if (daysSeen && which !== 'usage') usage();
-if (resetAction === 'use' && !resetType) usage();
-if (yes && resetAction !== 'use') usage();
+if (daysSeen && which !== 'usage') await usage();
+if (resetAction === 'use' && !resetType) await usage();
+if (yes && resetAction !== 'use') await usage();
 // A consumed reset ticket is a scarce entitlement: interactive runs confirm
 // explicitly (default no); piped or --json runs must pass --yes.
 if (resetAction === 'use' && !yes) {
   if (raw || !process.stdin.isTTY) {
-    console.error(`quota: 'reset use ${resetType}' consumes a scarce reset ticket; re-run with --yes to confirm`);
+    const msg = `'reset use ${resetType}' consumes a scarce reset ticket; re-run with --yes to confirm`;
+    console.error(`quota: ${msg}`);
+    if (raw) await new Promise((res) => process.stdout.write(JSON.stringify({ error: msg }) + '\n', res));
     process.exit(2);
   }
   const rl = createInterface({ input: process.stdin, output: process.stderr });
@@ -150,6 +158,8 @@ try {
     }
   }
 } catch (error) {
-  console.error(`quota: ${error.message}`);
+  const msg = String(error?.message ?? error);
+  if (raw) console.log(JSON.stringify({ error: msg })); // --json: stdout stays machine-readable
+  console.error(`quota: ${msg}`);
   process.exitCode = 1;
 }

@@ -10,6 +10,7 @@ import { findRuntime } from '../driver/runtime.mjs';
 import { listSkills, listConversationsAsync } from '../driver/catalog.mjs';
 import { inspectWiki } from '../driver/repo-wiki.mjs';
 import { installedPlugins } from '../driver/plugins.mjs';
+import { displayPath, displayText } from '../driver/doctor.mjs';
 
 // --storage mirrors the 3.12.1 resource manager's classifier (app.asar storage
 // scan): file patterns win first, then the longest directory prefix, else
@@ -113,12 +114,14 @@ function readJson(p) {
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
 }
 
-function fileNote(p) {
-  return existsSync(p) ? p : null;
-}
-
 const json = process.argv.includes('--json');
 const home = os.homedir();
+
+// Paths under the user home display as ~/... — inspect output is a diagnostic
+// dump meant to be pasted, so absolute home paths never print.
+function fileNote(p) {
+  return existsSync(p) ? displayPath(p, home) : null;
+}
 // Only --json/--storage are valid — 'inspect bogus' used to be silently ignored.
 if (process.argv.slice(2).some(a => a !== '--json' && a !== '--storage')) {
   console.error('usage: zagent inspect [--storage] [--json]');
@@ -128,11 +131,12 @@ if (process.argv.slice(2).some(a => a !== '--json' && a !== '--storage')) {
 if (process.argv.includes('--storage')) {
   // Same root rule as the kernel: ZCODE_DATA_BASE_DIR replaces HOME, then /.zcode.
   const report = scanStorage(path.join(process.env.ZCODE_DATA_BASE_DIR?.trim() || home, '.zcode'));
+  const shownRoot = displayPath(report.root, home);
   if (json) {
-    process.stdout.write(`${JSON.stringify({ root: report.root, totalBytes: report.totalBytes,
+    process.stdout.write(`${JSON.stringify({ root: shownRoot, totalBytes: report.totalBytes,
       totalFiles: report.totalFiles, categories: report.categories }, null, 2)}\n`);
   } else {
-    process.stdout.write(`zcode storage (${report.root}): ${humanBytes(report.totalBytes)} in ${report.totalFiles} files\n`);
+    process.stdout.write(`zcode storage (${shownRoot}): ${humanBytes(report.totalBytes)} in ${report.totalFiles} files\n`);
     for (const c of report.categories)
       process.stdout.write(`  ${c.id.padEnd(20)} ${humanBytes(c.bytes).padStart(9)}  ${c.files} files\n`);
   }
@@ -146,12 +150,13 @@ const v2ConfigPath = path.join(home, '.zcode', 'v2', 'config.json');
 const skills = listSkills({ home, cwd });
 const conversations = await listConversationsAsync({ home, limit: 8 });
 
+const wiki = inspectWiki({ home, cwd });
 const report = {
-  runtime: rt ? { entry: rt.entry, kind: rt.kind ?? null, version: rt.version ?? null } : null,
+  runtime: rt ? { entry: displayPath(rt.entry, home), kind: rt.kind ?? null, version: rt.version ?? null } : null,
   config: {
     cli: fileNote(cliConfigPath),
     v2: fileNote(v2ConfigPath),
-    cliShape: redact(readJson(cliConfigPath)),
+    cliShape: JSON.parse(displayText(JSON.stringify(redact(readJson(cliConfigPath))), home)),
   },
   instructions: {
     user: fileNote(path.join(home, '.zcode', 'AGENTS.md')),
@@ -160,7 +165,7 @@ const report = {
   skills: skills.map(s => s.value),
   conversations: conversations.map(c => ({ id: c.value, title: c.hint })),
   plugins: Object.entries(installedPlugins({ home })).map(([n, p]) => `${n}@${p.version}`).sort(),
-  wiki: inspectWiki({ home, cwd }),
+  wiki: wiki ? { ...wiki, path: wiki.path ? displayPath(wiki.path, home) : wiki.path } : wiki,
 };
 
 if (json) {

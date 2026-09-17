@@ -14,11 +14,13 @@ const positional = argv.filter(v => v !== '--offline' && v !== '--json');
 // ('plugins --json' used to answer "no plugin matching '--json'").
 if (argv.some(v => v.startsWith('-') && v !== '--offline' && v !== '--json') ||
     positional.length > (positional[0] === 'install' ? 2 : 1)) {
-  console.error('usage: zagent plugins [name] [--json] | install <name> [--json] [--offline]');
+  console.error('usage: zagent plugins [name] [--json] | list [--json] | install <name> [--json] [--offline]');
   process.exit(2);
 }
 const [arg, sub] = positional;
-const q = arg === 'install' ? null : arg;
+// `list` is a verb, not a plugin name — `plugins list` used to answer
+// "no plugin matching 'list'" (FLOCK-F10).
+const q = arg === 'install' || arg === 'list' ? null : arg;
 if (arg === 'install') {
   if (!sub) { console.error('usage: zagent plugins install <name>'); process.exit(2); }
   // Refresh first. The local cache is written by the desktop app and goes stale:

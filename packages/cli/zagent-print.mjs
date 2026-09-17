@@ -179,6 +179,7 @@ export function printEnvelope(r) {
   return { type: 'result', subtype: r.ok ? 'success' : 'error', is_error: !r.ok, isError: !r.ok,
     ...(r.ok ? {} : { error: r.error ?? r.answer ?? `turn ${r.ended}` }),
     result: r.ok ? r.answer : (r.answer || `turn ${r.ended}`),
-    session_id: r.sessionId, sessionId: r.sessionId, duration_ms: r.durationMs, num_turns: 1,
+    session_id: r.sessionId, sessionId: r.sessionId, duration_ms: r.durationMs,
+    num_turns: r.numTurns ?? 1, // gates that fire before any turn pass 0
     ...(r.usage ? { usage: r.usage } : {}) };
 }

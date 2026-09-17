@@ -258,10 +258,22 @@ export async function handleMessage(msg, impls = defaultImpls()) {
 }
 
 async function main() {
+  // `zagent mcp` is meant to be spawned BY an MCP client, not typed by a
+  // human: on a terminal it used to hang silently, and on a closed/empty
+  // stdin it exited 0 with no output at all (FLOCK-F8). Both now explain.
+  // Args are meaningless here (the dispatcher answers `mcp --help` itself);
+  // an unknown one is a usage error like every sibling command.
+  if (process.argv.slice(2).length || process.stdin.isTTY) {
+    process.stderr.write('usage: zagent mcp — serves MCP tools over stdio; register it in a client\'s MCP config (see `zagent mcp --help`)\n');
+    process.exitCode = 2;
+    return;
+  }
   const rl = createInterface({ input: process.stdin, terminal: false });
+  let received = 0;
   for await (const line of rl) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    received++;
     if (trimmed.length > MAX_LINE_CHARS) {
       process.stdout.write(JSON.stringify(rpcError(null, -32600, `Invalid Request: message too large (max ${MAX_LINE_CHARS} chars)`)) + '\n');
       continue;
@@ -271,6 +283,10 @@ async function main() {
     catch { process.stdout.write(JSON.stringify(rpcError(null, -32700, 'Parse error')) + '\n'); continue; }
     const res = await handleMessage(msg);
     if (res) process.stdout.write(JSON.stringify(res) + '\n');
+  }
+  if (!received) {
+    process.stderr.write('zagent mcp: stdin closed with no request — this command speaks JSON-RPC for MCP clients (see `zagent mcp --help`)\n');
+    process.exitCode = 2;
   }
 }
 

@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.229 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.230 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 
@@ -177,16 +177,16 @@ sent only to your own provider endpoint.
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
 | `zagent bots [list\|show <id>\|status] [--json]` | Chat bots configured in the desktop (read-only) |
 | `zagent offpeak [--refresh] [--json]\|offpeak tools [on\|off] [--json]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
-| `zagent plugins [name] [--json]` | Manage local plugins; `plugins install <name>` installs one |
+| `zagent plugins [list] [name] [--json]` | Manage local plugins; `plugins install <name>` installs one |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |
 | `$using-zagent` | Bundled skill: what zagent is, how to tell it from the GUI, how to drive it |
 | `zagent import [--dry-run\|--apply] [--force] [--json]` | Import Claude Code instructions, commands, and skills |
-| `zagent goal [show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
+| `zagent goal [list\|show\|set <text>\|pause\|resume\|clear] [--session id] [--json]` | Show or control the current session objective |
 | `zagent subagents [--session id] [--json]` | List running and ended child session ids |
 | `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
 | `zagent usage stats [--range all\|7d\|30d] [--json]` | App-usage dashboard: totals, cache hit rate, streaks, per-model/tool breakdown (ZCode 3.12.x+) |
-| `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
+| `zagent remote [status\|connect \[--live]] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
 | `zagent mcp` | Serve zagent as MCP tools over stdio, so other agents can call it |
 
 `za` is a short alias for `zagent`.

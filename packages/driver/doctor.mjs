@@ -3,7 +3,7 @@
 // while `zagent doctor` showed three lines. These are the shared depth lines so
 // `zagent doctor` and the TUI `/doctor` mirror cannot drift apart.
 // Everything here is read-only and must never throw.
-import { existsSync, readFileSync, statfsSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statfsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { installedPlugins } from './plugins.mjs';
@@ -88,21 +88,53 @@ export function extensionCounts({ home = os.homedir(), cwd = process.cwd(), conf
   return out;
 }
 
+/**
+ * `~/...` display form for paths under the user's home. Doctor output is read
+ * on shared or screenshotted terminals, so absolute home paths never print.
+ * Symlinked or case-divergent homes (macOS /var→/private/var, FreeBSD
+ * /home→/usr/home) are retried on real paths before falling back to absolute.
+ */
+export function displayPath(p, home = os.homedir()) {
+  if (typeof p !== 'string' || !p) return String(p ?? '');
+  let abs = path.resolve(p);
+  let homeAbs = path.resolve(typeof home === 'string' && home ? home : os.homedir());
+  if (abs !== homeAbs && !abs.startsWith(homeAbs + path.sep)) {
+    try {
+      const ra = realpathSync(abs), rh = realpathSync(homeAbs);
+      abs = ra; homeAbs = rh; // swap both only when both resolve
+    } catch { /* lexical stands */ }
+  }
+  if (abs === homeAbs) return '~';
+  if (abs.startsWith(homeAbs + path.sep))
+    return `~${abs.slice(homeAbs.length).split(path.sep).join('/')}`;
+  return abs.split(path.sep).join('/');
+}
+
+const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
+
+/** displayPath for paths embedded inside longer text (error messages). */
+export function displayText(text, home = os.homedir()) {
+  const homeAbs = path.resolve(typeof home === 'string' && home ? home : os.homedir());
+  if (homeAbs === path.parse(homeAbs).root) return String(text ?? ''); // '/' home: nothing to relativize
+  const re = new RegExp(`${homeAbs.replace(REGEXP_META, '\\$&')}(?=$|[\\\\/\\s'"\\])\`}])`, 'g');
+  return String(text ?? '').replace(re, '~');
+}
+
 /** `hooks: N configured · M events[ · K disabled]` from extensionCounts. */
 export function hooksLine(ext) {
   return `hooks: ${ext.hooks} configured${ext.hookEvents ? ` · ${ext.hookEvents} event${ext.hookEvents === 1 ? '' : 's'}` : ''}${ext.hooksDisabled ? ` · ${ext.hooksDisabled} disabled` : ''}`;
 }
 
 /** `disk: N.N GB free (<dir>)`, or null when statfs is unavailable. */
-export function diskLine(dir = os.homedir()) {
+export function diskLine(dir = os.homedir(), home = os.homedir()) {
   try {
     const s = statfsSync(dir);
-    return `disk: ${((s.bavail * s.bsize) / 1e9).toFixed(1)} GB free (${dir})`;
+    return `disk: ${((s.bavail * s.bsize) / 1e9).toFixed(1)} GB free (${displayPath(dir, home)})`;
   } catch { return null; }
 }
 
 /** The zagent log dir line; honest when nothing has written logs yet. */
 export function logDirLine(home = os.homedir(), exists = existsSync) {
   const dir = path.join(home, '.zcode', 'cli', 'log');
-  return `logs: ${dir}${exists(dir) ? '' : ' (not created yet)'}`;
+  return `logs: ${displayPath(dir, home)}${exists(dir) ? '' : ' (not created yet)'}`;
 }
