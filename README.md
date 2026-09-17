@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.226 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.227 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 
@@ -175,6 +175,7 @@ sent only to your own provider endpoint.
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
+| `zagent bots [list\|show <id>\|status] [--json]` | Chat bots configured in the desktop (read-only) |
 | `zagent offpeak [--refresh] [--json]\|offpeak tools [on\|off] [--json]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
 | `zagent plugins [name] [--json]` | Manage local plugins; `plugins install <name>` installs one |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |

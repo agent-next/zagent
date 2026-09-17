@@ -4,6 +4,12 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.227 — 2026-09-17
+
+- New `zagent bots list|show <id>|status [--json]` — a read-only view of
+  the shared bot store; an absent or corrupt store reports zero bots
+  and credential references are presence booleans only.
+
 ## 0.0.226 — 2026-09-17
 
 - `--effort` now matches each model's real reasoning-level vocabulary

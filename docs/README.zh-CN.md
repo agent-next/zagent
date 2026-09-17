@@ -131,6 +131,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | 定时 prompt（本地 crontab） |
 | `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
+| `zagent bots [list\|show <id>\|status] [--json]` | 桌面端已配置的聊天 bot（只读） |
 | `zagent offpeak [--refresh] [--json]\|offpeak tools [on\|off] [--json]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
 | `zagent plugins [name] [--json]` | 管理本地插件；`plugins install <name>` 安装插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |

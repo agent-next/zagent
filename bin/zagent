@@ -32,6 +32,7 @@ const ROUTES = {
   onboard: ['packages/cli/zagent-onboard.mjs'],
   cron: ['packages/cli/zagent-cron.mjs', '--experimental-sqlite', '--no-warnings'],
   automation: ['packages/cli/zagent-automation.mjs', '--experimental-sqlite', '--no-warnings'],
+  bots: ['packages/cli/zagent-bots.mjs'],
   task: ['packages/cli/zagent-task.mjs', '--experimental-sqlite', '--no-warnings'],
   memory: ['packages/cli/zagent-memory.mjs'],
   offpeak: ['packages/cli/zagent-offpeak.mjs'],
