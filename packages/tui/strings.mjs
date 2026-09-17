@@ -17,7 +17,7 @@ const EN = {
   hints: [
     '/help for commands · esc to interrupt · ctrl+c twice to exit',
     '? for the shortcut list · / for commands · @ for files',
-    'shift+up selects an earlier turn · h folds it, l expands it',
+    'shift+up selects a turn · j/k pick a block · o toggles it · h/l fold all',
   ],
   working: 'working',
   // W5 turn-status phases: waiting = no model output observed yet, responding =
@@ -54,6 +54,8 @@ const EN = {
   modeTitle: 'Permission mode',
   noModelAccess: 'No model access configured. Run /login to sign in to your Coding Plan.',
   moreQueued: (n) => `↳ +${n} more queued`,
+  // The fold cursor tag in the turn peek: which block `o` toggles (j/k move it).
+  foldTag: (pos, n, label) => `fold ${pos}/${n} ${label}`,
   moreCandidates: (n, pos, total) => `${pos}/${total}${n > 0 ? ` · +${n} more` : ''} · tab/pgdn moves · type to filter`,
   earlierLines: (n) => `… ${n} earlier line(s)`,
   imagePasted: (n) => `image attached (${n})`,
@@ -83,7 +85,7 @@ const ZH = {
   hints: [
     '/help 查看命令 · esc 中断 · 连按两次 ctrl+c 退出',
     '? 查看快捷键 · / 命令 · @ 文件',
-    'shift+up 选中更早的一轮 · h 折叠,l 展开',
+    'shift+up 选中一轮 · j/k 选块 · o 切换折叠 · h/l 全部',
   ],
   working: '处理中',
   waiting: '等待响应',
@@ -116,6 +118,7 @@ const ZH = {
   modeTitle: '权限模式',
   noModelAccess: '尚未配置模型访问。运行 /login 登录你的 Coding Plan。',
   moreQueued: (n) => `↳ 另有 ${n} 条排队`,
+  foldTag: (pos, n, label) => `折叠 ${pos}/${n} ${label}`,
   moreCandidates: (n, pos, total) => `${pos}/${total}${n > 0 ? ` · 另有 ${n} 项` : ''} · tab/pgdn 移动 · 输入筛选`,
   earlierLines: (n) => `… 上方还有 ${n} 行`,
   imagePasted: (n) => `已附加图片（${n}）`,

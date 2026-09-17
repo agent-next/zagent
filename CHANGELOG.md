@@ -4,6 +4,12 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.222 — 2026-09-17
+
+- TUI `thinking` blocks now show the reasoning phase's duration
+  (`· Ns`), bounded by the first answer delta so streaming time is
+  not billed as thinking.
+
 ## 0.0.221 — 2026-09-16
 
 - Fenced code blocks in the TUI transcript now paint syntax colors,

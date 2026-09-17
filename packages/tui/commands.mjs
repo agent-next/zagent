@@ -140,7 +140,7 @@ export const SHORTCUTS = Object.freeze([
   ['ctrl+d', 'exit at an empty prompt'],
   ['ctrl+l', 'clear the screen'],
   ['ctrl+e', 'show or hide thinking'],
-  ['shift+up/down', 'select an earlier turn, then h/l folds or expands it'],
+  ['shift+up/down', 'select a turn · j/k pick a block · o toggles it · h/l fold all'],
   ['/ $ # @ ?', 'command · skill · conversation · file · help'],
 ]);
 

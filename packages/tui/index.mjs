@@ -16,6 +16,7 @@ import path from 'node:path';
 import { createTheme } from './theme.mjs';
 import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn,
   createFold, foldStateFor, collapse as collapseEntry, expand as expandEntry,
+  setFold, COLLAPSED, EXPANDED,
   toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
@@ -116,6 +117,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     queueAction: 0,            // 0 send now, 1 edit, 2 cancel
     fold: createFold(),
     userTurn: -1,              // selection index over user-prompt turns; -1 = none
+    foldSel: 0,                // cursor over the selected turn's foldables (j/k) — o toggles it
     // Persisted across sessions at ~/.zcode/cli/history.jsonl — the runtime's
     // own recallPreviousInput is asked first, this is the floor under it.
     history: loadHistory({ home: host.home }),
@@ -205,6 +207,14 @@ export async function runTui(host = {}, { deps = null } = {}) {
           // the same [redacted] echo the transcript will.
           queue: ui.queue.map(q => ({ ...q, text: displayFor(q?.text ?? q) })),
           queueItem: ui.queueItem, queueAction: ui.queueAction, userTurn: ui.userTurn,
+          // Which foldable `o` would toggle — the peek names it so the key is
+          // aimable, and only while the same empty-input gate the keys use holds.
+          foldPeek: ui.userTurn < 0 || ui.input.value !== '' ? null : (() => {
+            const targets = foldTargets();
+            if (targets.length === 0) return null;
+            const sel = foldSelIndex(targets);
+            return { index: sel, count: targets.length, entry: targets[sel][0] };
+          })(),
           completion: ui.completion, completionRows: completionPageRows(), str,
           spinnerFrame: ui.spinnerFrame, activity: ui.activity,
           escArmed: ui.escArmedAt !== 0 && Date.now() - ui.escArmedAt < escInterruptMs,
@@ -334,6 +344,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
       // scrollback cannot be un-painted, so a screen clear is all "clear" means.
       state.entries.length = 0;
       state.printedAny = false;
+      // The turn selection and the index-keyed fold overrides point at entries
+      // that are gone: a rebuilt transcript would eat j/k/o with no peek line
+      // and inherit folds by index collision. Reset both.
+      ui.userTurn = -1; ui.foldSel = 0; ui.fold = createFold();
       screen.writeRaw('\x1b[2J\x1b[H');
     },
   };
@@ -1033,6 +1047,13 @@ export async function runTui(host = {}, { deps = null } = {}) {
     return true;
   }
 
+  // The single-entry fold cursor (W3): j/k walk the selected turn's foldables
+  // and o toggles just that one. Clamped every read so entries arriving or a
+  // stale foldSel can never aim outside the list.
+  const foldTargets = () => foldablesInTurn(state.entries, ui.userTurn);
+  const foldSelIndex = (targets) =>
+    Math.min(Math.max(0, ui.foldSel), Math.max(0, targets.length - 1));
+
   // --- input ----------------------------------------------------------------
   function onPermissionKey(event) {
     const p = ui.permission;
@@ -1169,17 +1190,38 @@ export async function runTui(host = {}, { deps = null } = {}) {
       // produced '//help' and the kernel's unknown-command reply. An input that
       // is only slashes is debris — drop it.
       if (/^\/+$/.test(ui.input.value)) { ui.input = { value: '', cursor: 0 }; draw(); return; }
-      if (ui.userTurn >= 0) { ui.userTurn = -1; draw(); }
+      if (ui.userTurn >= 0) { ui.userTurn = -1; ui.foldSel = 0; draw(); }
       return;
     }
     if (event.name === 'ctrl-e') { toggleAllThinking(ui.fold); draw(); return; }
     if (event.name === 'shift-up' || event.name === 'shift-down') {
       ui.userTurn = stepUserTurn(state.entries, ui.userTurn, event.name === 'shift-up' ? -1 : 1);
+      ui.foldSel = 0;
       draw();
       return;
     }
-    if (ui.userTurn >= 0 && ui.input.value === '' && (event.text === 'h' || event.text === 'l')) {
-      if (foldSelectedTurn(event.text === 'h' ? 'collapsed' : 'expanded')) return;
+    if (ui.userTurn >= 0 && ui.input.value === '' && typeof event.text === 'string') {
+      // j/k/o need the same fall-through h/l have: a selected turn with nothing
+      // foldable leaves the letter free to type.
+      const targets = foldTargets();
+      if (targets.length > 0) {
+        if (event.text === 'j' || event.text === 'k') {
+          const step = event.text === 'j' ? 1 : -1;
+          ui.foldSel = (foldSelIndex(targets) + step + targets.length) % targets.length;
+          draw();
+          return;
+        }
+        if (event.text === 'o') {
+          const [entry, i] = targets[foldSelIndex(targets)];
+          setFold(ui.fold, entry, i,
+            foldStateFor(ui.fold, entry, i) === COLLAPSED ? EXPANDED : COLLAPSED);
+          draw();
+          return;
+        }
+      }
+      if (event.text === 'h' || event.text === 'l') {
+        if (foldSelectedTurn(event.text === 'h' ? 'collapsed' : 'expanded')) return;
+      }
     }
     if (event.name === 'ctrl-d') { if (ui.input.value === '' && !ui.busy) exit(); return; }
     if (event.name === 'ctrl-l') { screen.writeRaw('\x1b[2J\x1b[H'); draw(); return; }
@@ -1503,13 +1545,20 @@ export async function runTui(host = {}, { deps = null } = {}) {
         // modal surface owns the keys (ui.prompt) they went there instead, so
         // the composer's tail is not the prefix and must not be cut.
         const { value, cursor } = ui.input;
-        if (action.prefix !== '' && !ui.prompt
+        if (action.prefix !== '' && !ui.prompt && !ui.permission && !ui.chooser
             && value.slice(0, cursor).endsWith(action.prefix)) {
           ui.input = { value: value.slice(0, cursor - action.prefix.length) + value.slice(cursor),
                        cursor: cursor - action.prefix.length };
           draw();
         } else if (action.prefix !== '') {
-          pasteBurst.dropPrefix(action.prefix.length);
+          if (ui.prompt || ui.permission || ui.chooser) {
+            // A modal owned those keystrokes — they stay consumed there.
+            pasteBurst.dropPrefix(action.prefix.length);
+          }
+          // Otherwise a non-text binding ate them (the selected-turn fold keys
+          // — h/l precedent, now j/k/o) and the composer never saw them: the
+          // buffer still holds the prefix, so the flush lands the paste whole.
+          // The fold toggle stands as a cosmetic side effect; the data stays.
         }
         armBurst();
         return;

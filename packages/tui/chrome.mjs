@@ -278,14 +278,30 @@ export function renderQueued(queue, theme, width, max = 3, options = {}) {
 }
 
 /** Live peek of a user-prompt turn. Never rewrites committed scrollback. */
-export function renderUserPeek(entries, index, theme, width, str) {
+export function renderUserPeek(entries, index, theme, width, str, fold = null) {
   const users = (entries ?? []).filter(e => e.kind === 'user');
   if (!Number.isInteger(index) || index < 0 || users.length === 0) return [];
   const at = Math.min(index, users.length - 1);
   const label = `${at + 1}/${users.length}`;
   const text = sanitizeText(users[at].text, { keepNewlines: false }).replace(/\s+/gu, ' ');
-  const room = Math.max(8, width - widthOf(label) - 6);
-  return [`  ${theme.faint(label)} ${theme.userMark('>')} ${theme.muted(clip(text, room))}`];
+  // The fold cursor tag names the entry `o` would toggle. Tool names and args
+  // are runtime text — sanitised like everything else that reaches the footer.
+  let tag = '';
+  if (fold?.entry) {
+    const s2 = str ?? theme.str ?? stringsFor();
+    const entry = fold.entry;
+    const what = entry.kind === 'thinking' ? s2.thinking
+      : `${sanitizeText(entry.name ?? 'tool', { keepNewlines: false })}`;
+    const arg = entry.kind === 'tool'
+      ? sanitizeText(toolSummary(entry), { keepNewlines: false }) : '';
+    const name = arg ? `${what}(${arg})` : what;
+    const fmt = typeof s2.foldTag === 'function' ? s2.foldTag : (p, n, l) => `fold ${p}/${n} ${l}`;
+    // A long tool arg must not push the row past the terminal: the turn text
+    // keeps its 8-cell minimum and the tag takes what is left.
+    tag = clip(` · ${fmt(fold.index + 1, fold.count, name)}`, Math.max(0, width - widthOf(label) - 14));
+  }
+  const room = Math.max(8, width - widthOf(label) - widthOf(tag) - 6);
+  return [`  ${theme.faint(label)} ${theme.userMark('>')} ${theme.muted(clip(text, room))}${theme.faint(tag)}`];
 }
 
 // The palette page: G3 raised the window to 10 rows (top CLIs show a taller
@@ -349,7 +365,7 @@ export function renderHintBar(theme, width, options = {}) {
 
 export function renderFooter(state, value, theme, width, options = {}) {
   return [
-    ...renderUserPeek(state.entries, options.userTurn, theme, width, options.str),
+    ...renderUserPeek(state.entries, options.userTurn, theme, width, options.str, options.foldPeek),
     ...renderCompletions(options.completion, theme, width, options.completionRows),
     ...renderQueued(options.queue, theme, width, 3, {
       selected: options.queueItem, action: options.queueAction, str: options.str,

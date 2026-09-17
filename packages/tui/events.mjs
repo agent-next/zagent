@@ -140,6 +140,22 @@ const stampOf = (event) => {
   return s;
 };
 
+/** Milliseconds between two block stamps; a backwards or unparseable span is
+ * worse than no duration at all, so junk reads as undefined. */
+const spanMs = (from, to) => {
+  const ms = Date.parse(to) - Date.parse(from);
+  return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
+};
+
+/** Settle a stream entry: done, plus how long the phase ran (the reasoning
+ * block shows it — grok's "thought for Ns"). `??=` keeps a reasoning_end
+ * stamp: that marker closes the thinking PHASE, a later finish would measure
+ * the answer's stream time instead. */
+function settleEntry(entry, at) {
+  entry.done = true;
+  entry.durationMs ??= spanMs(entry.at, at);
+}
+
 /** The newest entry of a channel that has not settled yet. */
 function lastOpen(state, kind) {
   for (let i = state.entries.length - 1; i >= 0; i--) {
@@ -206,7 +222,7 @@ export function applyEvent(state, event) {
       if (kind === 'finish' || p.done === true) {
         if (isMainTurn(source)) {
           for (const e of state.entries) {
-            if ((e.kind === 'assistant' || e.kind === 'thinking') && e.id === id) e.done = true;
+            if ((e.kind === 'assistant' || e.kind === 'thinking') && e.id === id) settleEntry(e, stampOf(event));
           }
         }
         state.messageSource.delete(id);
@@ -233,12 +249,32 @@ export function applyEvent(state, event) {
       const channel = kind === '' ? 'assistant' : STREAM_CHANNEL.get(kind);
       if (!channel) { state.unhandled.set(`kind:${kind}`, (state.unhandled.get(`kind:${kind}`) ?? 0) + 1); break; }
       const delta = str(p.delta);
-      if (delta === '') break;                 // *_start / *_end markers
+      if (delta === '') {
+        // *_start/*_end are markers. reasoning_end closes the thinking PHASE
+        // while the answer may still stream — its stamp is the honest
+        // duration; done waits for finish/complete so a late delta still
+        // lands in the same entry instead of being dropped as settled.
+        if (kind === 'reasoning_end') {
+          // No lastOpen fallback: an unmatched marker belongs to another
+          // message, and stamping it would show a wrong duration.
+          const t = findEntry(state, 'thinking', id);
+          if (t && !t.done) t.durationMs ??= spanMs(t.at, stampOf(event));
+        }
+        break;
+      }
       // Late deltas cannot reopen a settled message, even after its routing map
       // was retired. model_complete retains its separate authoritative path.
       const prior = findEntry(state, 'assistant', id) ?? findEntry(state, 'thinking', id);
       if (prior?.done) break;
-      streamEntry(state, id, channel, event).text += delta;
+      const target = streamEntry(state, id, channel, event);
+      // The first answer delta ends the reasoning window even when the runtime
+      // never sends reasoning_end — bound the fallback duration there, not at
+      // finish (which would bill the answer's stream time as thinking).
+      if (channel === 'assistant') {
+        const t = findEntry(state, 'thinking', id);
+        if (t && !t.done) t.durationMs ??= spanMs(t.at, stampOf(event));
+      }
+      target.text += delta;
       break;
     }
 
@@ -272,10 +308,10 @@ export function applyEvent(state, event) {
         if (state.turn) state.turn.streamBytes += Buffer.byteLength(content.slice(entry.text.length), 'utf8');
         entry.text = content;
       }
-      entry.done = true;
+      settleEntry(entry, stampOf(event));
       entry.stopReason = str(p.stopReason) || undefined;
       const thought = (id == null ? undefined : findEntry(state, 'thinking', id)) ?? lastOpen(state, 'thinking');
-      if (thought) thought.done = true;
+      if (thought) settleEntry(thought, stampOf(event));
       if (p.contextUsageBreakdown && typeof p.contextUsageBreakdown === 'object') {
         state.contextBreakdown = p.contextUsageBreakdown;
       }
@@ -420,7 +456,7 @@ export function endTurn(state, { reason = 'ended' } = {}) {
   // those entries too, or their old tails keep repainting beneath later turns.
   for (const entry of state.entries.slice(state.turn?.entryStart ?? 0)) {
     if ((entry.kind === 'assistant' || entry.kind === 'thinking') && !entry.done) {
-      entry.done = true;
+      settleEntry(entry, new Date().toISOString());
       changed = true;
     } else if (entry.kind === 'tool' && (entry.status === 'scheduled' || entry.status === 'running')) {
       entry.status = 'error';

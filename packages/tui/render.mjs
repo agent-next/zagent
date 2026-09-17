@@ -139,6 +139,10 @@ export function renderEntryLines(entry, theme, width, options = {}) {
     const shown = body.slice(0, cap);
     for (const line of shown) lines.push(`  ${theme.faint(line)}`);
     const hidden = body.length - shown.length;
+    // The phase duration (grok's "thought for Ns") rides the LAST line — the
+    // only one still live once the header committed to scrollback; putting it
+    // in the header would rewrite a committed line and re-print the block.
+    const dur = entry.done === true ? formatDuration(entry.durationMs) : '';
     if (hidden > 0) {
       const count = str.reasoningHidden(hidden);
       // While the stream is open this is the LIVE line — the only one the
@@ -148,7 +152,10 @@ export function renderEntryLines(entry, theme, width, options = {}) {
       // never commits: on settle the writer erases it and the count alone lands.
       const budget = inner - 2 - stringWidth(count);
       const tail = entry.done !== true && budget > 8 ? clipToWidth(body.at(-1), budget) : '';
-      lines.push(`  ${theme.faint(tail ? `${count}  ${tail}` : count)}`);
+      const suffix = dur !== '' ? ` · ${dur}` : '';
+      lines.push(`  ${theme.faint(`${tail ? `${count}  ${tail}` : count}${suffix}`)}`);
+    } else if (dur !== '') {
+      lines.push(`  ${theme.faint(`· ${dur}`)}`);
     }
     return lines;
   }
