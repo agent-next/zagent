@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.222 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.223 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 
@@ -164,6 +164,8 @@ sent only to your own provider endpoint.
 | `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |
 | `zagent update [--check]` | Update zagent itself from npm |
 | `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
+| `zagent login [--no-browser]` | Sign in to your account |
+| `zagent logout` | Sign out of the current account |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
 | `zagent sessions [--json]` | Your task store, in the terminal |
 | `zagent diff [sessionId]` | Per-turn / per-file changes |
@@ -173,7 +175,7 @@ sent only to your own provider endpoint.
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
-| `zagent offpeak [--refresh] [--json]\|tools [on\|off] [--json]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
+| `zagent offpeak [--refresh] [--json]\|offpeak tools [on\|off] [--json]` | Campaign time-window check (billing not verified); `tools` toggles the 3.12.x off-peak tool port |
 | `zagent plugins [name] [--json]` | Manage local plugins; `plugins install <name>` installs one |
 | `zagent hooks list [--json]` | List configured ZCode hook events (does not run them) |
 | `zagent inspect [--storage] [--json]` | Dump runtime/config/skills; `--storage` = ~/.zcode category sizes (read-only) |
@@ -184,8 +186,32 @@ sent only to your own provider endpoint.
 | `zagent usage [--session id] [--json]` | Session token totals + context baseline breakdown |
 | `zagent usage stats [--range all\|7d\|30d] [--json]` | App-usage dashboard: totals, cache hit rate, streaks, per-model/tool breakdown (ZCode 3.12.x+) |
 | `zagent remote [status\|connect] [--json]` | This-host relay device id / last ack (D1/D2; no second-device control) |
+| `zagent mcp` | Serve zagent as MCP tools over stdio, so other agents can call it |
 
 `za` is a short alias for `zagent`.
+
+### Use zagent from another agent (MCP)
+
+`zagent mcp` speaks the Model Context Protocol on stdin/stdout, so any
+MCP-capable agent can call zagent as a tool. Tools: `zagent_turn` (one headless
+prompt — the `-p` equivalent — with optional `model`/`effort`/`mode`/`cwd`),
+`zagent_quota`, `zagent_models`, `zagent_doctor`. Credentials stay in the local
+config the server reads; they never cross the MCP boundary, and the transport
+is stdio only — no network listener. `zagent_turn` runs with `-p` semantics —
+tool permissions are auto-approved — so only register it for clients you trust;
+pass `mode: "plan"` for a read-only turn.
+
+Claude Code (`.mcp.json`):
+
+```json
+{ "mcpServers": { "zagent": { "command": "zagent", "args": ["mcp"] } } }
+```
+
+opencode (`opencode.json`):
+
+```json
+{ "mcp": { "zagent": { "type": "local", "command": ["zagent", "mcp"], "enabled": true } } }
+```
 
 Context compaction runs inside the interactive TUI as `/compact` — live sessions are
 process-local, so there is no standalone `zagent compact` command.

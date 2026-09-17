@@ -12,6 +12,7 @@
 // applied, so no call site ever needs ANSI-aware width arithmetic.
 
 import { renderMarkdown } from './markdown.mjs';
+import { createScanner, paintSpans } from './syntax.mjs';
 import { stringWidth, clipToWidth } from './width.mjs';
 import { stringsFor } from './strings.mjs';
 import { hhmm } from './events.mjs';
@@ -221,11 +222,20 @@ export function renderEntryLines(entry, theme, width, options = {}) {
     if (entry.status === 'scheduled' || entry.status === 'running') {
       return lines;
     }
-    const body = String(entry.resultText ?? '').split('\n');
-    if (body.at(-1) === '') body.pop();   // a trailing newline, not blank lines inside the output
-    if (body.length === 0) return lines;
+    // W3 diff surface: a completed file-changing call paints the runtime's
+    // recorded patch — colored +/- rows with the file's own syntax inside —
+    // in place of the "updated successfully" prose (what every peer shows for
+    // an edit). An error keeps its message; a call whose artifact never landed
+    // keeps the prose. Rows are {text, paint?} so the head+tail budget and the
+    // hidden counter measure plain text while the painter owns the styling.
+    const diffRows = entry.status === 'ok' && entry.diff?.files?.some(f => f.lines.length > 0)
+      ? flattenDiff(entry.diff, theme) : null;
+    const rows = diffRows ?? String(entry.resultText ?? '').split('\n').map(text => ({ text }));
+    if (rows.at(-1)?.text === '') rows.pop();   // a trailing newline, not blank lines inside the output
+    if (rows.length === 0) return lines;
+    const dropped = diffRows ? (entry.diff.dropped ?? 0) : (entry.resultDropped ?? 0);
     if (options.fold === 'collapsed') {
-      const hidden = body.length + (entry.resultDropped ?? 0);
+      const hidden = rows.length + dropped;
       if (hidden > 0) lines.push(`${RESULT_INDENT}   ${theme.faint(s2.linesHidden(hidden))}`);
       return lines;
     }
@@ -234,27 +244,79 @@ export function renderEntryLines(entry, theme, width, options = {}) {
     // matters as much as its start, and a head-only cap hides exactly that.
     // The budget stays maxResultLines, split symmetric first-N + last-N around
     // one omission marker, so a flood costs the same rows as the old cap.
+    const cellCap = Math.max(4, inner - 5);
+    const paintRow = (row) => row.paint ? row.paint(cellCap) : theme.muted(clipToWidth(row.text, cellCap));
     const tailN = Math.floor(maxResultLines / 2);
-    const overflow = body.length > maxResultLines;
-    const head2 = body.slice(0, overflow ? maxResultLines - tailN : maxResultLines);
-    const tail2 = overflow && tailN > 0 ? body.slice(-tailN) : [];
-    for (const [i, raw] of head2.entries()) {
-      const text = clipToWidth(raw, Math.max(4, inner - 5));
-      lines.push(i === 0
-        ? `${RESULT_INDENT}${theme.faint(g.result)}  ${theme.muted(text)}`
-        : `${RESULT_INDENT}   ${theme.muted(text)}`);
+    const overflow = rows.length > maxResultLines;
+    const head2 = rows.slice(0, overflow ? maxResultLines - tailN : maxResultLines);
+    // A multi-file patch tail must not open mid-file unattributed: back up to
+    // that file's label row, as long as it neither eats into the shown head nor
+    // blows the whole budget on one file's label.
+    let tailStart = overflow && tailN > 0 ? rows.length - tailN : rows.length;
+    if (diffRows && overflow && tailStart < rows.length) {
+      const f0 = rows[tailStart]?.file;
+      // Only multi-file patches carry label rows — a single file's rows have no
+      // pathRow to land on and the walk would just grow the tail.
+      if (rows.some(r => r.file === f0 && r.pathRow === true)) {
+        let i = tailStart;
+        while (i > head2.length && rows[i].file === f0
+               && rows[i].pathRow !== true
+               && rows.length - i < maxResultLines) i--;
+        // Apply only when the walk actually reached the label — an unreachable
+        // one must not cost extra rows for no attribution.
+        if (rows[i]?.file === f0 && rows[i]?.pathRow === true) tailStart = i;
+      }
     }
-    const hidden = body.length - head2.length - tail2.length + (entry.resultDropped ?? 0);
+    const tail2 = overflow ? rows.slice(tailStart) : [];
+    for (const [i, row] of head2.entries()) {
+      lines.push(i === 0
+        ? `${RESULT_INDENT}${theme.faint(g.result)}  ${paintRow(row)}`
+        : `${RESULT_INDENT}   ${paintRow(row)}`);
+    }
+    const hidden = rows.length - head2.length - tail2.length + dropped;
     if (hidden > 0) lines.push(`${RESULT_INDENT}   ${theme.faint(s2.linesHidden(hidden))}`);
     else if (entry.truncated) lines.push(`${RESULT_INDENT}   ${theme.faint(s2.truncatedByRuntime)}`);
-    for (const raw of tail2) {
-      const text = clipToWidth(raw, Math.max(4, inner - 5));
-      lines.push(`${RESULT_INDENT}   ${theme.muted(text)}`);
+    for (const row of tail2) {
+      lines.push(`${RESULT_INDENT}   ${paintRow(row)}`);
     }
     return lines;
   }
 
   return [];
+}
+
+// A tool call's recorded patch as {text, paint} rows. The scanner sees the code
+// BODY of every +/-/' ' line in order — its cross-line state (block comments,
+// triple strings) must stay right for rows the head+tail split hides — while
+// the marker column is painted by diff semantics, not the file's grammar.
+// Multi-file patches get a strong path row per file (the one-line header only
+// names the first significant arg).
+function flattenDiff(diff, theme) {
+  const rows = [];
+  const multi = diff.files.length > 1;
+  for (const [fi, f] of diff.files.entries()) {
+    const ext = /\.([A-Za-z0-9]+)$/.exec(f.path ?? '')?.[1];
+    const scanFile = ext ? createScanner(ext) : null;
+    if (multi && (f.lines ?? []).length) rows.push({ text: String(f.path ?? ''), file: fi, pathRow: true,
+      paint: (c) => theme.strong(clipToWidth(String(f.path ?? ''), c)) });
+    for (const raw of f.lines ?? []) {
+      const text = String(raw);
+      const tag = text.startsWith('@@') ? '@@'
+        : (text[0] === '+' || text[0] === '-' || text[0] === ' ') ? text[0] : null;
+      const spans = (tag === '+' || tag === '-' || tag === ' ') && scanFile ? scanFile(text.slice(1)) : null;
+      rows.push({ text, file: fi, paint: (cells) => paintDiffRow(text, tag, spans, theme, cells) });
+    }
+  }
+  return rows;
+}
+
+function paintDiffRow(text, tag, spans, theme, cells) {
+  if (tag === '@@') return theme.synFunc(clipToWidth(text, cells));
+  if (tag === null) return theme.synComment(clipToWidth(text, cells));  // diff/index/---/+++/'\' marker rows
+  const mark = tag === '+' ? theme.success : tag === '-' ? theme.error : theme.faint;
+  const body = spans ? paintSpans(spans, theme, Math.max(0, cells - 1))
+    : theme.code(clipToWidth(text.slice(1), Math.max(0, cells - 1)));
+  return mark(tag) + body;
 }
 
 export function formatDuration(ms) {

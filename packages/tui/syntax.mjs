@@ -282,3 +282,20 @@ export function createHighlighter(lang, theme) {
   const st = { close: null, scope: null };
   return (line, maxCells) => paintSpans(scan(spec, line, st), theme, maxCells);
 }
+
+/**
+ * Scan-only sibling of createHighlighter for callers that must separate
+ * state advancement from painting: the diff renderer feeds EVERY line of a
+ * file's patch through the scanner (block-comment/triple-string state must see
+ * the rows the head+tail budget hides) but paints only the shown ones, and the
+ * marker column is styled by diff semantics rather than the file's grammar.
+ * @returns {null | (line: string) => [scope, text][]}
+ */
+export function createScanner(lang) {
+  const spec = FAMILIES[ALIASES.get(String(lang ?? '').toLowerCase())];
+  if (!spec) return null;
+  const st = { close: null, scope: null };
+  return (line) => scan(spec, line, st);
+}
+
+export { paintSpans };

@@ -162,6 +162,46 @@ export function sessionsWithDiffs({ home = os.homedir() } = {}) {
               .map(e => e.name).filter(id => sessionDiffArtifacts(id, { home }).length > 0);
 }
 
+// One file's patch as display lines: @@ hunk headers + ' '/'-'/'+'-prefixed
+// rows. A Write-tool creation carries an empty patch — afterContent renders as
+// the creation hunk (r6 #2; git convention: one trailing newline is not a line).
+export function filePatchLines(f) {
+  const lines = [];
+  // A torn or hand-written artifact must degrade to fewer lines, never throw:
+  // non-string afterContent, non-array structuredPatch, null hunks.
+  const hunks = Array.isArray(f?.structuredPatch) ? f.structuredPatch : [];
+  if (!hunks.length && typeof f?.afterContent === 'string') {
+    const body = f.afterContent.endsWith('\n') ? f.afterContent.slice(0, -1) : f.afterContent;
+    const rows = body === '' ? [] : body.split('\n');
+    lines.push(`@@ -0,0 +1,${rows.length} @@`);
+    for (const l of rows) lines.push(`+${l}`);
+  }
+  for (const h of hunks) {
+    if (!h || typeof h !== 'object') continue;
+    lines.push(`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`);
+    for (const l of h.lines ?? []) lines.push(l);
+  }
+  return lines;
+}
+
+// A tool call's artifact as a bounded per-file patch for the transcript: the
+// TUI attaches this to the tool entry so the row can paint colored +/- lines
+// instead of the "updated successfully" prose. Capped like resultText — a
+// whole-file rewrite's patch is a display concern, not data to keep whole.
+export function artifactPatch(artifact, { maxLines = 256 } = {}) {
+  const files = [];
+  let used = 0, dropped = 0;
+  for (const f of artifact?.files ?? []) {
+    const all = filePatchLines(f);
+    const room = Math.max(0, maxLines - used);
+    const lines = room >= all.length ? all : all.slice(0, room);
+    dropped += all.length - lines.length;
+    used += lines.length;
+    files.push({ path: String(f?.path ?? ''), lines });
+  }
+  return { files, dropped };
+}
+
 export function renderDiff(artifacts) {
   const summary = diffSummary(artifacts);
   if (!summary.length) return 'no file changes';
@@ -169,17 +209,7 @@ export function renderDiff(artifacts) {
   const lines = [`+${totalA} -${totalD} · ${summary.length} file${summary.length > 1 ? 's' : ''}`];
   for (const a of artifacts) for (const f of a.files ?? []) {
     lines.push(`\n${f.path} (${a.toolName})`);
-    const hunks = f.structuredPatch ?? [];
-    if (!hunks.length && f.afterContent != null) { // r6 #2: Write-tool new files render as a creation hunk
-      const body = f.afterContent.endsWith('\n') ? f.afterContent.slice(0, -1) : f.afterContent; // git convention: one trailing newline is not a line
-      const rows = body === '' ? [] : body.split('\n');
-      lines.push(`@@ -0,0 +1,${rows.length} @@`);
-      for (const l of rows) lines.push(`+${l}`);
-    }
-    for (const h of hunks) {
-      lines.push(`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`);
-      for (const l of h.lines ?? []) lines.push(l);
-    }
+    lines.push(...filePatchLines(f));
   }
   return lines.join('\n');
 }

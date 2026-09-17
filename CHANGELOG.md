@@ -4,6 +4,20 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.223 — 2026-09-17
+
+- `zagent mcp` is new: a zero-dependency stdio MCP server that exposes
+  zagent to any MCP-capable agent — `zagent_turn` (`mode:"plan"` is
+  read-only), `zagent_quota`, `zagent_models`, `zagent_doctor`.
+- File-changing tool calls render a colored unified diff under their
+  transcript row, and a fold cursor (`j`/`k` + `o`) collapses single
+  entries.
+- Repeated network-retry status emits refresh one row in place instead
+  of stacking, and stale retry counters leave the idle footer.
+- `zagent task list` prints an empty state on a fresh machine instead
+  of crashing, and the help palette lists `login`/`logout` with
+  correctly named subcommand verbs.
+
 ## 0.0.222 — 2026-09-17
 
 - TUI `thinking` blocks now show the reasoning phase's duration

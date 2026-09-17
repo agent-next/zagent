@@ -2,13 +2,27 @@
 // tasks PK (workspace_key, task_id); columns archived/pinned/title_overridden/deleted are
 // the GUI's CRUD surface. We only UPDATE existing rows — never INSERT synthetic tasks.
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 
 export function tasksDbPath({ home = os.homedir() } = {}) { return `${home}/.zcode/v2/tasks-index.sqlite`; }
 
 export function openTasksDb({ home = os.homedir(), readOnly = false } = {}) {
   return new DatabaseSync(tasksDbPath({ home }), { readOnly });
+}
+
+// The store is GUI-owned: a fresh machine has no file (or a db without the
+// tasks table), and both mean zero tasks — never an error, and we never create
+// the file or the schema just to answer a read.
+export function openTasksDbIfPresent({ home = os.homedir(), readOnly = false } = {}) {
+  if (!existsSync(tasksDbPath({ home }))) return null;
+  let db;
+  try {
+    db = openTasksDb({ home, readOnly });
+    const has = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get();
+    if (!has) { db.close(); return null; }
+    return db;
+  } catch { try { db?.close(); } catch {} return null; } // corrupt/unreadable store = zero tasks
 }
 
 export function listTasks(db, { includeArchived = false } = {}) {

@@ -48,6 +48,7 @@ const ROUTES = {
   remote: ['packages/cli/zagent-remote.mjs'],
   update: ['packages/cli/zagent-update.mjs'],
   'commit-msg': ['packages/cli/zagent-commit-msg.mjs'],
+  mcp: ['packages/cli/zagent-mcp.mjs'],
 };
 
 /** Present in the source repo, deliberately not part of this distribution. */
@@ -142,8 +143,8 @@ if (flagArgs.some(a => HELP_FLAGS.has(a))) {
   if (row || details) {
     // The row's signature is the usage line; COMMAND_DETAILS adds the flag
     // notes and one example a bare row never gave (FLOCK-F2: a one-line
-    // answer taught the user nothing). login/logout/app-server have no row —
-    // their detail block answers here instead of leaking the kernel's usage.
+    // answer taught the user nothing). app-server/help have no row — their
+    // detail block answers here instead of leaking the kernel's usage.
     if (row) console.log(formatRow(row).trimStart());
     else console.log(`usage: zagent ${command}`);
     if (details?.length) console.log(`\n${details.join('\n')}`);

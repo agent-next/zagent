@@ -24,6 +24,7 @@ import { createFrameScheduler } from './frames.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, renderPrompt, readContextMeter, COMPLETION_ROWS, inputBoxCursor, FOOTER_ROWS_BELOW_BOX } from './chrome.mjs';
 import { effortItems, modelItems, modelOptionId, modelOptionMatches, parseModes, pickerFor } from './pickers.mjs';
 import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
+import { sessionDiffArtifacts, artifactPatch } from '../driver/diffs.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { pasteToken, expandChips, insertChip, chipSpanAt, chipSpanIn, takeChips, attachChips, pruneChips } from './paste-chips.mjs';
 import { createPasteBurst } from './paste-burst.mjs';
@@ -169,6 +170,57 @@ export async function runTui(host = {}, { deps = null } = {}) {
   const latchMeter = (source) => {
     const meter = readContextMeter(source);
     if (meter) state.projection = { ...state.projection, ...meter };
+  };
+
+  // W3 diff surface: a file-changing tool call's "updated successfully" prose
+  // adds nothing the patch does not show better — and the runtime already wrote
+  // the per-call change artifact (kind workspace_file_before_change, keyed by
+  // toolCallId). Attach a bounded copy so the row paints colored +/- lines.
+  // The artifact can land a tick after the result event, so a miss retries
+  // briefly instead of never painting; attaching post-commit is safe — the
+  // fingerprint flips and the commit ledger re-prints from the first changed
+  // line. Accepted: on that late-attach path the already-committed "updated"
+  // prose stays in scrollback with the diff appended below it (append-only
+  // ledger — scrollback cannot be erased); the common case attaches before
+  // the first paint and shows the patch alone.
+  // Artifact reads are memoized briefly: a tool-call burst resolves many calls
+  // inside one paint window, and each artifact carries full beforeContent —
+  // re-parsing the whole session dir per call (x3 with retries) is real IO on
+  // the event path. 300 ms is short enough that the 150/500 ms retries still
+  // re-read a just-landed artifact.
+  let diffArtMemo = { sid: null, at: 0, list: [] };
+  const diffArtifacts = (sid) => {
+    if (diffArtMemo.sid === sid && Date.now() - diffArtMemo.at < 300) return diffArtMemo.list;
+    const list = sessionDiffArtifacts(sid, { home: host.home });
+    diffArtMemo = { sid, at: Date.now(), list };
+    return list;
+  };
+  const attachToolDiff = (event, attempt = 0) => {
+    if (event?.type !== 'tool_call_result') return;
+    const callId = sanitizeText(String(event?.payload?.toolCallId ?? ''));
+    if (callId === '') return;
+    // Newest match — findEntry's direction; a replayed tool_call_scheduled can
+    // leave a same-id stale entry that would otherwise swallow the patch.
+    const entry = state.entries.findLast(e => e.kind === 'tool' && e.id === callId);
+    if (!entry || entry.diff !== undefined) return;
+    try {
+      const art = diffArtifacts(state.sessionId ?? '')
+        .find(a => a?.toolCallId === callId);
+      if (art) {
+        const patch = artifactPatch(art);
+        for (const f of patch.files) {
+          f.path = sanitizeText(f.path, { keepNewlines: false });
+          f.lines = f.lines.map(l => sanitizeText(l, { keepNewlines: false }));
+        }
+        entry.diff = patch;
+        draw();
+        return;
+      }
+    } catch { /* a malformed artifact is a display miss, never a turn error */ }
+    if (attempt < 2) {
+      const t = setTimeout(() => { if (!exiting) attachToolDiff(event, attempt + 1); }, attempt === 0 ? 150 : 500);
+      t.unref?.();
+    }
   };
 
   // The honest version line: zagent's own package version, then the installed
@@ -522,7 +574,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
         delivery: 'start_turn',
         inputId: `input_${crypto.randomUUID()}`,
         queryId: `query_${crypto.randomUUID()}`,
-        onEvent: (event) => { if (!exiting && !abort.signal.aborted) { applyEvent(state, event); latchMeter(event); draw(); } },
+        onEvent: (event) => { if (!exiting && !abort.signal.aborted) { applyEvent(state, event); latchMeter(event); attachToolDiff(event); draw(); } },
         requestPermission: (request, context) => askPermission(request, context),
       });
       // A slash command that produced a turn (e.g. /goal <objective>) streamed its

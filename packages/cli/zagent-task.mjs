@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // zagent task — B0 task-index write-side (schema-verified). UPDATE-only CRUD: archive/
 // unarchive, pin/unpin, rename, soft-delete. Task id accepts unique suffixes.
-import { openTasksDb, listTasks, findTask, updateTask } from '../driver/tasks-index.mjs';
+import { openTasksDbIfPresent, listTasks, findTask, updateTask } from '../driver/tasks-index.mjs';
 const [cmd, ...rest] = process.argv.slice(2);
 const flags = new Set(rest.filter(x => x.startsWith('--')));
 const pos = rest.filter(x => !x.startsWith('--') && x.trim());
@@ -16,16 +16,18 @@ const arity = cmd === 'list' ? 0 : cmd === 'rename' ? 2 : mutations.includes(cmd
 if (badFlag || arity < 0 || pos.length !== arity || pos.some(p => !p.trim()) || (cmd !== 'list' && flags.size)) {
   console.error(usage); process.exit(2);
 }
-const db = openTasksDb();
+// null on a fresh machine: no store = zero tasks. list reads read-only like
+// its sibling readers — a rw open would recreate a store deleted mid-check.
+const db = openTasksDbIfPresent({ readOnly: cmd === 'list' });
 const needId = () => {
-  const hits = findTask(db, a);
-  if (!hits.length) { console.error(a ? (findTaskAmbiguous(db, a) ? `ambiguous id '${a}'` : `no task '${a}'`) : usage); process.exit(1); }
+  const hits = db ? findTask(db, a) : [];
+  if (!hits.length) { console.error(a ? (db && findTaskAmbiguous(db, a) ? `ambiguous id '${a}'` : `no task '${a}'`) : usage); process.exit(1); }
   return hits[0];
 };
 function findTaskAmbiguous(d, id) { return d.prepare('SELECT COUNT(*) c FROM tasks WHERE task_id LIKE ? AND deleted = 0').get(`%${id}`).c > 1; }
 
 if (cmd === 'list') {
-  const rows = listTasks(db, { includeArchived: flags.has('--all') });
+  const rows = db ? listTasks(db, { includeArchived: flags.has('--all') }) : [];
   if (flags.has('--json')) {
     console.log(JSON.stringify({ count: rows.length, tasks: rows }, null, 2));
   } else {

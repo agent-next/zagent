@@ -217,8 +217,10 @@ export function statusFields(state, theme, options = {}) {
   }
   const used = turn?.usage?.totalTokens ?? turn?.usage?.inputTokens;
   if (used) fields.push(field(str.tokens(formatTokens(used)), theme.faint));
-  if (turn?.retries > 0) fields.push(field(str.retries(turn.retries), theme.warning));
-  if (turn?.errors > 0) fields.push(field(str.failed(turn.errors), theme.error));
+  // Retries/failures are live per-turn counters; the transcript rows carry the
+  // story once the turn ends, so an idle footer keeps only the usage summary.
+  if (turn?.active && turn.retries > 0) fields.push(field(str.retries(turn.retries), theme.warning));
+  if (turn?.active && turn.errors > 0) fields.push(field(str.failed(turn.errors), theme.error));
   return fields;
 }
 

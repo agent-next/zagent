@@ -120,6 +120,8 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
 | `zagent update [--check]` | 从 npm 升级 zagent 自身 |
 | `zagent models [query]` | 搜索模型目录;`models test <provider/model>` 测试连接 |
+| `zagent login [--no-browser]` | 登录账号 |
+| `zagent logout` | 退出当前账号 |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset [claim\|use five-hour\|use week]] [--json] [--yes]` | Coding-Plan 额度 |
 | `zagent sessions [--json]` | 终端里的任务库 |
 | `zagent diff [sessionId]` | 每轮 / 每文件的改动 |
@@ -129,7 +131,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | 定时 prompt（本地 crontab） |
 | `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
-| `zagent offpeak [--refresh] [--json]\|tools [on\|off] [--json]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
+| `zagent offpeak [--refresh] [--json]\|offpeak tools [on\|off] [--json]` | 活动时间窗口检查（计费未验证）；`tools` 开关 3.12.x 错峰工具端口 |
 | `zagent plugins [name] [--json]` | 管理本地插件；`plugins install <name>` 安装插件 |
 | `zagent hooks list [--json]` | 列出已配置的 ZCode hook 事件（不执行） |
 | `zagent inspect [--storage] [--json]` | 打印 runtime/配置/skills；`--storage` = ~/.zcode 分类体积（只读） |
@@ -140,6 +142,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent usage [--session id] [--json]` | 会话 token 总量 + 上下文 baseline 分解 |
 | `zagent usage stats [--range all\|7d\|30d] [--json]` | 应用用量面板：总量、缓存命中率、连续天数、按模型/工具分解（ZCode 3.12.x+） |
 | `zagent remote [status\|connect] [--json]` | 本机 relay 设备 id / last ack（D1/D2；不提供第二设备控制） |
+| `zagent mcp` | 通过 stdio 以 MCP 工具形式提供 zagent，供其他 agent 调用 |
 
 `za` 是 `zagent` 的短别名。
 

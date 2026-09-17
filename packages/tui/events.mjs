@@ -347,10 +347,28 @@ export function applyEvent(state, event) {
 
     case 'model_network_status': {
       // maxAttempts is the ceiling, not a failure; only a real retry is worth a line.
-      const attempt = num(p.attempt, 0);
+      const attempt = Math.trunc(num(p.attempt, 0));
       if (attempt > 1 && state.turn) {
-        state.turn.retries = attempt - 1;
-        state.entries.push({ kind: 'notice', level: 'warning', text: retryNotice(p, attempt, state.quotaReport), at: stampOf(event) });
+        // Deepest retry reached; a restarted retry cycle must not rewind it.
+        state.turn.retries = Math.max(state.turn.retries ?? 0, attempt - 1);
+        const text = retryNotice(p, attempt, state.quotaReport);
+        // The kernel re-emits the same attempt several times (3x observed
+        // live): repeats refresh the row in place — a later emit can carry
+        // the provider error the first lacked — instead of stacking identical
+        // copies. A different attempt is a new event and gets its own row.
+        // Once a row has committed to scrollback a "refresh" re-prints at the
+        // commit tail — append-only ledger, strictly better than triplicates.
+        // The liveness check covers /clear (and any future truncation) — a
+        // detached pointer would otherwise swallow the notice.
+        if (state.turn.retryAttempt === attempt
+            && state.turn.retryEntry && state.entries.includes(state.turn.retryEntry)) {
+          state.turn.retryEntry.text = text;
+        } else {
+          const entry = { kind: 'notice', level: 'warning', text, at: stampOf(event) };
+          state.entries.push(entry);
+          state.turn.retryEntry = entry;
+          state.turn.retryAttempt = attempt;
+        }
       }
       break;
     }
