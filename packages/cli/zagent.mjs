@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 
-import { findRuntime, kernelEnv } from '../driver/runtime.mjs';
+import { findRuntime, kernelEnv, kernelResolves } from '../driver/runtime.mjs';
 import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs';
 import { buildLaunchArgs, tuiPreference, tuiNodeSupported, TUI_NODE_FLOOR, nodeSqliteSupported, NODE_SQLITE_FLOOR } from '../driver/tui-launch.mjs';
 import { provisionStandaloneAccounts } from '../driver/account-provider.mjs';
@@ -358,6 +358,19 @@ if (selection) { // !isPrintInvocation already exited above
 // spawned the kernel a second time with flags its parseArgs rejects (the "empty
 // output" retries + kernel usage dump seen on the installed build).
 const headlessJson = !selection && isPrintInvocation(args) && args.includes('--json');
+// --browser-use preflight: the kernel's browser backend imports
+// playwright-core resolved from the kernel file's own directory; a runtime
+// with no node_modules on that walk-up (the desktop bundle ships none) makes
+// every browser command fail INSIDE an otherwise-green turn. Warn before the
+// turn is spent; the flag still forwards verbatim — the hint is honest about
+// an upstream limitation, never a gate. Only pre-`--` tokens are options.
+if (!selection && rt
+    && args.slice(0, args.indexOf('--') === -1 ? args.length : args.indexOf('--'))
+        .some(a => a === '--browser-use' || a.startsWith('--browser-use='))
+    && !kernelResolves(rt.entry, 'playwright-core')) {
+  console.error(`zagent: warning: --browser-use needs the kernel's pinned Playwright runtime, which '${rt.entry}' cannot resolve (no node_modules on its path).`);
+  console.error('  Browser commands will fail inside the turn. Point ZCODE_RUNTIME at a full install that carries playwright-core (npm i -g zcode-app-cli).');
+}
 if (headlessJson) {
   const { runHeadlessWithRetry } = await import(new URL('../driver/headless-retry.mjs', import.meta.url).href);
   const entry = rt.entry;

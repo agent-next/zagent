@@ -4,6 +4,14 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.228 — 2026-09-17
+
+- `zagent -p --browser-use` now warns up front (stderr) when the resolved
+  kernel cannot resolve `playwright-core` — e.g. the desktop-bundle
+  3.12.1 runtime, where headless browser support needs the app-managed
+  runtime — instead of failing mid-turn. The flag still forwards
+  verbatim; the warning is advisory, not a gate.
+
 ## 0.0.227 — 2026-09-17
 
 - New `zagent bots list|show <id>|status [--json]` — a read-only view of

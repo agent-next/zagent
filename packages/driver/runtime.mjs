@@ -136,6 +136,22 @@ export function kernelEnv(entry, env = process.env, exists = existsSync) {
   return exists(cfg) ? { ...env, ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: cfg } : env;
 }
 
+// Whether a bare specifier resolves from the kernel file's own directory —
+// approximates the node_modules walk-up the kernel's dynamic
+// `await import("playwright-core")` performs (ESM ignores NODE_PATH, so a
+// manual walk is closer than require.resolve with its globalPaths fallback).
+// The desktop bundle ships no node_modules beside resources/glm/zcode.cjs
+// (the GUI uses the in-app browser instead), so --browser-use fails inside
+// every turn on that runtime — live-verified on desktop 3.12.1 ("failed to
+// load the pinned Playwright runtime"). Preflight hint, never a launch
+// blocker.
+export function kernelResolves(entry, specifier) {
+  for (let dir = path.dirname(path.resolve(entry)); ; dir = path.dirname(dir)) {
+    if (existsSync(path.join(dir, 'node_modules', specifier, 'package.json'))) return true;
+    if (path.dirname(dir) === dir) return false;
+  }
+}
+
 export function findRuntime({ env = process.env, home = os.homedir(), cwd = process.cwd(),
                               platform = process.platform, exists = existsSync,
                               read = p => readFileSync(p, 'utf8'), asar = asarFile } = {}) {
