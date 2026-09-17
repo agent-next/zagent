@@ -4,6 +4,14 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.229 — 2026-09-17
+
+- On a credential-free machine, `quota balance`, `quota preview`, and the
+  `quota reset` family now print `No ZCode credentials; run \`zagent login\`
+  to sign in first` instead of a raw ENOENT path — the same no-credential
+  gate `quota status` already had. A credential store missing the JWT gets
+  the same message.
+
 ## 0.0.228 — 2026-09-17
 
 - `zagent -p --browser-use` now warns up front (stderr) when the resolved

@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.228 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.229 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 

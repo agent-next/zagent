@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync, linkSync, rmSync } 
 import { dirname } from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { decryptCredential, loadCredentialStore, deviceMid } from './credentials.mjs';
+import { decryptCredential, loadCredentialStore, deviceMid, NO_DESKTOP_CREDENTIALS } from './credentials.mjs';
 
 export const BASE = process.env.ZCODE_BASE_URL ?? 'https://zcode.z.ai';
 
@@ -17,7 +17,12 @@ export function quotaError({ status, body }) {
 }
 
 export function getZcodeJwt() {
-  return decryptCredential(loadCredentialStore()['zcodejwttoken']);
+  const blob = loadCredentialStore()['zcodejwttoken'];
+  // A store without the JWT is the same signed-out state as no store at all.
+  if (typeof blob !== 'string' || !blob) throw new Error(NO_DESKTOP_CREDENTIALS);
+  const jwt = decryptCredential(blob);
+  if (!jwt) throw new Error(NO_DESKTOP_CREDENTIALS);
+  return jwt;
 }
 // Redact anything token-shaped before printing/logging.
 export function redactDeep(v) {
