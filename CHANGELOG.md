@@ -4,6 +4,13 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.225 — 2026-09-17
+
+- The TUI now keeps streaming output glued to the bottom of the terminal
+  with a scroll-margin (DECSTBM) writer — smoother streaming with less
+  flicker on fast output. On by default (`auto`) on capable terminals
+  with an automatic fallback; `ZAGENT_TUI_SCROLL=pinned|off` overrides.
+
 ## 0.0.224 — 2026-09-17
 
 - The TUI repaints streaming frames by cell diff — only changed rows are

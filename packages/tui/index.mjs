@@ -229,7 +229,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // shown labelled. host.version was painted as the runtime version before, so
   // the banner lied on every startup.
   const packageVersion = zagentVersion();
-  screen.writeRaw(renderBanner(theme, screen.width, {
+  screen.writeRaw('\x1b[r' + renderBanner(theme, screen.width, {
     version: packageVersion, runtime: runtimeLabel(host), model: ui.model,
     workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
     // Rotating hint (G6): one of str.hints per launch — the fixed line was the
@@ -1688,7 +1688,9 @@ export async function runTui(host = {}, { deps = null } = {}) {
     };
     // Each flush is independently fallible — a throwing fd getter on a
     // hostile host.stdout must not skip the stderr line.
-    try { flush(stdout, '\x1b[?2004l\x1b[<u'); } catch {}
+    // \x1b[r too: a crash while the pinned writer's DECSTBM region is armed
+    // would otherwise leave the shell inside a partial scroll region.
+    try { flush(stdout, '\x1b[?2004l\x1b[<u\x1b[r'); } catch {}
     try { flush(process.stderr, `zagent: fatal: ${String(err?.message || err).split('\n')[0].slice(0, 300)}\n`); } catch {}
   };
   // Raw mode turns a terminal ctrl-c into the 0x03 byte, so an observed SIGINT
