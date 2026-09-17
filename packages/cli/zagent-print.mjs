@@ -19,8 +19,10 @@ import { autoAllow } from '../driver/permissions.mjs';
 import { modelReasoningLevels } from '../driver/providers.mjs';
 
 const VALUE_FLAGS = new Set(['--model', '--effort', '--mode', '--cwd', '--output-format', '--locale']);
-// GLM accepts reasoningLevel/thoughtLevel low|high|max (same contract as
-// commit-msg's --effort); anything else would fly to the provider unvalidated.
+// The coding-plan vocabulary (GLM reasoningLevel/thoughtLevel low|high|max,
+// same contract as commit-msg's --effort). With --model the model's resolved
+// per-model vocabulary is the authority — EFFORTS is only the fallback when
+// the catalog cannot answer, and the bound for effort-without-model.
 export const EFFORTS = ['low', 'high', 'max'];
 // Presentation-only flags a headless run can accept and ignore without lying.
 const IGNORED_FLAGS = new Set(['--no-color', '--no-browser', '--verbose']);
@@ -81,9 +83,13 @@ export function splitSelection(args) {
   if (sel.mode && !MODES.includes(sel.mode))
     throw new Error(`--mode must be one of ${MODES.join('|')} (got '${sel.mode}')`);
   if (sel.effort) {
-    if (!EFFORTS.includes(sel.effort.toLowerCase()))
-      throw new Error(`--effort must be one of ${EFFORTS.join('|')} (got '${sel.effort}')`);
     sel.effort = sel.effort.toLowerCase();
+    // --model's resolved vocabulary is the --effort authority (runPrintOnce
+    // enforces it). Without --model there is no vocabulary to resolve — bound
+    // to the plan set so typos still refuse at usage-error instead of flying
+    // to the provider unvalidated.
+    if (!sel.model && !EFFORTS.includes(sel.effort))
+      throw new Error(`--effort must be one of ${EFFORTS.join('|')} without --model (got '${sel.effort}')`);
   }
   return sel;
 }
@@ -111,30 +117,43 @@ async function openPrintClient(cwd) {
 // --prompt" and zagentd does the same. A user-chosen --mode still applies via
 // session/setMode (kernel-side enforcement); plan approval prompts hit the
 // client's default decline handler, so headless plan mode produces the plan.
-export async function runPrintOnce(sel, { client, createClient = openPrintClient, timeoutMs = 600_000, catalog } = {}) {
+export async function runPrintOnce(sel, { client, createClient = openPrintClient, timeoutMs = 600_000, catalog, providerConfig } = {}) {
   const t0 = Date.now();
   const cwd = path.resolve(sel.cwd ?? process.cwd());
+  const key = path.normalize(cwd);
+  const params = { workspace: { workspaceKey: key, workspacePath: key } };
+  if (sel.model) {
+    // Kernel contract (verified on 3.12.1): bootstrap validates the model
+    // selection strictly — registry models whose optionSpecs.reasoningLevel
+    // exists reject a bare {providerId,modelId} with "Reasoning level is
+    // required". Then the create handler re-applies the model via the string
+    // setModel path, which DROPS options — so thoughtLevel must also be sent
+    // to restore the level afterwards. --effort wins; without it we send the
+    // model's own default (kernel picker convention: values.at(-1)).
+    const ref = modelRef(sel.model);
+    const levels = modelReasoningLevels(ref.modelId, catalog, ref.providerId, providerConfig);
+    // A resolved vocabulary bounds --effort: sending a level the model does
+    // not declare would fly to the kernel unvalidated and fail (or mis-map)
+    // there. When the catalog cannot answer (levels null) the plan's EFFORTS
+    // set is the fallback bound — refuse rather than forward an unverifiable
+    // level. Refusal lands before the runtime is even spawned.
+    const vocab = levels ?? EFFORTS;
+    if (sel.effort && !vocab.includes(sel.effort))
+      throw new Error(`--effort '${sel.effort}' is not a valid level for ${ref.modelId} (one of: ${vocab.join('|')})`);
+    const level = sel.effort ?? levels?.at(-1);
+    params.model = level ? { ...ref, options: { reasoningLevel: level } } : ref;
+    if (level) params.thoughtLevel = level;
+  } else if (sel.effort) {
+    // No model to resolve a vocabulary for — the plan's set is the bound
+    // (direct callers like commit-msg/MCP bypass splitSelection's check).
+    if (!EFFORTS.includes(sel.effort))
+      throw new Error(`--effort must be one of ${EFFORTS.join('|')} without --model (got '${sel.effort}')`);
+    params.thoughtLevel = sel.effort;
+  }
   const own = !client;
   if (own) client = await createClient(cwd);
   let sid = null;
   try {
-    const key = path.normalize(cwd);
-    const params = { workspace: { workspaceKey: key, workspacePath: key } };
-    if (sel.model) {
-      // Kernel contract (verified on 3.12.1): bootstrap validates the model
-      // selection strictly — registry models whose optionSpecs.reasoningLevel
-      // exists reject a bare {providerId,modelId} with "Reasoning level is
-      // required". Then the create handler re-applies the model via the string
-      // setModel path, which DROPS options — so thoughtLevel must also be sent
-      // to restore the level afterwards. --effort wins; without it we send the
-      // model's own default (kernel picker convention: values.at(-1)).
-      const ref = modelRef(sel.model);
-      const level = sel.effort ?? modelReasoningLevels(ref.modelId, catalog)?.at(-1);
-      params.model = level ? { ...ref, options: { reasoningLevel: level } } : ref;
-      if (level) params.thoughtLevel = level;
-    } else if (sel.effort) {
-      params.thoughtLevel = sel.effort;
-    }
     const created = await client.call('session/create', params);
     sid = sessionSid(created);
     if (!sid) throw new Error('unexpected session/create reply (no session id)');

@@ -48,7 +48,7 @@ export const TOOLS = [
       properties: {
         prompt: { type: 'string', description: 'The prompt text to run' },
         model: { type: 'string', description: 'provider/model or bare model id (bare = zai provider)' },
-        effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort' },
+        effort: { type: 'string', description: "Reasoning effort — validated against the model's resolved levels; low|high|max on the coding plan" },
         // -p semantics auto-approve tool permissions; say so on the boundary.
         mode: { type: 'string', enum: MODES, description: 'Permission mode. Default = the -p contract (auto-approve); use plan to run read-only' },
         cwd: { type: 'string', description: 'Working directory for the turn (default: the server\'s cwd)' },
@@ -165,9 +165,11 @@ export async function callTool(name, args, impls = defaultImpls()) {
       }
       const effort = strArg(args.effort, 'effort');
       if (effort !== undefined) {
-        if (!EFFORTS.includes(effort.toLowerCase()))
-          throw new Error(`effort must be one of ${EFFORTS.join('|')} (got '${effort}')`);
         sel.effort = effort.toLowerCase();
+        // With a model, runPrintOnce validates against the model's resolved
+        // vocabulary; without one the plan set is the bound here.
+        if (!sel.model && !EFFORTS.includes(sel.effort))
+          throw new Error(`effort must be one of ${EFFORTS.join('|')} without model (got '${effort}')`);
       }
       const mode = strArg(args.mode, 'mode');
       if (mode !== undefined) {

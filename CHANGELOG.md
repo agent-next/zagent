@@ -4,6 +4,13 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.226 — 2026-09-17
+
+- `--effort` now matches each model's real reasoning-level vocabulary
+  (resolved from the kernel's merged provider rules): an unsupported
+  level is refused up front instead of failing mid-turn, and the same
+  check covers `zagent commit-msg` and the MCP `zagent_turn` tool.
+
 ## 0.0.225 — 2026-09-17
 
 - The TUI now keeps streaming output glued to the bottom of the terminal

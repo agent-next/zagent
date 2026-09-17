@@ -66,7 +66,7 @@ export const HEADLESS_OPTIONS = [
   ['--attach <path>', 'attach a local file to the prompt; repeat for more'],
   ['--mode <build|edit|plan|yolo|auto>', 'permission mode (default yolo for --prompt)'],
   ['--model <provider/model|model>', 'pick the model (zagent extension — protocol-side, bare id = zai provider)'],
-  ['--effort <level>', 'pick the reasoning effort (zagent extension — protocol-side)'],
+  ['--effort <level>', "pick the reasoning effort (zagent extension — protocol-side; default = the model's last declared level)"],
   ['--disallowed-tools <tools…>', 'comma/space-separated tool denylist (alias --disallowedTools)'],
   ['-c, --continue', 'continue the latest session for this directory'],
   ['--resume <sess_…>', 'resume a persisted session by id'],
@@ -189,7 +189,7 @@ export const COMMAND_DETAILS = {
   'commit-msg': [
     'Generates a message for staged changes (unstaged when nothing is staged).',
     '  --model <provider/model|model>   pick the model',
-    '  --effort <level>                 pick the reasoning effort',
+    '  --effort <level>                 pick the reasoning effort (default low)',
     '  --json                           machine-readable output',
     '',
     '  example: zagent commit-msg --model zai/glm-5.3',

@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { loadCatalog } from '../driver/providers.mjs';
+import { loadCatalog, modelReasoningLevels } from '../driver/providers.mjs';
 import { EFFORTS } from './zagent-print.mjs';
 
 const rest = process.argv.slice(2);
@@ -42,13 +42,8 @@ let modelRef, effort;
     console.error(usage);
     process.exit(2);
   }
-  // GLM accepts reasoningLevel low|high|max — reject anything else before it
-  // flies to the provider (same contract as -p --effort in zagent-print.mjs).
-  if (effort && !EFFORTS.includes(effort.toLowerCase())) {
-    console.error(`--effort must be one of ${EFFORTS.join('|')} (got '${effort}')`);
-    console.error(usage);
-    process.exit(2);
-  }
+  // Case-normalize only — the vocabulary bound runs against the resolved
+  // model below (same contract as -p --effort in zagent-print.mjs).
   if (effort) effort = effort.toLowerCase();
 }
 
@@ -139,6 +134,17 @@ if (!Object.hasOwn(configured, providerId) && !providerId.includes(':')) {
 modelId = canonicalModel(modelId, providerId);
 const accountId = accountIdFor(providerId);
 if (accountId) providerId = accountId;
+
+// --effort is bounded by the model's resolved vocabulary (GLM-5.3 accepts
+// low|high|max); when the catalog cannot answer, the plan set is the fallback.
+if (effort) {
+  const vocab = modelReasoningLevels(modelId, undefined, providerId) ?? EFFORTS;
+  if (!vocab.includes(effort)) {
+    console.error(`--effort '${effort}' is not a valid level for ${modelId} (one of: ${vocab.join('|')})`);
+    console.error(usage);
+    process.exit(2);
+  }
+}
 
 const { ZCodeProtocolClient } = await import('../driver/zcode-protocol.mjs');
 let client, code = 0;
