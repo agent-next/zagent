@@ -4,6 +4,14 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.224 — 2026-09-17
+
+- The TUI repaints streaming frames by cell diff — only changed rows are
+  rewritten, and identical frames emit no bytes — for smoother, cheaper
+  streaming output. Kitty keyboard-protocol (CSI-u) keys are decoded.
+- Rate-limit advice now quotes the provider's wire `retry-after`
+  ("retry in ~Ns (provider retry-after)") instead of claiming none.
+
 ## 0.0.223 — 2026-09-17
 
 - `zagent mcp` is new: a zero-dependency stdio MCP server that exposes

@@ -1161,7 +1161,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     process.removeListener('unhandledRejection', onRejection);
     screen.clearLive();
     try { stdin.setRawMode?.(false); } catch {}
-    screen.writeRaw('\x1b[?2004l');
+    screen.writeRaw('\x1b[?2004l\x1b[<u');   // paste off + kitty keyboard pop
     stdin.pause?.();
     // W5 exit summary: a session is a resumable object — the way out names it
     // and hands back both ways in (the latest in this directory, or this id
@@ -1688,7 +1688,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     };
     // Each flush is independently fallible — a throwing fd getter on a
     // hostile host.stdout must not skip the stderr line.
-    try { flush(stdout, '\x1b[?2004l'); } catch {}
+    try { flush(stdout, '\x1b[?2004l\x1b[<u'); } catch {}
     try { flush(process.stderr, `zagent: fatal: ${String(err?.message || err).split('\n')[0].slice(0, 300)}\n`); } catch {}
   };
   // Raw mode turns a terminal ctrl-c into the 0x03 byte, so an observed SIGINT
@@ -1709,7 +1709,9 @@ export async function runTui(host = {}, { deps = null } = {}) {
 
   try {
     try { stdin.setRawMode?.(true); } catch {}
-    screen.writeRaw('\x1b[?2004h');            // bracketed paste: paste arrives verbatim
+    // Kitty disambiguate (CSI >1u) makes shift+enter/ctrl+letter arrive as CSI u
+    // instead of ambiguous bytes; terminals that don't know it ignore the push.
+    screen.writeRaw('\x1b[>1u\x1b[?2004h');  // kitty push + bracketed paste: paste arrives verbatim
     stdin.resume?.();
     stdin.setEncoding?.('utf8');
     draw();

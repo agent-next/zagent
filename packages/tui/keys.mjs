@@ -21,6 +21,49 @@ const NAMED = new Map([
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
 
+// Kitty keyboard protocol (CSI key;modifier u). The disambiguate flag pushed at
+// startup makes the terminal stop collapsing these keys into ambiguous bytes:
+// shift+enter is 13;2u instead of a bare CR, ctrl+i/m/h stop arriving as the
+// tab/return/backspace bytes, alt+key is key;3u instead of an ESC prefix.
+// Modifier = 1 + (shift 1 | alt 2 | ctrl 4); an event-type sub-field
+// (`key;mod:type u`) is never requested but tolerated. Unbound keys return
+// null so they are swallowed like every other unknown CSI.
+const KITTY_CTRL = new Map([
+  [97, 'home'],      // ctrl+a was \x01, which NAMED binds to 'home'
+  [99, 'ctrl-c'], [100, 'ctrl-d'], [101, 'ctrl-e'], [104, 'backspace'],
+  [105, 'tab'], [106, 'enter'], [108, 'ctrl-l'], [109, 'enter'], [111, 'ctrl-o'],
+  [117, 'ctrl-u'], [118, 'ctrl-v'], [119, 'ctrl-w'], [121, 'ctrl-y'],
+]);
+function kittyEvent(sequence) {
+  const m = /^\x1b\[([0-9;:]*)u$/.exec(sequence);
+  if (!m) return null;
+  const [codeS, modS] = m[1].split(';');
+  const code = Number(codeS?.split(':')[0]);
+  const [modS0, evType] = (modS ?? '').split(':');
+  const mod = Number(modS0) || 1;
+  // Only press events are requested; a release/repeat that still arrives is a
+  // no-op, not a second trigger.
+  if (evType != null && evType !== '' && Number(evType) !== 1) return null;
+  // code feeds String.fromCodePoint below — an out-of-range value must not throw.
+  if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return null;
+  // The modifier field also reports lock keys (caps 64, num 128) — mask them or
+  // Caps Lock would swallow Esc/Backspace/ctrl+c (27;65u is still Escape).
+  const bits = (mod - 1) & 0b00111111;
+  if (code === 13) return { name: bits & 3 ? 'newline' : 'enter' };  // shift|alt = newline
+  if (code === 27) return bits === 0 ? { name: 'escape' } : null;
+  if (code === 9) return bits === 0 ? { name: 'tab' } : bits === 1 ? { name: 'shift-tab' } : null;
+  if (code === 127) return bits === 0 ? { name: 'backspace' } : null;
+  // ctrl set + alt clear covers ctrl+shift too: legacy sent the same C0 byte
+  // for ctrl+shift+letter, and kitty terminals intercept ctrl+shift+c/v for the
+  // clipboard before it reaches us anyway.
+  if ((bits & 0b110) === 0b100 && KITTY_CTRL.has(code)) return { name: KITTY_CTRL.get(code) };
+  if ((bits === 2 || bits === 3) && code >= 0x20 && code !== 0x7f) {
+    const key = String.fromCodePoint(code);
+    return { name: 'meta', key: bits === 3 ? key.toUpperCase() : key };
+  }
+  return null;
+}
+
 /** A terminal stream may split a paste or escape sequence at any byte. */
 export function createKeyDecoder() {
   let pending = '';
@@ -51,6 +94,7 @@ export function createKeyDecoder() {
             if (end === -1) break;
             const sequence = pending.slice(0, end + 3);
             if (NAMED.has(sequence)) events.push({ name: NAMED.get(sequence) });
+            else { const ev = kittyEvent(sequence); if (ev) events.push(ev); }
             pending = pending.slice(sequence.length); // unknown CSI/SS3 is ignored
             continue;
           }

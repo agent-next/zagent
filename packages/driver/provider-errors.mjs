@@ -51,17 +51,36 @@ export function humanDelta(ms) {
 }
 
 /**
+ * The kernel dumps the failing response's headers with the error
+ * (`responseHeaders: { 'retry-after': '6', … }` / JSON form). When the wire
+ * named a delay, quote it — claiming none while it sits in the dump is a lie.
+ * Callers truncate or tail the text, so an absent match only means
+ * "not visible here"; seconds only, HTTP-date forms are ignored, and an
+ * implausible value (>1h on a seconds-scale rate limit) is treated as noise.
+ */
+function parseRetryAfter(raw) {
+  const m = /retry-after["']?\s*:\s*["']?(\d+)["']?/i.exec(raw);
+  const s = m ? Number(m[1]) : NaN;
+  return Number.isInteger(s) && s >= 0 && s <= 3600 ? s : null;
+}
+
+/**
  * @returns {null|{code:number, kind:string, title:string, detail:string,
- *                 requestId:string|null, reset:object|null, advice:string}}
+ *                 requestId:string|null, reset:object|null, advice:string,
+ *                 retryAfterSec:number|null}}
  */
 export function explainProviderError(text, opts = {}) {
-  const m = SHAPE.exec(`${text ?? ''}`);
+  const raw = `${text ?? ''}`;
+  const m = SHAPE.exec(raw);
   if (!m) return null;
   const code = Number(m[1]);
   const detail = m[2].trim();
   const known = KINDS.get(code);
   const windowHours = Number(/for\s+(\d+)\s*hour/i.exec(detail)?.[1]) || 5;
   const reset = resolveReset(/reset at ([\d-]+[ T][\d:]+)/i.exec(detail)?.[1], { ...opts, windowHours });
+  // Scoped to text at/after this error's signature — a retry-after earlier in a
+  // multi-error buffer belongs to a previous dump, not to this failure.
+  const retryAfterSec = parseRetryAfter(raw.slice(m.index));
 
   let advice;
   if (known?.kind === EXHAUSTED) {
@@ -69,7 +88,9 @@ export function explainProviderError(text, opts = {}) {
       ? `Nothing will succeed until it resets — in ${humanDelta(reset.delta)}.`
       : 'Nothing will succeed until the window resets.';
   } else if (known?.kind === RETRYABLE) {
-    advice = 'Transient — retry in a few seconds. The provider sends no retry-after.';
+    advice = retryAfterSec === null
+      ? 'Transient — retry in a few seconds.'
+      : `Transient — retry in ~${retryAfterSec}s (provider retry-after).`;
   } else {
     advice = 'Unrecognised provider error code.';
   }
@@ -82,6 +103,7 @@ export function explainProviderError(text, opts = {}) {
     requestId: m[3] ?? null,
     reset,
     advice,
+    retryAfterSec,
   };
 }
 
