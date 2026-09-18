@@ -111,6 +111,8 @@ const headlessHelp = () => {
   console.log(formatRow(commandFor('-p')).trimStart());
   console.log('\noptions forwarded to the runtime (verified against its parser):');
   for (const [sig, desc] of HEADLESS_OPTIONS) console.log(`  ${sig.padEnd(48)} ${desc}`);
+  console.log('\nsafety: -p without --mode runs in yolo by default — every tool call executes without asking.');
+  console.log('        pass --mode plan to make the agent only plan instead of changing things.');
   console.log('\nnot implemented by the runtime despite its own --help:');
   console.log('  --print --max-turns --allowed-tools --permission-mode --settings --allow-main-worktree-yolo');
 };

@@ -65,7 +65,7 @@ export const ENTRY_FLAGS = new Set([
 export const HEADLESS_OPTIONS = [
   ['-p, --prompt <text>', 'run one headless prompt'],
   ['--attach <path>', 'attach a local file to the prompt; repeat for more'],
-  ['--mode <build|edit|plan|yolo|auto>', 'permission mode (default yolo for -p — tools run without asking)'],
+  ['--mode <build|edit|plan|yolo|auto>', 'permission mode; default yolo runs EVERY tool with no confirmation — opt out with --mode plan'],
   ['--model <provider/model|model>', 'pick the model (zagent extension — protocol-side, bare id = zai provider)'],
   ['--effort <level>', "pick the reasoning effort (zagent extension — protocol-side; default = the model's last declared level)"],
   ['--disallowed-tools <tools…>', 'comma/space-separated tool denylist (alias --disallowedTools)'],

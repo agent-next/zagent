@@ -4,6 +4,13 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.233 — 2026-09-18
+
+- `zagent -p --help` now discloses the dangerous default: the `--mode`
+  row says that yolo runs every tool with no confirmation and names
+  `--mode plan` as the opt-out, with a `safety:` note under the options
+  table repeating it.
+
 ## 0.0.232 — 2026-09-18
 
 - `zagent quota --json` failure objects now carry a `class` field —
