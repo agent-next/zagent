@@ -4,6 +4,16 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.237 — 2026-09-18
+
+- Fixed the first-run sign-in chooser on a credential-less terminal: the
+  interactive `sign in [1/2/3]` prompt never actually waited for input —
+  a `readline` promise quirk (nodejs/node#57035) made the card print and
+  zagent exit 2 immediately. The chooser now prompts correctly, the
+  browser sign-in option runs with a normal terminal, and a pasted API
+  key is no longer echoed to the screen.
+
+
 ## 0.0.236 — 2026-09-18
 
 - `zagent onboard` no longer stalls through the whole live smoke turn on a

@@ -62,18 +62,43 @@ async function chooseSignIn() {
   if (!process.stdin.isTTY || !process.stderr.isTTY) return null;
   printSignInCard();
   const { createInterface } = await import('node:readline');
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  const rl = createInterface({ input: process.stdin, output: process.stderr, historySize: 0 });
   try {
-    // rl.question resolves undefined when the interface closes early — stdin
-    // EOF (ctrl+D), a hung-up pty — and a bare .trim() turned that into an
-    // uncaught TypeError stack on the user's screen.
-    const pick = ((await rl.question('sign in [1/2/3]: ')) ?? '').trim();
+    // node:readline's callbackless rl.question() resolves undefined INSTANTLY
+    // (nodejs/node#57035 — the working promise form lives only on
+    // node:readline/promises). Wrap the callback form ourselves; undefined on
+    // close still means stdin EOF (ctrl+D) or a hung-up pty. The key paste is
+    // a secret: readline echoes every key through _writeToOutput, so writes
+    // stay muted unless a non-secret question is pending (typeahead between
+    // questions can never echo a credential); the prompt itself writes before
+    // the flag flips. Private API — degrade to plain echo if it ever vanishes.
+    const writeOut = typeof rl._writeToOutput === 'function' ? rl._writeToOutput.bind(rl) : null;
+    let echoOpen = true; // closed only around/inside the masked question
+    if (writeOut) rl._writeToOutput = (s) => { if (echoOpen) writeOut(s); };
+    const ask = (q, secret = false) => new Promise((resolve) => {
+      const done = (a) => {
+        rl.off('close', onClose);
+        if (secret && writeOut) writeOut('\r\n'); // Enter's echo was muted
+        echoOpen = false; // stays muted until the next ask() opens it — a
+        // typeahead burst in the inter-question gap must never echo a secret
+        resolve(a);
+      };
+      const onClose = () => done(undefined);
+      rl.once('close', onClose);
+      echoOpen = true;                 // the question() prompt must render
+      rl.question(q, done);
+      echoOpen = !(secret && writeOut); // then only non-secret answers echo
+    });
+    const pick = ((await ask('sign in [1/2/3]: ')) ?? '').trim();
     if (pick === '2') {
-      const k = ((await rl.question('paste ZAI_API_KEY: ')) ?? '').trim();
+      const k = ((await ask('paste ZAI_API_KEY: ', true)) ?? '').trim();
       return k ? { key: k } : null;
     }
     if (pick === '1') {
       const bin = fileURLToPath(new URL('../../bin/zagent', import.meta.url));
+      // rl still holds the tty in raw mode (no ISIG/echo) until close — the
+      // OAuth child would be uninterruptible and blind without this.
+      rl.close();
       const r = spawnSync(NODE, [bin, 'login'], { stdio: 'inherit' });
       if ((r.status ?? 1) === 0 && oauthSignedIn()) return { oauth: true };
       return null;
