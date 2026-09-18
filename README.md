@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.230 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.231 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 
@@ -251,8 +251,9 @@ reads account-wide calls and reported tokens (1–30 Singapore calendar days, in
 the partial current day). Reported tokens are not billed credits, and shared-account
 usage cannot distinguish ccz from zagent. Missing quota amounts remain unknown;
 percentages can be rounded. `ZAI_API_KEY` explicitly overrides the queried account;
-otherwise the selected CLI provider key is used, with the ccz key file as a fallback
-only when CLI configuration is absent. `balance` / `preview` query separate desktop
+otherwise the selected CLI provider key is used, then the kernel-provisioned
+key from `zagent login` (v2/provider_config.json), with the ccz key file as a
+fallback only when CLI configuration is absent. `balance` / `preview` query separate desktop
 billing records; an empty balance is not proof of zero Coding Plan usage. `reset`
 reads reset-card availability without consuming a card.
 

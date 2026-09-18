@@ -167,7 +167,7 @@ runtime 发现覆盖 Linux / macOS / Windows（三平台均有单测）。**Linu
 `zagent quota` 查询实时 Z.ai Coding Plan 额度池；`zagent quota usage --days 7 --json`
 查询账户合计调用次数和服务端 token（支持最近 1–30 个新加坡日历日，含尚未结束的当天）。
 token 不等于计费 credits，共享账户的用量无法按 ccz / zagent 归因；缺失额度保持未知，百分比可能取整。
-`ZAI_API_KEY` 显式覆盖查询账户，否则使用 CLI 当前 provider 的 key；仅当 CLI 配置不存在时回退到 ccz key 文件。
+`ZAI_API_KEY` 显式覆盖查询账户，否则依次使用 CLI 当前 provider 的 key、`zagent login` 由内核预置的 key（v2/provider_config.json）；仅当 CLI 配置不存在时回退到 ccz key 文件。
 `balance` / `preview` 查询独立的桌面账单，空余额不代表 Coding Plan 用量为零；裸 `reset` 仅读取重置卡状态，`reset use` 消耗卡（稀缺额度，需确认或 `--yes`）、`reset claim` 申请卡。
 
 task / memory / diff / quota 输出可能含私有工作区、prompt 或账户数据。分享日志前请脱敏，切勿提交凭据或配置。

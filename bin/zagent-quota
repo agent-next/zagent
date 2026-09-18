@@ -3,7 +3,7 @@
 // `reset` also carries the desktop's reset-ticket actions (3.12.1 host contract):
 // `reset` = status, `reset use five-hour|week` = consume a ticket, `reset claim` = request one.
 import { createInterface } from 'node:readline';
-import { billing, resetStatus, resetUse, resetClaim, quotaError, codingPlanStatus, codingPlanUsage } from '../packages/driver/quota.mjs';
+import { billing, resetStatus, resetUse, resetClaim, quotaError, quotaFailureClass, QUOTA_CLASS_HINT, codingPlanStatus, codingPlanUsage } from '../packages/driver/quota.mjs';
 import { normalizeReset, resetLine } from '../packages/driver/reset-shape.mjs';
 const args = process.argv.slice(2);
 let which = 'status', raw = false, days = 7, commandSeen = false, daysSeen = false, yes = false;
@@ -132,7 +132,9 @@ try {
     const error = denied ? null : quotaError({ status, body });
     if (error) {
       console.log(JSON.stringify({ http: status, ...body }, null, 1));
-      console.error(`quota: ${error}`);
+      // F11: name the problem class (sign-in vs quota window) with its fix.
+      const cls = quotaFailureClass({ status, body });
+      console.error(`quota: ${error}${cls ? ` — ${QUOTA_CLASS_HINT[cls]}` : ''}`);
       process.exitCode = 1;
     } else if (which === 'reset' && !raw && resetAction) {
       console.log(JSON.stringify({ http: status, ...body }, null, 1));

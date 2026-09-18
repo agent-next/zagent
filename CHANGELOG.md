@@ -4,6 +4,16 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.231 — 2026-09-18
+
+- `zagent quota` errors name the problem class — "sign-in problem" with
+  the fix (`zagent login` / `ZAI_API_KEY`), "quota-window problem" with
+  the reset pointer, or "network problem" — across `status`, `usage`,
+  `balance`, `preview`, and `reset`.
+- `quota status`/`usage` resolve the plan key `zagent login` provisions
+  into `~/.zcode/v2/provider_config.json` (`keySource:
+  "provider-config"`), so signing in fixes quota on the first retry.
+
 ## 0.0.230 — 2026-09-17
 
 - `--json` error paths emit the JSON error envelope on stdout: `-p

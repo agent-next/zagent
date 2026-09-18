@@ -16,6 +16,22 @@ export function quotaError({ status, body }) {
   return `HTTP ${status}${body.code === undefined ? '' : ` (code ${body.code})`}: ${String(message)}`;
 }
 
+// FLOCK-F11: a failing quota call must say WHICH problem it is — a rejected
+// credential (sign-in), a real usage limit (quota window), or transport —
+// because the fixes differ. The class is derived from the HTTP status and the
+// numeric business code only; server-provided message text stays out of the
+// error because it can carry anything.
+export function quotaFailureClass({ status, body }) {
+  const code = Number(body?.code);
+  if (status === 401 || status === 403 || code === 401 || code === 403) return 'auth';
+  if (status === 429 || code === 1308 || code === 1113) return 'limit';
+  return null;
+}
+export const QUOTA_CLASS_HINT = {
+  auth: 'a sign-in problem, not a quota limit — run `zagent login` to sign in',
+  limit: 'a quota-window problem, not a sign-in problem — retry after the window resets (`zagent quota reset` lists reset tickets)',
+};
+
 export function getZcodeJwt() {
   const blob = loadCredentialStore()['zcodejwttoken'];
   // A store without the JWT is the same signed-out state as no store at all.
@@ -49,7 +65,7 @@ async function desktopFetch(url, headers, { method, body } = {}) {
     return await fetch(url, { method, headers, body, redirect: 'error', signal: AbortSignal.timeout(15000) });
   } catch {
     // Transport errors may contain request headers; never expose their text.
-    throw new Error('Desktop quota transport failed; the result is unknown');
+    throw new Error('Desktop quota transport failed — a network problem, not a quota limit; the result is unknown');
   }
 }
 export async function billing(path, { jwt, appVersion = '3.10.2' } = {}) {
@@ -182,22 +198,37 @@ export function resolveCodingPlanKey({ env = process.env, home = os.homedir() } 
     return { key: validateCodingPlanKey(env.ZAI_API_KEY), source: 'ZAI_API_KEY', plan: null };
   let config;
   try { config = JSON.parse(readFileSync(`${home}/.zcode/cli/config.json`, 'utf8')); }
-  catch (e) { if (e.code !== 'ENOENT') throw new Error('Cannot read CLI provider config; repair it or set ZAI_API_KEY'); }
+  catch (e) { if (e.code !== 'ENOENT') throw new Error('Cannot read CLI provider config — a sign-in problem, not a quota limit; repair it or set ZAI_API_KEY'); }
   if (config !== undefined) {
     const id = typeof config?.model?.main === 'string' ? config.model.main.split('/')[0] : undefined;
     const provider = config?.provider?.[id];
     const options = provider?.options;
-    if (typeof options?.baseURL !== 'string' || options.baseURL.replace(/\/$/, '') !== 'https://api.z.ai/api/anthropic' ||
-        typeof options.apiKey !== 'string' || !options.apiKey.trim())
-      throw new Error('Selected CLI provider is not a configured Z.ai Coding Plan; set ZAI_API_KEY explicitly');
-    return { key: validateCodingPlanKey(options.apiKey), source: 'cli-config',
-      plan: { providerId: id, name: typeof provider?.name === 'string' ? provider.name : null } };
+    if (typeof options?.baseURL !== 'string' || options.baseURL.replace(/\/$/, '') !== 'https://api.z.ai/api/anthropic')
+      throw new Error('Selected CLI provider is not a configured Z.ai Coding Plan — a sign-in problem, not a quota limit; set ZAI_API_KEY or re-run `zagent login`');
+    // An OAuth-written config before provisioning holds apiKey:'' — fall
+    // through to provider_config.json, which may already carry the key.
+    if (typeof options.apiKey === 'string' && options.apiKey.trim())
+      return { key: validateCodingPlanKey(options.apiKey), source: 'cli-config',
+        plan: { providerId: id, name: typeof provider?.name === 'string' ? provider.name : null } };
   }
+  // `zagent login` makes the kernel provision the plan key into
+  // v2/provider_config.json; cli/config.json only picks it up on a later
+  // ensureConfig run. Read it here so the sign-in advice actually fixes this
+  // command on the first retry. A missing/corrupt file falls through to the
+  // ccz fallback like the CLI reader does.
+  let provisioned = null;
+  try {
+    const pc = JSON.parse(readFileSync(`${home}/.zcode/v2/provider_config.json`, 'utf8'));
+    provisioned = pc?.config?.providerConfigRules?.providerRules
+      ?.find(r => r?.providerId === 'zai')?.config?.access?.apiKey;
+  } catch { /* absent or unparsable — fall through */ }
+  if (typeof provisioned === 'string' && provisioned.trim())
+    return { key: validateCodingPlanKey(provisioned), source: 'provider-config', plan: null };
   try {
     const key = readFileSync(`${home}/.config/ccz/.api_key`, 'utf8').trim();
     if (key) return { key: validateCodingPlanKey(key), source: 'ccz-fallback', plan: null };
-  } catch (e) { if (e.code !== 'ENOENT') throw new Error('Cannot read Coding Plan key'); }
-  throw new Error('No Coding Plan key; configure the CLI or set ZAI_API_KEY');
+  } catch (e) { if (e.code !== 'ENOENT') throw new Error('Cannot read Coding Plan key — a sign-in problem, not a quota limit; set ZAI_API_KEY'); }
+  throw new Error('No Coding Plan key — a sign-in problem, not a quota limit; run `zagent login` or set ZAI_API_KEY, then `zagent quota` shows the windows and reset times');
 }
 export function codingPlanKey(options) { return resolveCodingPlanKey(options).key; }
 
@@ -211,12 +242,21 @@ async function monitor(endpoint, params, { fetchImpl = fetch, env = process.env,
       redirect: 'error', signal: AbortSignal.timeout(15000) });
   } catch {
     // Transport errors may contain request headers; never expose their text.
-    throw new Error('Coding Plan transport failed; usage and quota are unknown');
+    throw new Error('Coding Plan transport failed — a network problem, not a quota limit; usage and quota are unknown');
   }
   let body;
   try { body = await response.json(); } catch { throw new Error('Invalid Coding Plan JSON response'); }
-  if (quotaError({ status: response.status, body }) || !body?.data)
-    throw new Error(`Coding Plan request failed (HTTP ${response.status}); quota is unknown`);
+  const failure = quotaError({ status: response.status, body });
+  if (failure || !body?.data) {
+    const cls = quotaFailureClass({ status: response.status, body });
+    const code = Number(body?.code);
+    const where = `HTTP ${response.status}${Number.isFinite(code) ? `, code ${code}` : ''}`;
+    if (cls === 'auth')
+      throw new Error(`Coding Plan credential rejected (${where}) — ${QUOTA_CLASS_HINT.auth} or set a fresh ZAI_API_KEY`);
+    if (cls === 'limit')
+      throw new Error(`Coding Plan usage limit (${where}) — ${QUOTA_CLASS_HINT.limit}`);
+    throw new Error(`Coding Plan request failed (${where}); quota is unknown`);
+  }
   return { data: body.data, observedAt: new Date().toISOString(), keySource, plan };
 }
 
