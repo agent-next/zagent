@@ -27,6 +27,7 @@ import { openTasksDb, findTask, updateTask, tasksDbPath } from '../driver/tasks-
 import { loadGlobalMemory, loadProjectMemory } from '../driver/memory.mjs';
 import { codingPlanStatus } from '../driver/quota.mjs';
 import { listHooks, formatHooksText } from '../driver/hooks-cli.mjs';
+import { listGrants } from '../driver/permissions.mjs';
 import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine, displayPath } from '../driver/doctor.mjs';
 import { findRuntime } from '../driver/runtime.mjs';
 import { formatDuration, formatTokens } from './render.mjs';
@@ -346,12 +347,11 @@ function modelWindow(ctx) {
   return Number.isFinite(w) && w > 0 ? w : null;
 }
 
-function listGrants(home) {
-  const file = path.join(home ?? os.homedir(), '.zcode', 'cli', 'grants.json');
-  try {
-    const obj = JSON.parse(readFileSync(file, 'utf8'));
-    return Object.values(obj?.grants ?? {}).filter(g => g && typeof g === 'object');
-  } catch { return []; }
+function grantLabel(g, max = 80) {
+  const p = typeof g.pattern === 'string' && g.pattern
+    ? (g.pattern.length > max ? `${g.pattern.slice(0, max - 1)}…` : g.pattern)
+    : null;
+  return `${g.toolName ?? '?'}${p ? `(${p})` : ''}`;
 }
 
 function execCommand(cmd, args) {
@@ -775,10 +775,11 @@ export const CLIENT_COMMANDS = [
     name: 'permissions', group: 'Project',
     summary: 'persisted always-allow/deny grants',
     run(ctx) {
-      const grants = listGrants(ctx.home);
+      const grants = listGrants({ home: ctx.home ?? ctx.host?.home });
       if (!grants.length) return ctx.print('no persisted permission grants');
       const lines = ['persisted grants (~/.zcode/cli/grants.json):'];
-      for (const g of grants) lines.push(`  ${g.toolName ?? '?'} — ${g.optionId ?? '?'}`);
+      for (const g of grants) lines.push(`  ${grantLabel(g)} — ${g.optionId ?? '?'}`);
+      lines.push('revoke with: zagent permissions revoke <pattern|all>');
       ctx.print(lines.join('\n'));
     },
   },

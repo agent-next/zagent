@@ -7,7 +7,7 @@
 // updatedPermissions/updatedInput) — a DIFFERENT flow. The wrong shape is silently treated
 // as denial: the model reports "permission request failed" and every edit is dropped
 // (this is exactly the 2026-09-05 emulator S3 failure class).
-import { readFileSync, writeFileSync, mkdirSync, chmodSync, renameSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync, renameSync, unlinkSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -143,6 +143,54 @@ export function lookupGrant(request, { home } = {}) {
   return rec?.response ?? null;
 }
 
+// A bounded, redacted, human-readable form of the fingerprint stored beside
+// the hash: /permissions and `zagent permissions` can then show WHAT was
+// granted ("Bash(npm install: *) — allow_always") instead of a bare tool
+// name, and `revoke <text>` has something to match. Bounded because tool
+// inputs can carry whole files — the grant store must not grow a copy.
+const GRANT_PATTERN_MAX = 160;
+function grantPattern(request) {
+  // Control bytes (newlines, ANSI escapes) never reach the store — the
+  // pattern is echoed raw by `zagent permissions` and /permissions.
+  const fp = grantFingerprint(request).replace(/[\x00-\x1f\x7f-\x9f]+/g, ' ').trim();
+  return fp.length > GRANT_PATTERN_MAX ? fp.slice(0, GRANT_PATTERN_MAX) + '…' : fp;
+}
+
+/** Every persisted grant: {key, toolName, optionId, pattern, response}. */
+export function listGrants({ home } = {}) {
+  return Object.entries(loadGrantFile({ home }).grants)
+    .filter(([, g]) => g && typeof g === 'object')
+    .map(([key, g]) => ({ key, toolName: g.toolName ?? null, optionId: g.optionId ?? null,
+      pattern: typeof g.pattern === 'string' ? g.pattern : null, response: g.response }));
+}
+
+function grantMatches(g, query) {
+  if (typeof g?.pattern === 'string' && g.pattern.includes(query)) return true;
+  return String(g?.toolName ?? '').toLowerCase() === query.toLowerCase();
+}
+
+/**
+ * Remove grants: query 'all' clears the store; otherwise a grant goes when
+ * the query is a substring of its remembered pattern or equals its tool name
+ * (case-insensitive). Returns {removed:[...]}; an absent store stays absent.
+ */
+export function forgetGrants(query, { home } = {}) {
+  const q = String(query).trim();
+  const all = q.toLowerCase() === 'all';
+  if (!all && !q) return { removed: [] }; // '' would substring-match everything
+  const file = loadGrantFile({ home });
+  const removed = [];
+  for (const [key, g] of Object.entries(file.grants)) {
+    if (all || grantMatches(g, q)) {
+      removed.push({ key, toolName: g?.toolName ?? null, optionId: g?.optionId ?? null,
+        pattern: typeof g?.pattern === 'string' ? g.pattern : null });
+      delete file.grants[key];
+    }
+  }
+  if (removed.length || existsSync(grantsPath({ home }))) saveGrantFile(file, { home });
+  return { removed };
+}
+
 export function rememberGrant(request, option, { home } = {}) {
   const id = optionIdOf(option);
   if (!isAlwaysOptionId(id)) return null;
@@ -159,7 +207,8 @@ export function rememberGrant(request, option, { home } = {}) {
     : response;
   const toolName = request?.toolName ?? request?.tool ?? '';
   const file = loadGrantFile({ home });
-  file.grants[grantStoreKey(request)] = { toolName, optionId: id, response: stored };
+  file.grants[grantStoreKey(request)] = { toolName, optionId: id, response: stored,
+    pattern: grantPattern(request) };
   saveGrantFile(file, { home });
   return response;
 }

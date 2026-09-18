@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.233 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.234 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 
@@ -173,6 +173,7 @@ sent only to your own provider endpoint.
 | `zagent memory show\|index\|append` | Runtime-compatible memory |
 | `zagent commit-msg [--model provider/model\|model] [--effort <level>] [--json]` | Generate a commit message for staged (or unstaged) changes (ZCode 3.12.x+) |
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | Inspect or modify runtime task records |
+| `zagent permissions [list\|revoke <pattern\|all>\|--reset] [--json]` | View or revoke remembered always-allow/deny grants |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
 | `zagent bots [list\|show <id>\|status] [--json]` | Chat bots configured in the desktop (read-only) |

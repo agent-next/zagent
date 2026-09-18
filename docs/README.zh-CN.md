@@ -129,6 +129,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent memory show\|index\|append` | runtime 兼容的 memory |
 | `zagent commit-msg [--model provider/model\|model] [--effort <level>] [--json]` | 为已暂存（或未暂存）改动生成 commit message（ZCode 3.12.x+） |
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | 查看或修改 runtime 任务记录 |
+| `zagent permissions [list\|revoke <pattern\|all>\|--reset] [--json]` | 查看或撤销已记住的 always-allow/deny 授权 |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | 定时 prompt（本地 crontab） |
 | `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
 | `zagent bots [list\|show <id>\|status] [--json]` | 桌面端已配置的聊天 bot（只读） |

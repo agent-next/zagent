@@ -4,6 +4,17 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.234 — 2026-09-18
+
+- Remembered permission grants are no longer opaque: each grant now
+  stores a bounded, secret-redacted, terminal-safe `pattern` beside its
+  hash, so `/permissions` and the new `zagent permissions` command show
+  WHAT was allowed — `Bash(npm test) — allow_always` — instead of a bare
+  tool name. `zagent permissions [list|revoke <pattern|all>|--reset]
+  [--json]` lists grants and revokes by pattern substring or tool name;
+  `all`/`--reset` clears the store, and an empty or absent store reports
+  `no persisted permission grants` without creating the file.
+
 ## 0.0.233 — 2026-09-18
 
 - `zagent -p --help` now discloses the dangerous default: the `--mode`

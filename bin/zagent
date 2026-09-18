@@ -34,6 +34,7 @@ const ROUTES = {
   automation: ['packages/cli/zagent-automation.mjs', '--experimental-sqlite', '--no-warnings'],
   bots: ['packages/cli/zagent-bots.mjs'],
   task: ['packages/cli/zagent-task.mjs', '--experimental-sqlite', '--no-warnings'],
+  permissions: ['packages/cli/zagent-permissions.mjs'],
   memory: ['packages/cli/zagent-memory.mjs'],
   offpeak: ['packages/cli/zagent-offpeak.mjs'],
   models: ['packages/cli/zagent-models.mjs'],
