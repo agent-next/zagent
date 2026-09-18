@@ -15,7 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { commandFor, formatRow, ENTRY_FLAGS, HEADLESS_OPTIONS, COMMAND_DETAILS } from '../packages/cli/commands.mjs';
+import { commandFor, formatRow, ENTRY_FLAGS, HEADLESS_OPTIONS, NON_PRINT_OPTIONS, COMMAND_DETAILS } from '../packages/cli/commands.mjs';
 import { findRuntime } from '../packages/driver/runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -112,6 +112,11 @@ const headlessHelp = () => {
   console.log(formatRow(commandFor('-p')).trimStart());
   console.log('\noptions forwarded to the runtime (verified against its parser):');
   for (const [sig, desc] of HEADLESS_OPTIONS) console.log(`  ${sig.padEnd(48)} ${desc}`);
+  console.log('\nmodes:  plan = read-only, the agent plans instead of changing anything');
+  console.log('        build = asks before each change · edit = applies file edits automatically');
+  console.log('        yolo = full access, never asks · auto = reserved, not implemented by the runtime');
+  console.log('\nnot valid with -p (the runtime refuses the combination):');
+  for (const [sig, desc] of NON_PRINT_OPTIONS) console.log(`  ${sig.padEnd(48)} ${desc}`);
   console.log('\nsafety: -p without --mode runs in yolo by default — every tool call executes without asking.');
   console.log('        pass --mode plan to make the agent only plan instead of changing things.');
   console.log('\nnot implemented by the runtime despite its own --help:');

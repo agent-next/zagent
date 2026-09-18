@@ -4,6 +4,18 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.235 — 2026-09-18
+
+- `zagent models test <provider/model>` on a provider this machine does
+  not have configured now fails before the runtime is spawned —
+  `provider 'x' is not configured on this machine` with the sign-in next
+  step — instead of relaying the runtime's unlocalized registry error
+  verbatim; runtime-side registry misses are translated to English too.
+  `zagent login --help` now names the sign-up path and the `ZAI_API_KEY`
+  alternative, and `zagent -p --help` groups `--target` under "not valid
+  with -p" and explains what every permission mode does
+  (plan/build/edit/yolo/auto).
+
 ## 0.0.234 — 2026-09-18
 
 - Remembered permission grants are no longer opaque: each grant now

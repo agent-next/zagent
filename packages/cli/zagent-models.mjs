@@ -45,7 +45,7 @@ if (process.argv[2] === 'test') {
     } catch { return { configured: {}, disabled: new Set() }; }
   })();
   const fail = (msg, modelId, resolvedProvider = null) => {
-    if (asJson) console.log(JSON.stringify({ ok: false, providerId: resolvedProvider, modelId, error: msg }, null, 2));
+    if (asJson) console.log(JSON.stringify({ ok: false, providerId: resolvedProvider, modelId, error: msg, requestId: null }, null, 2));
     else console.error(msg);
     process.exit(1);
   };
@@ -120,8 +120,12 @@ if (process.argv[2] === 'test') {
         console.error(`'${modelId}' is configured on ${hits.length} providers; name one:`);
         for (const [p, m] of hits) console.error(`  zagent models test ${p}/${m}`);
         process.exit(1);
+      } else {
+        // The headless registry is rebuilt from the account-config push, which
+        // covers configured keys only — forwarding an unconfigured id is a
+        // guaranteed kernel provider_not_found whose message is not localized.
+        fail(`provider '${providerId}' is not configured on this machine — 'zagent login' signs in to a plan, then 'zagent models' lists what it carries`, modelId, providerId);
       }
-      // No carriers either — pass through; the kernel is the authority.
     }
   } else {
     const hits = carriers(sel);
@@ -159,7 +163,13 @@ if (process.argv[2] === 'test') {
     const requestId = e?.data?.providerRequestId ?? e?.data?.requestId ?? null;
     const msg = e?.code === -32601
       ? 'this ZCode runtime does not support connectivity tests (provider/testModelConnectivity arrived in desktop 3.12.x)'
-      : `${providerId}/${modelId}: ${e?.message ?? e}`;
+      : e?.code === -32603 && /Provider Registry|不存在.{0,10}Provider|Provider.{0,10}不存在|provider.{0,30}not.?found/i.test(String(e?.message ?? ''))
+        // The kernel's registry-miss text is not localized (observed verbatim:
+        // "Provider Registry 中不存在 Provider: <id>") — answer in English.
+        // The gate requires provider/registry context: a generic -32603 like
+        // "model X not found" must keep the kernel's own message.
+        ? `${providerId}/${modelId}: the runtime's registry does not know this provider (the headless registry covers configured plan providers)`
+        : `${providerId}/${modelId}: ${e?.message ?? e}`;
     if (asJson) {
       console.log(JSON.stringify({ ok: false, providerId, modelId, error: msg, requestId }, null, 2));
     } else {

@@ -72,7 +72,6 @@ export const HEADLESS_OPTIONS = [
   ['--disallowed-tools <tools…>', 'comma/space-separated tool denylist (alias --disallowedTools)'],
   ['-c, --continue', 'continue the latest session for this directory'],
   ['--resume <sess_…>', 'resume a persisted session by id'],
-  ['--target <text> [--target-replace]', 'run or replace the session goal (not with -p)'],
   ['--json', 'print the machine-readable result'],
   ['--output-format <text|json|stream-json>', 'output shape; stream-json emits one event per line'],
   ['--cwd <path>', 'run from the given directory'],
@@ -82,6 +81,14 @@ export const HEADLESS_OPTIONS = [
   ['--force-mcs', 'force mid-conversation system projection (Anthropic providers)'],
   ['--no-color', 'disable ANSI colors'],
   ['--verbose', 'print extra diagnostic detail'],
+];
+
+// Accepted by the runtime's parser but refused once -p/--prompt is present
+// (verified on 3.11.2/3.12.1: "--target cannot be used with --prompt"). Printed
+// in their own group — an inline "(not with -p)" note was missed by real users
+// and produced a combination that can never run.
+export const NON_PRINT_OPTIONS = [
+  ['--target <text> [--target-replace]', 'run or replace the session goal (interactive session)'],
 ];
 
 // Per-command detail printed by `zagent <cmd> --help` after the palette row —
@@ -302,7 +309,9 @@ export const COMMAND_DETAILS = {
   ],
   login: [
     'Signs in to your account through the runtime (opens a browser;',
-    '--no-browser prints the URL instead).',
+    '--no-browser prints the URL instead). No account yet? The sign-in',
+    'page offers sign-up, and https://zcode.z.ai is the plan site — or',
+    'skip the browser with an API key: export ZAI_API_KEY=<key>.',
     '',
     '  example: zagent login',
   ],
