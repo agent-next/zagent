@@ -277,9 +277,11 @@ async function monitor(endpoint, params, { fetchImpl = fetch, env = process.env,
     const code = Number(body?.code);
     const where = `HTTP ${response.status}${Number.isFinite(code) ? `, code ${code}` : ''}`;
     if (cls === 'auth')
-      throw classified(`Coding Plan credential rejected (${where}) — ${QUOTA_CLASS_HINT.auth} or set a fresh ZAI_API_KEY`, 'auth');
+      throw Object.assign(classified(`Coding Plan credential rejected (${where}) — ${QUOTA_CLASS_HINT.auth} or set a fresh ZAI_API_KEY`, 'auth'),
+        { quotaStatus: response.status, quotaCode: Number.isFinite(code) ? code : null });
     if (cls === 'limit')
-      throw classified(`Coding Plan usage limit (${where}) — ${QUOTA_CLASS_HINT.limit}`, 'limit');
+      throw Object.assign(classified(`Coding Plan usage limit (${where}) — ${QUOTA_CLASS_HINT.limit}`, 'limit'),
+        { quotaStatus: response.status, quotaCode: Number.isFinite(code) ? code : null });
     throw new Error(`Coding Plan request failed (${where}); quota is unknown`);
   }
   return { data: body.data, observedAt: new Date().toISOString(), keySource, plan };

@@ -4,6 +4,16 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.236 — 2026-09-18
+
+- `zagent onboard` no longer stalls through the whole live smoke turn on a
+  bad credential: a classified credential check now runs between the doctor
+  checks and the smoke turn — a rejected or missing key fails in about a
+  second with the sign-in guidance instead of tens of seconds ending in an
+  opaque `Turn execution failed`, and a provider-reported exhausted quota
+  window fails fast with the reset pointer. A signed-in user, a transient
+  rate-limit, or a network flap still run the real smoke turn.
+
 ## 0.0.235 — 2026-09-18
 
 - `zagent models test <provider/model>` on a provider this machine does
