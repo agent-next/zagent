@@ -14,7 +14,7 @@ async function usage() {
   // to process.exit, so the write is flushed first. An invalid token can end
   // the parse before --json is reached, so scan the raw argv, not `raw`.
   if (raw || args.includes('--json'))
-    await new Promise((res) => process.stdout.write(JSON.stringify({ error: u }) + '\n', res));
+    await new Promise((res) => process.stdout.write(JSON.stringify({ error: u, class: null }) + '\n', res));
   console.error(u);
   process.exit(2);
 }
@@ -44,7 +44,7 @@ if (resetAction === 'use' && !yes) {
   if (raw || !process.stdin.isTTY) {
     const msg = `'reset use ${resetType}' consumes a scarce reset ticket; re-run with --yes to confirm`;
     console.error(`quota: ${msg}`);
-    if (raw) await new Promise((res) => process.stdout.write(JSON.stringify({ error: msg }) + '\n', res));
+    if (raw) await new Promise((res) => process.stdout.write(JSON.stringify({ error: msg, class: null }) + '\n', res));
     process.exit(2);
   }
   const rl = createInterface({ input: process.stdin, output: process.stderr });
@@ -131,13 +131,15 @@ try {
     const denied = resetAction === 'claim' && status >= 200 && status < 300 && body?.code === 3301;
     const error = denied ? null : quotaError({ status, body });
     if (error) {
-      console.log(JSON.stringify({ http: status, ...body }, null, 1));
       // F11: name the problem class (sign-in vs quota window) with its fix.
+      // F15: the class is also a JSON field — after the spread so a server
+      // body cannot spoof it; null when the failure is unclassified.
       const cls = quotaFailureClass({ status, body });
+      console.log(JSON.stringify({ ...body, http: status, class: cls }, null, 1));
       console.error(`quota: ${error}${cls ? ` — ${QUOTA_CLASS_HINT[cls]}` : ''}`);
       process.exitCode = 1;
     } else if (which === 'reset' && !raw && resetAction) {
-      console.log(JSON.stringify({ http: status, ...body }, null, 1));
+      console.log(JSON.stringify({ ...body, http: status }, null, 1));
       if (resetAction === 'use') {
         console.log(body?.data?.used === true
           ? `${resetType} reset used — the quota window restarts now`
@@ -153,15 +155,16 @@ try {
       }
     } else if (which === 'reset' && !raw) {
       const reset = normalizeReset(body);
-      console.log(JSON.stringify({ http: status, ...reset }, null, 1));
+      console.log(JSON.stringify({ ...reset, http: status }, null, 1));
       console.log(resetLine(reset));
     } else {
-      console.log(JSON.stringify({ http: status, ...body }, null, 1));
+      console.log(JSON.stringify({ ...body, http: status }, null, 1));
     }
   }
 } catch (error) {
   const msg = String(error?.message ?? error);
-  if (raw) console.log(JSON.stringify({ error: msg })); // --json: stdout stays machine-readable
+  // --json: stdout stays machine-readable; the class rides the envelope too.
+  if (raw) console.log(JSON.stringify({ error: msg, class: error?.quotaClass ?? null }));
   console.error(`quota: ${msg}`);
   process.exitCode = 1;
 }

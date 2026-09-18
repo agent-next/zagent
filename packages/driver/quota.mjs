@@ -31,14 +31,33 @@ export const QUOTA_CLASS_HINT = {
   auth: 'a sign-in problem, not a quota limit — run `zagent login` to sign in',
   limit: 'a quota-window problem, not a sign-in problem — retry after the window resets (`zagent quota reset` lists reset tickets)',
 };
+// FLOCK-F15: the failure class rides the error as `quotaClass` so the --json
+// error envelope emits it as a field, not only as stderr prose. Absent = the
+// failure is unclassified (a service-shape problem, not auth/limit/network).
+const classified = (message, cls) => Object.assign(new Error(message), { quotaClass: cls });
+// Every credential-store failure on the quota path is a sign-in-class problem
+// (no store, corrupt store, non-object store): the fix is always `zagent login`.
+// A stray fs error inherits the label too — ??= keeps a more specific class
+// when one was already attached.
+function credentialStore() {
+  try { return loadCredentialStore(); }
+  catch (e) { e.quotaClass ??= 'auth'; throw e; }
+}
+// Device identity is provisioned at sign-in; an unknown mid is auth-class.
+function deviceMidOrAuth() {
+  try { return deviceMid(); }
+  catch (e) { e.quotaClass ??= 'auth'; throw e; }
+}
 
 export function getZcodeJwt() {
-  const blob = loadCredentialStore()['zcodejwttoken'];
-  // A store without the JWT is the same signed-out state as no store at all.
-  if (typeof blob !== 'string' || !blob) throw new Error(NO_DESKTOP_CREDENTIALS);
-  const jwt = decryptCredential(blob);
-  if (!jwt) throw new Error(NO_DESKTOP_CREDENTIALS);
-  return jwt;
+  try {
+    const blob = credentialStore()['zcodejwttoken'];
+    // A store without the JWT is the same signed-out state as no store at all.
+    if (typeof blob !== 'string' || !blob) throw new Error(NO_DESKTOP_CREDENTIALS);
+    const jwt = decryptCredential(blob);
+    if (!jwt) throw new Error(NO_DESKTOP_CREDENTIALS);
+    return jwt;
+  } catch (e) { e.quotaClass ??= 'auth'; throw e; }
 }
 // Redact anything token-shaped before printing/logging.
 export function redactDeep(v) {
@@ -65,7 +84,7 @@ async function desktopFetch(url, headers, { method, body } = {}) {
     return await fetch(url, { method, headers, body, redirect: 'error', signal: AbortSignal.timeout(15000) });
   } catch {
     // Transport errors may contain request headers; never expose their text.
-    throw new Error('Desktop quota transport failed — a network problem, not a quota limit; the result is unknown');
+    throw classified('Desktop quota transport failed — a network problem, not a quota limit; the result is unknown', 'network');
   }
 }
 export async function billing(path, { jwt, appVersion = '3.10.2' } = {}) {
@@ -75,7 +94,7 @@ export async function billing(path, { jwt, appVersion = '3.10.2' } = {}) {
     : path.startsWith('preview') ? `?app_version=${appVersion}&platform=${plat}` : '';
   const r = await desktopFetch(`${BASE}/api/v1/zcode-plan/billing/${path}${qs}`, {
     Authorization: `Bearer ${jwt ?? getZcodeJwt()}`, ...identityHeaders(appVersion),
-    'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(),
+    'x-device-mid': deviceMidOrAuth(), 'x-request-id': crypto.randomUUID(),
     'x-os-version': os.release(),
   });
   const body = await r.json().catch(() => ({}));
@@ -98,11 +117,11 @@ function resetOauth(store) {
   return undefined;
 }
 async function resetRequest(path, { method = 'GET', body, appVersion = '3.10.2' } = {}) {
-  const store = loadCredentialStore();
+  const store = credentialStore();
   const headers = {
     Authorization: `Bearer ${getZcodeJwt()}`, 'x-bigmodel-authorization': resetOauth(store),
     'bigmodel-target-type': 'PERSONAL', ...identityHeaders(appVersion),
-    'x-device-mid': deviceMid(), 'x-request-id': crypto.randomUUID(), 'x-os-version': os.release(),
+    'x-device-mid': deviceMidOrAuth(), 'x-request-id': crypto.randomUUID(), 'x-os-version': os.release(),
   };
   if (body !== undefined) headers['content-type'] = 'application/json';
   const r = await desktopFetch(`${BASE}/api/v1/coding-plan/reset${path}`, headers, {
@@ -193,7 +212,7 @@ function validateCodingPlanKey(value) {
 // plan is {providerId, name} when the key comes from the CLI provider config
 // (e.g. builtin:zai-coding-plan vs builtin:zai-start-plan), null when the key
 // source (env var, ccz fallback file) carries no plan identity.
-export function resolveCodingPlanKey({ env = process.env, home = os.homedir() } = {}) {
+function resolveCodingPlanKeyOrThrow({ env = process.env, home = os.homedir() } = {}) {
   if (env.ZAI_API_KEY?.trim())
     return { key: validateCodingPlanKey(env.ZAI_API_KEY), source: 'ZAI_API_KEY', plan: null };
   let config;
@@ -230,6 +249,12 @@ export function resolveCodingPlanKey({ env = process.env, home = os.homedir() } 
   } catch (e) { if (e.code !== 'ENOENT') throw new Error('Cannot read Coding Plan key — a sign-in problem, not a quota limit; set ZAI_API_KEY'); }
   throw new Error('No Coding Plan key — a sign-in problem, not a quota limit; run `zagent login` or set ZAI_API_KEY, then `zagent quota` shows the windows and reset times');
 }
+// Every resolution failure is a sign-in-class problem: the fix is always
+// `zagent login` or a fresh ZAI_API_KEY, never a quota-window wait.
+export function resolveCodingPlanKey(options) {
+  try { return resolveCodingPlanKeyOrThrow(options); }
+  catch (e) { e.quotaClass ??= 'auth'; throw e; }
+}
 export function codingPlanKey(options) { return resolveCodingPlanKey(options).key; }
 
 async function monitor(endpoint, params, { fetchImpl = fetch, env = process.env, home = os.homedir() } = {}) {
@@ -242,7 +267,7 @@ async function monitor(endpoint, params, { fetchImpl = fetch, env = process.env,
       redirect: 'error', signal: AbortSignal.timeout(15000) });
   } catch {
     // Transport errors may contain request headers; never expose their text.
-    throw new Error('Coding Plan transport failed — a network problem, not a quota limit; usage and quota are unknown');
+    throw classified('Coding Plan transport failed — a network problem, not a quota limit; usage and quota are unknown', 'network');
   }
   let body;
   try { body = await response.json(); } catch { throw new Error('Invalid Coding Plan JSON response'); }
@@ -252,9 +277,9 @@ async function monitor(endpoint, params, { fetchImpl = fetch, env = process.env,
     const code = Number(body?.code);
     const where = `HTTP ${response.status}${Number.isFinite(code) ? `, code ${code}` : ''}`;
     if (cls === 'auth')
-      throw new Error(`Coding Plan credential rejected (${where}) — ${QUOTA_CLASS_HINT.auth} or set a fresh ZAI_API_KEY`);
+      throw classified(`Coding Plan credential rejected (${where}) — ${QUOTA_CLASS_HINT.auth} or set a fresh ZAI_API_KEY`, 'auth');
     if (cls === 'limit')
-      throw new Error(`Coding Plan usage limit (${where}) — ${QUOTA_CLASS_HINT.limit}`);
+      throw classified(`Coding Plan usage limit (${where}) — ${QUOTA_CLASS_HINT.limit}`, 'limit');
     throw new Error(`Coding Plan request failed (${where}); quota is unknown`);
   }
   return { data: body.data, observedAt: new Date().toISOString(), keySource, plan };

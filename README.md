@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.231 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.232 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 
@@ -255,7 +255,9 @@ otherwise the selected CLI provider key is used, then the kernel-provisioned
 key from `zagent login` (v2/provider_config.json), with the ccz key file as a
 fallback only when CLI configuration is absent. `balance` / `preview` query separate desktop
 billing records; an empty balance is not proof of zero Coding Plan usage. `reset`
-reads reset-card availability without consuming a card.
+reads reset-card availability without consuming a card. Under `--json`, failure
+objects carry a `class` field (`auth`, `limit`, `network`, or `null` when
+unclassified) so scripts can branch without parsing prose.
 
 Task, memory, diff, and quota output can contain private workspace, prompt, or account data.
 Redact before sharing logs, and never commit credentials or config files.

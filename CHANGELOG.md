@@ -4,6 +4,16 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.232 — 2026-09-18
+
+- `zagent quota --json` failure objects now carry a `class` field —
+  `auth`, `limit`, `network`, or `null` when unclassified — on both the
+  `{http, ...body}` failure object and the `{"error"}` envelope, so
+  scripts can branch on the problem kind without parsing prose. An
+  unprovisioned device identity reports `auth` like a missing
+  credential, and the `http` field can no longer be overridden by a
+  server-supplied body field.
+
 ## 0.0.231 — 2026-09-18
 
 - `zagent quota` errors name the problem class — "sign-in problem" with
