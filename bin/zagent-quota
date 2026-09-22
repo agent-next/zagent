@@ -3,19 +3,68 @@
 // `reset` also carries the desktop's reset-ticket actions (3.12.1 host contract):
 // `reset` = status, `reset use five-hour|week` = consume a ticket, `reset claim` = request one.
 import { createInterface } from 'node:readline';
-import { billing, resetStatus, resetUse, resetClaim, quotaError, quotaFailureClass, QUOTA_CLASS_HINT, codingPlanStatus, codingPlanUsage } from '../packages/driver/quota.mjs';
+import { billing, resetStatus, resetUse, resetClaim, resetAuthPreflight, quotaError, quotaFailureClass, QUOTA_CLASS_HINT, codingPlanStatus, codingPlanUsage } from '../packages/driver/quota.mjs';
 import { normalizeReset, resetLine } from '../packages/driver/reset-shape.mjs';
 const args = process.argv.slice(2);
 let which = 'status', raw = false, days = 7, commandSeen = false, daysSeen = false, yes = false;
 let resetAction = null, resetType = null;
-async function usage() {
+// Positional typos (`quota stauts`) get the same transposition-aware
+// (OSA-Damerau) hint the entry dispatcher gives flag typos — strictly under
+// 3 edits, never for '-' or single-char tokens ('s' is 2 edits from 'use'
+// but almost never means it).
+const editDistance = (a, b) => {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  return d[a.length][b.length];
+};
+// Reset-vocabulary words typed at top level (`quota use five-hour`) almost
+// always meant the `reset` form — the hint names the full command, not the
+// nearest bare subcommand ('use' is 2 edits from 'usage' but unrelated).
+const RESET_WORDS = { use: 'reset use', claim: 'reset claim', 'five-hour': 'reset use five-hour', week: 'reset use week' };
+// Glued reset phrases (`quota reset use-five-hor`, `quota use-wek`) match the
+// hyphenated spelling but suggest the spaced form the grammar actually parses.
+const GLUED_RESET = { 'use-five-hour': 'use five-hour', 'use-week': 'use week' };
+// Inside `reset …` a bare type word at the action position means the full
+// grammar tail — `reset wek`/`reset five-hour` → 'use week'/'use five-hour'.
+const TYPE_WORDS = { 'five-hour': 'use five-hour', week: 'use week' };
+const subcommandHint = (bad) => {
+  if (typeof bad !== 'string' || bad.length < 2 || bad.startsWith('-')) return '';
+  const candidates = !commandSeen ? ['status', 'usage', 'balance', 'preview', 'reset', ...Object.keys(RESET_WORDS), ...Object.keys(GLUED_RESET)]
+    : which === 'reset' && !resetAction ? ['use', 'claim', ...Object.keys(GLUED_RESET), ...Object.keys(TYPE_WORDS)]
+    : which === 'reset' && resetAction === 'use' && !resetType ? ['five-hour', 'week']
+    : [];
+  let best = null, dist = 3;
+  for (const c of candidates) {
+    const d = editDistance(bad, c);
+    if (d < dist) { best = c; dist = d; }
+  }
+  // The reset-form rewrite only applies at top level — inside `reset …` a
+  // glued/type word at the action position completes the grammar tail; at
+  // the type position the bare word is already the right name.
+  if (best && !commandSeen) {
+    const spaced = GLUED_RESET[best];
+    best = spaced ? `reset ${spaced}` : (RESET_WORDS[best] ?? best);
+  } else if (best && !resetAction) best = GLUED_RESET[best] ?? TYPE_WORDS[best] ?? best;
+  else if (best) best = GLUED_RESET[best] ?? best;
+  return best ? `quota: did you mean '${best}'?` : '';
+};
+async function usage(bad) {
   const u = 'usage: zagent quota [status|usage [--days 1..30]|balance|preview|reset [claim|use five-hour|use week]] [--json] [--yes]';
   // --json: stdout stays machine-readable; a buffered console.log can be lost
   // to process.exit, so the write is flushed first. An invalid token can end
   // the parse before --json is reached, so scan the raw argv, not `raw`.
   if (raw || args.includes('--json'))
     await new Promise((res) => process.stdout.write(JSON.stringify({ error: u, class: null }) + '\n', res));
-  console.error(u);
+  // The stderr copy is flushed too — a piped write can otherwise be lost to
+  // process.exit, same as the stdout envelope above.
+  const hint = subcommandHint(bad);
+  await new Promise((res) => process.stderr.write(u + '\n' + (hint ? hint + '\n' : ''), res));
   process.exit(2);
 }
 for (let i = 0; i < args.length; i++) {
@@ -33,18 +82,34 @@ for (let i = 0; i < args.length; i++) {
   } else if (which === 'reset' && resetAction === 'use' && !resetType &&
              ['five-hour', 'week'].includes(args[i])) {
     resetType = args[i];
-  } else await usage();
+  } else await usage(args[i]);
 }
 if (daysSeen && which !== 'usage') await usage();
 if (resetAction === 'use' && !resetType) await usage();
 if (yes && resetAction !== 'use') await usage();
+// T4: the auth-material check precedes every reset action — a machine that
+// cannot perform it hears the sign-in remedy, never a demand to confirm an
+// impossible consume (same order the ungated verbs fail in) and never a
+// parked pending key: resetUse()/resetClaim() persist an idempotency key
+// under ~/.zcode/cli/reset-pending/ before resetRequest() would throw (r2 F1).
+if (resetAction) {
+  try {
+    resetAuthPreflight();
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    if (raw) await new Promise((res) => process.stdout.write(
+      JSON.stringify({ error: msg, class: e?.quotaClass ?? null }) + '\n', res));
+    await new Promise((res) => process.stderr.write(`quota: ${msg}\n`, res));
+    process.exit(1);
+  }
+}
 // A consumed reset ticket is a scarce entitlement: interactive runs confirm
 // explicitly (default no); piped or --json runs must pass --yes.
 if (resetAction === 'use' && !yes) {
   if (raw || !process.stdin.isTTY) {
     const msg = `'reset use ${resetType}' consumes a scarce reset ticket; re-run with --yes to confirm`;
-    console.error(`quota: ${msg}`);
     if (raw) await new Promise((res) => process.stdout.write(JSON.stringify({ error: msg, class: null }) + '\n', res));
+    await new Promise((res) => process.stderr.write(`quota: ${msg}\n`, res));
     process.exit(2);
   }
   const rl = createInterface({ input: process.stdin, output: process.stderr });

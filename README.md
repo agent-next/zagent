@@ -7,7 +7,7 @@
 [![npm](https://img.shields.io/npm/v/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![downloads](https://img.shields.io/npm/dm/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/agent-next/zagent/blob/master/LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.15-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/package.json)
+[![Node](https://img.shields.io/badge/node-%%89%A5%2022.15-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/package.json)
 [![CI](https://github.com/agent-next/zagent/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-next/zagent/actions/workflows/ci.yml)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/CONTRIBUTING.md)
 
@@ -158,12 +158,13 @@ sent only to your own provider endpoint.
 
 | Command | What it does |
 |---|---|
-| `zagent -p "…" [--json] [options]` | Headless one-shot (retry-safe; `zagent -p --help` lists options) |
+| `zagent -p "…" [--json] [options]` | Headless one-shot (retry-safe; default yolo runs every tool with no confirmation — opt out with `--mode plan`; `zagent -p --help` lists options) |
 | `zagent` | Interactive TUI |
 | `zagent onboard` | First-run: checks + live smoke + guidance |
 | `zagent doctor [--fix]` | Runtime / Coding-Plan / config diagnosis |
+| `zagent snapshot [status\|lock\|unlock]` | Inspect the desktop app's workspace-snapshot upload staging — kept locked automatically unless you opt out |
 | `zagent update [--check]` | Update zagent itself from npm |
-| `zagent models [query]` | Search the model catalog; `models test <provider/model>` checks a connection |
+| `zagent models [<term>]` | Search the model catalog (`query <term>` is the same search); `models test <provider/model>` checks a connection |
 | `zagent login [--no-browser]` | Sign in to your account |
 | `zagent logout` | Sign out of the current account |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset] [--json]` | Coding-Plan usage |
@@ -174,6 +175,7 @@ sent only to your own provider endpoint.
 | `zagent commit-msg [--model provider/model\|model] [--effort <level>] [--json]` | Generate a commit message for staged (or unstaged) changes (ZCode 3.12.x+) |
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | Inspect or modify runtime task records |
 | `zagent permissions [list\|revoke <pattern\|all>\|--reset] [--json]` | View or revoke remembered always-allow/deny grants |
+| `zagent mode [show\|set <build\|edit\|plan\|yolo>\|clear] [--json]` | View or set the persisted default `-p` permission mode (TUI `/mode` persists per project) |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | Scheduled prompts (local crontab) |
 | `zagent automation list\|create\|update\|delete\|check-binding` | Server-side scheduled prompts (ZCode 3.12.x+) |
 | `zagent bots [list\|show <id>\|status] [--json]` | Chat bots configured in the desktop (read-only) |

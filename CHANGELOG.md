@@ -4,6 +4,19 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+## 0.0.238 — 2026-09-21
+
+- Live-user-testing fixes: `quota reset use` checks credentials before its
+  confirmation gate; `doctor` names severity and remedy on the snapshot-locked
+  line; quota credential errors name the sign-in class; `-p --help --mode` no
+  longer prints a refused auto value; the TUI screen model survives resize and
+  kitty scrollback forms; unknown commands now match transposition typos in
+  did-you-mean.
+- Arguments after `--` are treated as positionals everywhere — selection and
+  print scans stop at the separator.
+- `offpeak --json`'s `open` field agrees with the exit code again after the
+  2026-09-20 campaign end.
+
 ## 0.0.237 — 2026-09-18
 
 - Fixed the first-run sign-in chooser on a credential-less terminal: the

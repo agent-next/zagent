@@ -46,7 +46,7 @@ export function builtinConfigPath(entry) {
 // managed "active" file
 //   <dataBaseDir>/.zcode/v2/runtime/provider/<platform>/<appVersion>/
 //     endpoint-<sha256(origin).slice(0,32)>/zcode-builtin.json
-// (G_e/H_e/Gio/W0/Psr in zcode.cjs). A bare revision number never matches and
+// (G_e/H_e/Gio//Psr in zcode.cjs). A bare revision number never matches and
 // the registry rebuild is skipped silently -> provider_not_found.
 const sha256 = s => createHash('sha256').update(s).digest('hex');
 const zcodeOrigin = env => {

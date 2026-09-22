@@ -222,7 +222,7 @@ export function renderEntryLines(entry, theme, width, options = {}) {
     if (entry.status === 'scheduled' || entry.status === 'running') {
       return lines;
     }
-    // W3 diff surface: a completed file-changing call paints the runtime's
+    // diff surface: a completed file-changing call paints the runtime's
     // recorded patch — colored +/- rows with the file's own syntax inside —
     // in place of the "updated successfully" prose (what every peer shows for
     // an edit). An error keeps its message; a call whose artifact never landed

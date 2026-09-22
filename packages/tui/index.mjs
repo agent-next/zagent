@@ -17,13 +17,13 @@ import { createTheme } from './theme.mjs';
 import { createTranscript, applyEvent, addUserEntry, addNotice, addCommandEntry, endTurn,
   createFold, foldStateFor, collapse as collapseEntry, expand as expandEntry,
   setFold, COLLAPSED, EXPANDED,
-  toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount,
+  toggleAllThinking, foldablesInTurn, stepUserTurn, getSubagentCount, quotaExhaustedNotice,
 } from './events.mjs';
 import { createScreen, composeFrame } from './screen.mjs';
 import { createFrameScheduler } from './frames.mjs';
 import { renderFooter, renderBanner, renderPermission, permissionOptions, renderChooser, renderPrompt, readContextMeter, COMPLETION_ROWS, inputBoxCursor, FOOTER_ROWS_BELOW_BOX } from './chrome.mjs';
-import { effortItems, modelItems, modelOptionId, modelOptionMatches, parseModes, pickerFor } from './pickers.mjs';
-import { lookupGrant, rememberGrant } from '../driver/permissions.mjs';
+import { effortItems, modelItems, modelOptionId, modelOptionMatches, parseModes, pickerFor, grantItems } from './pickers.mjs';
+import { lookupGrant, rememberGrant, listGrants, revokeGrant } from '../driver/permissions.mjs';
 import { sessionDiffArtifacts, artifactPatch } from '../driver/diffs.mjs';
 import { createKeyDecoder, applyKey } from './keys.mjs';
 import { pasteToken, expandChips, insertChip, chipSpanAt, chipSpanIn, takeChips, attachChips, pruneChips } from './paste-chips.mjs';
@@ -61,7 +61,7 @@ const isSecretCommand = (t) => SECRET_COMMAND.test(t);
 const displayFor = (t) => isSecretCommand(t) ? `${t.slice(0, secretMaskFrom(t))}[redacted]` : t;
 
 // ~/.zcode/cli/config.json {tui:{timestamps:true}} opts each transcript block
-// into a right-aligned faint HH:MM stamp (the W5 audit-trail row). Absent or
+// into a right-aligned faint HH:MM stamp (the audit-trail row). Absent or
 // invalid config stays off — the default transcript is unchanged.
 const tuiTimestampsEnabled = ({ home } = {}) => {
   try {
@@ -102,6 +102,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     effort: typeof host.initialThoughtLevel === 'string' ? host.initialThoughtLevel : '',
     model: typeof host.initialModel === 'string' ? host.initialModel : '',
     busy: false,
+    busySince: 0,              // submit time — the status spinner's base before turn_started lands
     abortedByUser: false,
     spinnerFrame: 0,
     activity: null,             // status line derives the turn phase when unset
@@ -137,7 +138,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   ui.historyIndex = ui.history.length;
   void listConversationsAsync({}).then((rows) => { if (!exiting) ui.conversations = rows; }).catch(() => {});
 
-  // G4: the context window is knowable before the first turn — the host's own
+  // : the context window is knowable before the first turn — the host's own
   // modelOptions carry it (the /model picker shows it). Seed the meter so the
   // footer and /context can show the window while 'used' is still unreported;
   // latchMeter merges, so a real kernel sighting overwrites the seed.
@@ -172,7 +173,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     if (meter) state.projection = { ...state.projection, ...meter };
   };
 
-  // W3 diff surface: a file-changing tool call's "updated successfully" prose
+  // diff surface: a file-changing tool call's "updated successfully" prose
   // adds nothing the patch does not show better — and the runtime already wrote
   // the per-call change artifact (kind workspace_file_before_change, keyed by
   // toolCallId). Attach a bounded copy so the row paints colored +/- lines.
@@ -232,7 +233,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   screen.writeRaw('\x1b[r' + renderBanner(theme, screen.width, {
     version: packageVersion, runtime: runtimeLabel(host), model: ui.model,
     workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
-    // Rotating hint (G6): one of str.hints per launch — the fixed line was the
+    // Rotating hint (): one of str.hints per launch — the fixed line was the
     // only place the keys were discoverable.
     hint: (Array.isArray(str.hints) && str.hints.length
       ? str.hints[Math.floor(Math.random() * str.hints.length)] : str.hint),
@@ -268,7 +269,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
             return { index: sel, count: targets.length, entry: targets[sel][0] };
           })(),
           completion: ui.completion, completionRows: completionPageRows(), str,
-          spinnerFrame: ui.spinnerFrame, activity: ui.activity,
+          spinnerFrame: ui.spinnerFrame, activity: ui.activity, busySince: ui.busySince,
           escArmed: ui.escArmedAt !== 0 && Date.now() - ui.escArmedAt < escInterruptMs,
           mcp: ui.mcp, goal: ui.goal, agents: getSubagentCount(state),
           cursor: ui.input.cursor,
@@ -418,7 +419,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     clearCompletion();
     let trimmed = sanitizeText(text).trim();
     if (trimmed === '') return;
-    // G6: '?' is the one-keystroke help the other top CLIs open on — an exact
+    // : '?' is the one-keystroke help the other top CLIs open on — an exact
     // bare '?' resolves to /help instead of spending a model turn on it.
     if (trimmed === '?') trimmed = '/help';
     // Before the busy guard below, which would otherwise QUEUE the quit: the user
@@ -454,7 +455,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       void openPicker(picker).then(opened => { if (!opened) { recordHistory(trimmed); void submit(trimmed); } });
       return;
     }
-    // G9: a slash word matching NOTHING in the merged palette used to reach the
+    // : a slash word matching NOTHING in the merged palette used to reach the
     // kernel, which answered "Unknown command" listing only ITS commands —
     // every zagent command (incl. /exit, the way out) missing. Answer locally
     // with the merged list. Skipped when the host reports no command list:
@@ -548,6 +549,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       state.title = '';
     }
     ui.busy = true;
+    ui.busySince = Date.now();
     // A picked selection item may name what the wait is (e.g. login's "Waiting
     // for browser authorization...") — far better than a generic spinner while
     // the kernel polls for the OAuth callback.
@@ -569,6 +571,10 @@ export async function runTui(host = {}, { deps = null } = {}) {
       const expanded = expandChips(chips, trimmed);
       const payload = ui.attachments.length ? { text: expanded, attachments: [...ui.attachments] } : expanded;
       ui.attachments = [];
+      // turn_started replaces state.turn — identity is the latch for "this
+      // submit produced a real turn", so a kernel that streams but forgets to
+      // echo turnId in the result still can't get its reply double-printed.
+      const turnAtSubmit = state.turn;
       const result = await host.submitPrompt(payload, {
         abortSignal: abort.signal,
         delivery: 'start_turn',
@@ -580,7 +586,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       // A slash command that produced a turn (e.g. /goal <objective>) streamed its
       // answer already; only a command with no turnId is pure command output.
       if (!exiting) {
-        applyResult(result, { wasCommand: trimmed.startsWith('/') && !result?.turnId });
+        applyResult(result, turnAtSubmit);
         latchGoal(trimmed);
       }
     } catch (error) {
@@ -598,6 +604,28 @@ export async function runTui(host = {}, { deps = null } = {}) {
           for (const line of formatProviderError(explained).split('\n')) {
             addNotice(state, line.replace(/^zagent: /, ''), 'warning');
           }
+        } else if (message.trim() === 'Turn execution failed') {
+          // The kernel's bridge throws a bare "Turn execution failed" — the
+          // provider detail never crosses it. Ask the monitor: when the
+          // 5-hour pool is spent, the failure IS the window and its reset is
+          // the fact that matters. A report that cannot prove exhaustion adds
+          // nothing — the failure is something else. The probe is gated on the
+          // exact bridge shape: while the pool sits near 100%, any other
+          // unexplained error (a local TypeError, a harness fault) must NOT be
+          // quota-attributed.
+          const turnAtError = state.turn;
+          void Promise.resolve().then(() => quotaProbe())
+            .then((report) => {
+              // A slow monitor call must not stamp its verdict onto the NEXT
+              // turn — turn_started replaces state.turn, so identity is the latch.
+              if (exiting || state.turn !== turnAtError) return;
+              if (report && typeof report === 'object') {
+                state.quotaReport = report;   // retryNotice prefers the monitor's reset
+              }
+              const line = quotaExhaustedNotice(report);
+              if (line) { addNotice(state, line, 'warning'); draw(); }
+            })
+            .catch(() => {});
         }
       }
     } finally {
@@ -644,7 +672,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     ui.goal = arg.replace(/\s+/gu, ' ').slice(0, 40);
   }
 
-  function applyResult(result, { wasCommand }) {
+  function applyResult(result, turnAtSubmit) {
     if (!result || typeof result !== 'object') return;
     latchMeter(result);
     if (typeof result.mode === 'string') ui.mode = result.mode;
@@ -662,7 +690,14 @@ export async function runTui(host = {}, { deps = null } = {}) {
     }
     if (typeof result.thoughtLevel === 'string') ui.effort = result.thoughtLevel;   // shown in the footer
     if (openSelection(result.selection)) return;
-    if (!wasCommand) return;
+    // A prompt whose turn never started still answers through `response` — the
+    // kernel's no-model refusal resolves {loginRequired:true, response:'Model
+    // not set, send /login to login.'} with no turnId. Printing only for slash
+    // commands dropped that answer entirely: the prompt echoed, then the
+    // screen sat unchanged forever. A real turn's reply already streamed — the
+    // turnId flag marks it, and the turnAtSubmit identity latch covers a kernel
+    // that streams a turn but forgets to echo the flag.
+    if (result.turnId || state.turn !== turnAtSubmit) return;
     for (const key of ['response', 'message', 'text', 'output', 'detail']) {
       if (typeof result[key] === 'string' && result[key].trim() !== '') {
         addCommandEntry(state, result[key].trim());
@@ -927,7 +962,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
         c.index = (c.index + 1) % c.items.length; draw(); return true;
       case 'up':
         c.index = (c.index - 1 + c.items.length) % c.items.length; draw(); return true;
-      // G3: page keys step a whole window instead of a row — clamped, not
+      // : page keys step a whole window instead of a row — clamped, not
       // wrapped, so the bottom of the list is a stable place to land.
       case 'pagedown':
         c.index = Math.min(c.index + completionPageRows(), c.items.length - 1); draw(); return true;
@@ -949,7 +984,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       }
       case 'escape':
         clearCompletion();
-        // G9: closing the palette must drop slash debris too, or the next
+        // : closing the palette must drop slash debris too, or the next
         // typed /help becomes '//help'. Mirrored in the main escape branch.
         if (/^\/+$/.test(ui.input.value)) ui.input = { value: '', cursor: 0 };
         draw(); return true;
@@ -962,7 +997,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   // effortOptions, modelOptions and setMode are handed to us by the host. Without
   // a picker, /effort, /model and /mode only worked if you already knew the
   // argument to type.
-  async function openPicker(kind) {
+  async function openPicker(kind, grants) {
     if (exiting) return false;
     if (kind === 'effort') {
       const items = effortItems(host.effortOptions, ui.effort);
@@ -1018,6 +1053,30 @@ export async function runTui(host = {}, { deps = null } = {}) {
         index: 0,
         pick: (item) => { recordHistory(`/goal ${item.value}`); void submit(`/goal ${item.value}`); },
       };
+      draw();
+      return true;
+    }
+    if (kind === 'permissions') {
+      // F14b: view + revoke inside the TUI. Picking a grant asks the shared
+      // y/N confirm (the key handler closes this chooser first, so askConfirm
+      // is free to open), then removes exactly that record by store key.
+      const items = grantItems(Array.isArray(grants) ? grants : listGrants({ home: host.home }));
+      if (!items.length) return false;
+      ui.chooser = { title: str.grantsTitle, detail: str.grantsDetail,
+        items, index: 0,
+        pick: async (item) => {
+          const yes = await askConfirm(`revoke ${item.label}?`);
+          if (!yes) { draw(); return; }
+          try {
+            const done = revokeGrant(item.value, { home: host.home });
+            addNotice(state,
+              done ? `revoked ${item.label}` : `grant already gone: ${item.label}`,
+              done ? 'muted' : 'warning');
+          } catch (e) {
+            addNotice(state, `revoke failed: ${String(e?.message ?? e).slice(0, 160)}`, 'error');
+          }
+          draw();
+        } };
       draw();
       return true;
     }
@@ -1099,7 +1158,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     return true;
   }
 
-  // The single-entry fold cursor (W3): j/k walk the selected turn's foldables
+  // The single-entry fold cursor (): j/k walk the selected turn's foldables
   // and o toggles just that one. Clamped every read so entries arriving or a
   // stale foldSel can never aim outside the list.
   const foldTargets = () => foldablesInTurn(state.entries, ui.userTurn);
@@ -1163,7 +1222,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     try { stdin.setRawMode?.(false); } catch {}
     screen.writeRaw('\x1b[?2004l\x1b[<u');   // paste off + kitty keyboard pop
     stdin.pause?.();
-    // W5 exit summary: a session is a resumable object — the way out names it
+    // exit summary: a session is a resumable object — the way out names it
     // and hands back both ways in (the latest in this directory, or this id
     // exactly). Only when the runtime actually started one — nothing to resume
     // means no hint. Fatal exits keep their own diagnostic line instead.
@@ -1230,15 +1289,16 @@ export async function runTui(host = {}, { deps = null } = {}) {
         const now = Date.now();
         if (ui.escArmedAt !== 0 && now - ui.escArmedAt < escInterruptMs) { ui.escArmedAt = 0; interrupt(); return; }
         ui.escArmedAt = now;
-        // The status hint only renders while the reducer marks the turn active;
-        // a host that never emitted turn_started would swallow the press silently.
+        // The busy status hint covers the gap before turn_started too, but a
+        // transcript notice is belt-and-suspenders — cheap, and still the only
+        // record once the status line moves on.
         if (!state.turn?.active) addNotice(state, str.interruptAgain ?? str.interrupt, 'muted');
         draw();
         return;
       }
       ui.escArmedAt = 0;
       if (ui.queue.length > 0) { applyQueueAction(ui.queue.length - 1, 1); return; }
-      // G9: Esc dismissed the palette but left a bare '/', so typing /help next
+      // : Esc dismissed the palette but left a bare '/', so typing /help next
       // produced '//help' and the kernel's unknown-command reply. An input that
       // is only slashes is debris — drop it.
       if (/^\/+$/.test(ui.input.value)) { ui.input = { value: '', cursor: 0 }; draw(); return; }
@@ -1527,7 +1587,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     } catch {}
   }
 
-  // G4: the plan window on the home screen — the other top CLIs surface quota
+  // : the plan window on the home screen — the other top CLIs surface quota
   // at start; ours only answered on /quota. One async probe, silent on failure:
   // a missing credential is already covered by the first-run card.
   const quotaProbe = deps?.codingPlanStatus ?? codingPlanStatus;

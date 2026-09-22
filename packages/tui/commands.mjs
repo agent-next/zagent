@@ -22,7 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sessionDiffArtifacts, renderDiff, undoPreview, undoApply } from '../driver/diffs.mjs';
-import { modelOptionId, modelOptionMatches } from './pickers.mjs';
+import { modelOptionId, modelOptionMatches, grantLabel } from './pickers.mjs';
 import { openTasksDb, findTask, updateTask, tasksDbPath } from '../driver/tasks-index.mjs';
 import { loadGlobalMemory, loadProjectMemory } from '../driver/memory.mjs';
 import { codingPlanStatus } from '../driver/quota.mjs';
@@ -132,7 +132,7 @@ export function matchClientCommand(text, commands = CLIENT_COMMANDS) {
 
 // The keys a person can press, from the key handler in index.mjs — codex's `?`
 // overlay and claude's /help modal both lead with theirs; zagent's were only
-// ever visible in the one-line banner hint (G6).
+// ever visible in the one-line banner hint ().
 export const SHORTCUTS = Object.freeze([
   ['enter', 'submit'],
   ['tab', 'cycle the /command, $skill, #conversation or @file popup'],
@@ -196,7 +196,7 @@ function usageReport(ctx) {
   return lines.join('\n');
 }
 
-/** A 10-cell usage bar for a percentage — the limit bars /status shows (G5). */
+/** A 10-cell usage bar for a percentage — the limit bars /status shows (). */
 export function quotaBar(pct, width = 10) {
   if (!Number.isFinite(pct)) return '';
   const filled = Math.round(Math.min(100, Math.max(0, pct)) / 100 * width);
@@ -235,7 +235,7 @@ export function formatQuota(report, { bars = false } = {}) {
   return lines.join('\n');
 }
 
-/** One-line start-of-session quota summary for the home screen (G4). */
+/** One-line start-of-session quota summary for the home screen (). */
 export function quotaHomeLine(report) {
   if (!report || typeof report !== 'object') return null;
   const first = formatQuota(report).split('\n')[0];
@@ -347,13 +347,6 @@ function modelWindow(ctx) {
   return Number.isFinite(w) && w > 0 ? w : null;
 }
 
-function grantLabel(g, max = 80) {
-  const p = typeof g.pattern === 'string' && g.pattern
-    ? (g.pattern.length > max ? `${g.pattern.slice(0, max - 1)}…` : g.pattern)
-    : null;
-  return `${g.toolName ?? '?'}${p ? `(${p})` : ''}`;
-}
-
 function execCommand(cmd, args) {
   return new Promise((resolve) => {
     let child;
@@ -381,7 +374,7 @@ export function isNewerVersion(latest, current) {
 
 const readCurrent = (p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
 
-// G10: /rename /archive /delete — `zagent task`'s session-record surface inside
+// 0: /rename /archive /delete — `zagent task`'s session-record surface inside
 // the TUI (codex/claude/opencode all manage sessions without leaving it). The
 // store is the runtime's own tasks-index.sqlite: only ever UPDATEd, never
 // created — a missing file means there is nothing to manage yet.
@@ -465,7 +458,7 @@ export const CLIENT_COMMANDS = [
       ];
       ctx.print(lines.join('\n'));
       ctx.draw();
-      // G5: the other top CLIs' /status carries the plan and its limit bars;
+      // : the other top CLIs' /status carries the plan and its limit bars;
       // ours needed a second command. The quota tail is a separate entry so a
       // slow monitor (15s timeout upstream) never stalls the local block —
       // /status must still answer instantly mid-turn. 'not reported' when the
@@ -504,7 +497,7 @@ export const CLIENT_COMMANDS = [
       if (hasUsed && hasWindow) {
         lines.push(`context: ${formatTokens(p.contextUsed)} / ${formatTokens(p.contextWindow)}`);
       } else {
-        // G4: the window is knowable before the first turn — the kernel may
+        // : the window is knowable before the first turn — the kernel may
         // report it alone, and the host's modelOptions carry it (the /model
         // picker shows it). Neither half is ever guessed: a reported 'used'
         // still prints when the window is unknown.
@@ -773,14 +766,18 @@ export const CLIENT_COMMANDS = [
   },
   {
     name: 'permissions', group: 'Project',
-    summary: 'persisted always-allow/deny grants',
-    run(ctx) {
+    summary: 'persisted always-allow/deny grants — pick one to revoke',
+    async run(ctx) {
       const grants = listGrants({ home: ctx.home ?? ctx.host?.home });
       if (!grants.length) return ctx.print('no persisted permission grants');
       const lines = ['persisted grants (~/.zcode/cli/grants.json):'];
       for (const g of grants) lines.push(`  ${grantLabel(g)} — ${g.optionId ?? '?'}`);
       lines.push('revoke with: zagent permissions revoke <pattern|all>');
       ctx.print(lines.join('\n'));
+      // F14b: the grants picker is the in-TUI revoke path — enter on a grant
+      // asks y/N, and a yes removes exactly that record by store key. The
+      // printed list and the chooser share this one read.
+      await ctx.openPicker('permissions', grants);
     },
   },
   {

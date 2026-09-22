@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync, linkSync, rmSync } 
 import { dirname } from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { decryptCredential, loadCredentialStore, deviceMid, NO_DESKTOP_CREDENTIALS } from './credentials.mjs';
+import { decryptCredential, loadCredentialStore, deviceMid, NO_DESKTOP_CREDENTIALS, CREDENTIALS_UNREADABLE } from './credentials.mjs';
 
 export const BASE = process.env.ZCODE_BASE_URL ?? 'https://zcode.z.ai';
 
@@ -16,7 +16,7 @@ export function quotaError({ status, body }) {
   return `HTTP ${status}${body.code === undefined ? '' : ` (code ${body.code})`}: ${String(message)}`;
 }
 
-// FLOCK-F11: a failing quota call must say WHICH problem it is — a rejected
+// : a failing quota call must say WHICH problem it is — a rejected
 // credential (sign-in), a real usage limit (quota window), or transport —
 // because the fixes differ. The class is derived from the HTTP status and the
 // numeric business code only; server-provided message text stays out of the
@@ -31,7 +31,7 @@ export const QUOTA_CLASS_HINT = {
   auth: 'a sign-in problem, not a quota limit — run `zagent login` to sign in',
   limit: 'a quota-window problem, not a sign-in problem — retry after the window resets (`zagent quota reset` lists reset tickets)',
 };
-// FLOCK-F15: the failure class rides the error as `quotaClass` so the --json
+// : the failure class rides the error as `quotaClass` so the --json
 // error envelope emits it as a field, not only as stderr prose. Absent = the
 // failure is unclassified (a service-shape problem, not auth/limit/network).
 const classified = (message, cls) => Object.assign(new Error(message), { quotaClass: cls });
@@ -54,7 +54,11 @@ export function getZcodeJwt() {
     const blob = credentialStore()['zcodejwttoken'];
     // A store without the JWT is the same signed-out state as no store at all.
     if (typeof blob !== 'string' || !blob) throw new Error(NO_DESKTOP_CREDENTIALS);
-    const jwt = decryptCredential(blob);
+    // An undecryptable blob (bad format, wrong secret) is the same class too —
+    // never let 'credential blob: bad format' or a GCM error reach the user.
+    let jwt;
+    try { jwt = decryptCredential(blob); }
+    catch { throw new Error(`stored credential is unreadable — ${CREDENTIALS_UNREADABLE}`); }
     if (!jwt) throw new Error(NO_DESKTOP_CREDENTIALS);
     return jwt;
   } catch (e) { e.quotaClass ??= 'auth'; throw e; }
@@ -115,6 +119,18 @@ function resetOauth(store) {
     } catch { /* a corrupt blob falls through to the next family key */ }
   }
   return undefined;
+}
+// : `reset use` confirms BEFORE the network call, so every
+// deterministic auth-material failure resetRequest would surface must fire
+// first — a credential-free machine gets the sign-in remedy, not a demand to
+// confirm a consume it cannot perform. Mirrors resetRequest's throwing
+// checks in order (resetOauth can never throw, so it is not probed); keep
+// this list in sync if resetRequest's header construction gains a new
+// throwing check.
+export function resetAuthPreflight() {
+  credentialStore();
+  getZcodeJwt();
+  deviceMidOrAuth();
 }
 async function resetRequest(path, { method = 'GET', body, appVersion = '3.10.2' } = {}) {
   const store = credentialStore();

@@ -194,7 +194,7 @@ export function applyEvent(state, event) {
         turnId: str(event?.turnId), active: true, startedAt: Date.now(),
         entryStart: state.entries.length,
         usage: null, retries: 0, toolCalls: 0, errors: 0,
-        // W5 turn-status phases: 'waiting' until the first observable model
+        // turn-status phases: 'waiting' until the first observable model
         // output, 'responding' after; streamBytes is the ⇣ received counter.
         responded: false, streamBytes: 0,
       };
@@ -512,7 +512,7 @@ export function addNotice(state, text, level = 'muted') {
   return state;
 }
 
-/** HH:MM in 24-hour local time — the same stamp /status, /quota, G4 and the
+/** HH:MM in 24-hour local time — the same stamp /status, /quota, and the
  * config-gated block timestamps print (render.mjs shares it). */
 export const hhmm = (at) => {
   const d = new Date(at);
@@ -520,9 +520,20 @@ export const hhmm = (at) => {
     ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : null;
 };
 
-/** The authoritative window reset: a cached quota monitor report's TOKENS_LIMIT pool. */
-const windowResetAt = (report) =>
-  (report?.pools ?? []).find(x => x?.type === 'TOKENS_LIMIT')?.nextResetAt ?? null;
+/** The rolling 5-hour window pool — the same predicate bin/zagent-quota uses
+ * (TOKENS_LIMIT/CREDIT_LIMIT, unit 3, number 5). Reports that carry no
+ * unit/number at all fall back to the window-type pool alone; a pool provably
+ * bound to a different window never claims the 5-hour one. */
+const windowPool = (report) => {
+  const pools = report?.pools ?? [];
+  const isWindow = (p) => p?.type === 'TOKENS_LIMIT' || p?.type === 'CREDIT_LIMIT';
+  return pools.find((p) => isWindow(p) && p?.unit === 3 && p?.number === 5)
+    ?? pools.find((p) => isWindow(p) && p?.unit == null && p?.number == null)
+    ?? null;
+};
+
+/** The authoritative window reset: a cached quota monitor report's 5-hour pool. */
+const windowResetAt = (report) => windowPool(report)?.nextResetAt ?? null;
 
 /**
  * The retry notice text for a model_network_status payload. Every retry says
@@ -554,13 +565,37 @@ export function retryNotice(p, attempt, report) {
     const monitored = Date.parse(windowResetAt(report) ?? '');
     const stamp = hhmm(Number.isFinite(monitored) && monitored > Date.now()
       ? monitored : explained?.reset?.at);
-    // G7: measured receipts (2026-09-07) show the rolling window is independent
+    // : measured receipts (2026-09-07) show the rolling window is independent
     // of off-peak routing — 1308s land inside an open off-peak window — so the
     // honest remedy is provider-errors': wait for the reset.
     return `5-hour window used up${stamp ? ` · resets ${stamp}` : ''} · nothing will succeed until the reset`;
   }
   if (kind === RETRYABLE) return `rate limited · retry ${n}/${m}`;
   return `network retry ${n}/${m}`;
+}
+
+/**
+ * A turn that threw a bare "Turn execution failed" carries no provider detail
+ * across the kernel's bridge — explainProviderError finds nothing to parse.
+ * When the monitor says the 5-hour pool is spent, the failure IS the window
+ * and the reset time is the only fact that matters. Returns null when the
+ * report cannot prove exhaustion: a guess would name quota for a failure that
+ * is something else entirely.
+ */
+export function quotaExhaustedNotice(report) {
+  const pool = windowPool(report);
+  if (!pool) return null;
+  const spent = pool.usedPercent >= 100 || pool.remaining === 0 || pool.remainingPercent === 0;
+  if (!spent) return null;
+  // The window length comes from the pool, like /status's fiveHour.number —
+  // a future 3-hour window must not be mislabeled "5-hour".
+  const hours = pool.number ?? 5;
+  const at = Date.parse(pool.nextResetAt ?? '');
+  if (!Number.isFinite(at)) return `${hours}-hour window used up · nothing will succeed until the reset`;
+  // A reset already past means the service has not rolled the window yet —
+  // "reset pending" (bin/zagent-quota's word): the retry may already work.
+  if (at <= Date.now()) return `${hours}-hour window used up · reset pending — a retry may already work`;
+  return `${hours}-hour window used up · resets ${hhmm(at)} · nothing will succeed until the reset`;
 }
 
 /** Slash-command output is runtime text, and equally untrusted. */

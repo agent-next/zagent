@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zagent models [query] — B1: search the OFFICIAL provider catalog the desktop ships.
+// zagent models [<term>|query <term>] — B1: search the OFFICIAL provider catalog the desktop ships.
 // No query: the configured Coding Plan models first (the plan is what people
 // actually run), then the other providers.
 // zagent models test <provider/model|model> — the GUI's connection check:
@@ -182,11 +182,21 @@ if (process.argv[2] === 'test') {
   process.exit(code);
 }
 
-const q = process.argv[2];
+let q = process.argv[2];
+let extra = process.argv.length > 3;
+if (q === 'query' && process.argv[3] !== undefined) {
+  // `models query <term>` — the help's [query|test …] reads as two keyword
+  // forms, so the literal keyword searches exactly like a bare <term>. Only
+  // when a term follows: the dispatcher consumes `--`, so `models -- query`
+  // arrives as a bare 'query' and must stay a search for a model literally
+  // named 'query', not a keyword usage error.
+  q = process.argv[3];
+  extra = !q || process.argv.length > 4;
+}
 // A query is a model/provider substring — never a flag. `models --json` used to
 // search for a model literally named '--json' and report "no model matching".
-if (q?.startsWith('-') || process.argv.length > 3) {
-  console.error('usage: zagent models [query|test <provider/model|model> [--json]]');
+if (q?.startsWith('-') || extra) {
+  console.error('usage: zagent models [<term>|query <term>|test <provider/model|model> [--json]]');
   process.exit(2);
 }
 const catalog = loadCatalog();

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zagent memory — E6 surface over the runtime-compatible store (paths proven vs live).
+// zagent memory — surface over the runtime-compatible store (paths proven vs live).
 // Usage: zagent memory [show]        → this workspace's MEMORY.md
 //        zagent memory index         → list workspaces that HAVE memories
 //        zagent memory append <txt>  → append one line to this workspace's MEMORY.md
@@ -25,7 +25,7 @@ if (cmd === 'index') {
 } else if (cmd === 'append') {
   if (!rest.join(' ').trim()) { console.error('usage: zagent memory append <text>'); process.exit(2); }
   const line = rest.join(' ');
-  // r10: retry under the exclusive lock (another append in flight), bounded
+  // : retry under the exclusive lock (another append in flight), bounded
   let ok = false;
   for (let i = 0; i < 20 && !ok; i++) {
     try {
@@ -38,7 +38,7 @@ if (cmd === 'index') {
   console.log(`appended to ${cwd} memory`);
 } else { // show (default) — cmd is 'show' or undefined here
   let m; try { m = loadProjectMemory(cwd); }
-  catch (e) { console.error(`memory read failed: ${e.message}`); process.exit(2); } // r10 #4: IO errors ≠ 'no memory'
+  catch (e) { console.error(`memory read failed: ${e.message}`); process.exit(2); } // #4: IO errors ≠ 'no memory'
   if (!m) { console.log(`No memory for ${cwd}. Add one with: zagent memory append "…"`); process.exit(0); }
   console.log(m);
 }

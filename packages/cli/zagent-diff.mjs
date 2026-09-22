@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zagent diff [sessionId] — E3 surface: per-turn +A -D · N files + per-file hunks,
+// zagent diff [sessionId] — surface: per-turn +A -D · N files + per-file hunks,
 // rendered from the runtime's own change artifacts. No sessionId: list sessions that have them.
 import { sessionDiffArtifacts, sessionsWithDiffs, renderDiff } from '../driver/diffs.mjs';
 const argv = process.argv.slice(2);

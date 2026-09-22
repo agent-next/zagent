@@ -58,7 +58,14 @@ const probe = git(['rev-parse', '--is-inside-work-tree']);
 if (probe.error) fail(`git is not runnable here: ${probe.error.message}`);
 if (probe.stdout?.trim() !== 'true') {
   const why = String(probe.stderr ?? '').trim();
-  fail(`not a git repository — run inside the checkout you want a message for${why ? ` (git: ${why.split('\n')[0]})` : ''}`);
+  // Ownership refusals hit a REAL repo — the "not a git repository" lead is
+  // a lie there; name the refusal and the remedy. 'dubious ownership' is git
+  // >=2.36; backport builds (Ubuntu LTS/Debian/RHEL, <=2.35.x) say 'unsafe
+  // repository'; a localized fatal still prints the safe.directory literal.
+  const lead = /dubious ownership|unsafe repository|safe\.directory/i.test(why)
+    ? 'git refuses this checkout — dubious ownership; mark it safe: git config --global --add safe.directory <path>'
+    : 'not a git repository — run inside the checkout you want a message for';
+  fail(`${lead}${why ? ` (git: ${why.split('\n')[0]})` : ''}`);
 }
 // Staged changes first (what a human commits); fall back to unstaged so the
 // command still answers before anything is added to the index.

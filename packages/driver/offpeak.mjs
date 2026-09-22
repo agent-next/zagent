@@ -1,4 +1,4 @@
-// I3 — off-peak scheduler helper: pure functions for the zero-quota flash window.
+// off-peak scheduler helper: pure functions for the zero-quota flash window.
 // Window is data-driven (from the docs client-configs endpoint when reachable, cached);
 // local fallback is 23:00–09:00 SGT (the documented campaign default through 2026-09-20).
 // Z.ai's campaign advertises GLM-5.3-Flash via ZCode at no quota cost in this window.
@@ -81,7 +81,7 @@ export function cachedWindow() {
   } catch { return { ...DEFAULT }; }
 }
 
-// --- W2b: off-peak tool policy (desktop 3.12.x workspace/updateOffPeakToolPolicy) ---
+// --- : off-peak tool policy (desktop 3.12.x workspace/updateOffPeakToolPolicy) ---
 // The kernel keeps offPeakToolEnabled in app-server memory only — the update RPC
 // sets it on the running instance and session/create consumes it. The GUI
 // re-sends its stored preference each launch. zagent's equivalent store is this
@@ -257,7 +257,7 @@ export async function idleTaskGate() {
   return gateFromAvailability(await checkAvailability());
 }
 
-// --- I2: idle-task queue state machine over the ticket lifecycle ---
+// --- : idle-task queue state machine over the ticket lifecycle ---
 // Pure transitions (testable): idle → queued(taken) → running(polled) → done|failed,
 // driven by poll bodies and the C4 error classifier. Retry policy: only abort_retake
 // and 429 go back to queued (bounded); quota_wait/eligibility park as waiting.

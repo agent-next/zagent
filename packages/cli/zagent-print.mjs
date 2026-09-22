@@ -17,6 +17,7 @@ import { ZCodeProtocolClient, runTurn, sessionSid, currentAnswer, extractUsage }
 import { setMode, MODES } from '../driver/session-control.mjs';
 import { autoAllow } from '../driver/permissions.mjs';
 import { modelReasoningLevels } from '../driver/providers.mjs';
+import { KERNEL_VALUE_FLAGS, KERNEL_LIST_FLAGS } from './commands.mjs';
 
 const VALUE_FLAGS = new Set(['--model', '--effort', '--mode', '--cwd', '--output-format', '--locale']);
 // The coding-plan vocabulary (GLM reasoningLevel/thoughtLevel low|high|max,
@@ -31,12 +32,42 @@ const REFUSED_FLAGS = new Set(['-c', '--continue', '--resume', '--attach', '--ta
   '--target-replace', '--force', '-f', '--force-mcs', '--browser-use', '--browser-executable',
   '--surface', '--disallowedTools', '--disallowed-tools', '--stdio']);
 
+// Only pre-`--` tokens are flags — POSIX and the kernel's parseArgs both treat
+// everything after the separator as positionals, so a post-`--` --model or -p
+// is data, never a selection or print flag.
+const flagArgs = (args) => {
+  const sep = args.indexOf('--');
+  return sep === -1 ? args : args.slice(0, sep);
+};
+
+// The kernel reads positionals[0] — the first argv token no flag consumed,
+// INCLUDING post-`--` tokens (verified: `--surface desktop -- app-server`
+// exits 0; a flag VALUE like `--cwd app-server` does not exempt).
+// extraValueFlags: value flags the kernel table doesn't know — the selection
+// extensions below — so a `-p hi --model m` caller doesn't read `m` as the
+// kernel positional (it used to suppress persisted-mode injection).
+export const SELECTION_VALUE_FLAGS = new Set(['--model', '--effort']);
+export function kernelPositional0(argv, extraValueFlags) {
+  for (let i = 0, post = false; i < argv.length; i++) {
+    const a = argv[i];
+    if (post) return a;
+    if (a === '--') { post = true; continue; }
+    if (!a.startsWith('-') || a === '-') return a;
+    const name = a.includes('=') ? a.slice(0, a.indexOf('=')) : a;
+    if (a.includes('=')) continue;
+    if (KERNEL_VALUE_FLAGS.has(name) || (extraValueFlags && extraValueFlags.has(name))) i++;
+    else if (KERNEL_LIST_FLAGS.has(name)) while (i + 1 < argv.length && !argv[i + 1].startsWith('-')) i++;
+  }
+  return undefined;
+}
+
 export function hasSelection(args) {
-  return args.some(a => a === '--model' || a === '--effort' || a.startsWith('--model=') || a.startsWith('--effort='));
+  return flagArgs(args).some(a => a === '--model' || a === '--effort' || a.startsWith('--model=') || a.startsWith('--effort='));
 }
 
 export function isPrintInvocation(args) {
-  return args.includes('-p') || args.some(a => a === '--prompt' || a.startsWith('--prompt=') || a.startsWith('-p='));
+  const pre = flagArgs(args);
+  return pre.includes('-p') || pre.some(a => a === '--prompt' || a.startsWith('--prompt=') || a.startsWith('-p='));
 }
 
 // Pull the selection/presentation flags out of argv; `rest` keeps the prompt
@@ -48,6 +79,9 @@ export function splitSelection(args) {
   const rest = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
+    // `--` ends flag parsing; the tail is positional data — this path refuses
+    // positionals, but the error must name them, not parse them as flags.
+    if (a === '--') { rest.push(...args.slice(i + 1)); break; }
     const [name, eq] = a.includes('=') ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a, undefined];
     if (name === '-p' || name === '--prompt') {
       sel.prompt = eq !== undefined ? eq : args[++i];

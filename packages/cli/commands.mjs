@@ -11,13 +11,15 @@ export const GROUPS = ['Run', 'Set up', 'Account', 'Project', 'Extend', 'Debug']
 
 export const COMMANDS = [
   ['(default)', 'start the interactive terminal UI', 'Run'],
-  ['-p "…" [--json] [options]', 'run one headless prompt and print the answer (-p --help lists options)', 'Run'],
+  ['-p "…" [--json] [options]', 'run one headless prompt — default yolo runs EVERY tool with no confirmation (opt out with --mode plan; -p --help lists options)', 'Run'],
   ['onboard', 'check your setup and run one test prompt', 'Set up'],
   ['doctor [--fix]', 'diagnose the runtime, config, and API key', 'Set up'],
+  ['snapshot [status [--json]|lock|unlock]', 'check or disable the desktop app\u2019s workspace-snapshot upload staging', 'Set up'],
   ['update [--check] [--json]', 'update zagent itself to the latest npm release', 'Set up'],
-  ['models [query|test <provider/model|model> [--json]]', 'list providers, search the catalog, or test a model connection', 'Set up'],
+  ['models [<term>|query <term>|test <provider/model|model> [--json]]', 'list providers, search the catalog, or test a model connection', 'Set up'],
   ['login [--no-browser]', 'sign in to your account', 'Set up'],
   ['logout', 'sign out of the current account', 'Set up'],
+  ['mode [show|set <build|edit|plan|yolo>|clear] [--json]', 'view or set the persisted default -p permission mode (TUI: /mode persists per project)', 'Set up'],
   ['quota [status|usage [--days 1..30]|balance|preview|reset [claim|use five-hour|use week]] [--json] [--yes]', 'Coding Plan quota and account usage', 'Account'],
   ['remote [status|connect [--live]] [--json]', 'whether this device is registered for remote control (not available yet)', 'Account'],
   ['offpeak [--refresh] [--json] | offpeak tools [on|off] [--json]', 'the off-peak campaign window and tool toggle (exit 0 while open)', 'Account'],
@@ -60,13 +62,58 @@ export const ENTRY_FLAGS = new Set([
   '--disallowedTools', '--disallowed-tools', '--model', '--effort',
 ]);
 
+// Kernel value-flag arities (same verified parseArgs table): each takes a
+// space-separated value, and the kernel refuses "argument missing" (trailing)
+// or "argument is ambiguous" (flag-shaped next token) BEFORE any credential
+// question — verified on extracted 3.12.1 (`-p hi --mode` → "Option '--mode
+// <value>' argument missing"). zagent's credential gate must not beat that
+// usage error, so zagent.mjs sweeps these ahead of it. `-p`/`--prompt` and
+// `--attach` keep their dedicated checks (better messages, file stat);
+// `--model`/`--effort` are the zagent selection extension, not kernel flags.
+export const KERNEL_VALUE_FLAGS = new Set([
+  '-p', '--prompt', '--output-format', '--browser-use', '--browser-executable',
+  '--attach', '--cwd', '--locale', '--resume', '--target', '--mode', '--surface',
+]);
+// The manually pre-parsed list flags take space-separated values until the
+// next `-` token; zero values answers "requires at least one tool".
+export const KERNEL_LIST_FLAGS = new Set(['--disallowedTools', '--disallowed-tools']);
+// Kernel boolean flags (same verified parseArgs table): a glued `--x=v` is
+// refused "Option '--x' does not take an argument" BEFORE any credential
+// question — verified on extracted 3.12.1 (`--continue=x`, `--json=x`,
+// `--target-replace=x`, `--force-mcs=x`, `--verbose=x`, `--force=x`,
+// `--no-color=x`, `--no-browser=x`, `--stdio=x`). zagent.mjs sweeps these
+// beside the arity check. Short forms parse differently kernel-side:
+// parseArgs expands single-dash clusters so `-c=x`/`-f=x` answer 'Unknown
+// option '-='' — zagent.mjs sweeps those separately. `-p=` is legal
+// (the short form's value is '=').
+export const KERNEL_BOOL_FLAGS = new Set([
+  '--continue', '--json', '--target-replace', '--force', '--force-mcs',
+  '--verbose', '--stdio', '--no-color', '--no-browser',
+]);
+// Kernel enum-value domains (same verified parseArgs contract): an
+// out-of-domain VALUE is refused before any credential question — extracted
+// 3.12.1 answers `--mode=bogus` → 'Unsupported --mode value: bogus.
+// Supported modes: build, edit, plan, yolo.', `--output-format=bogus` →
+// 'must be one of text, json, stream-json', `--locale`/`--surface`/
+// `--browser-use` likewise. --mode is case-folded kernel-side (`--mode=PLAN`
+// parses); the rest compare exactly. zagent.mjs sweeps these beside the
+// arity check; --mode is skipped when --model/--effort select because the
+// selection parser owns it there and 'auto' is legal via session/setMode.
+export const KERNEL_ENUM_FLAGS = new Map([
+  ['--mode', { values: ['build', 'edit', 'plan', 'yolo'], fold: true }],
+  ['--output-format', { values: ['text', 'json', 'stream-json'] }],
+  ['--locale', { values: ['en-US', 'zh-CN', 'auto'] }],
+  ['--surface', { values: ['terminal', 'desktop'] }],
+  ['--browser-use', { values: ['headless'] }],
+]);
+
 // The headless rows `zagent -p --help` prints. Only options a headless prompt
 // can meaningfully take are listed; login's --no-browser and the server-side
 // --stdio are forwarded but not headless documentation.
 export const HEADLESS_OPTIONS = [
   ['-p, --prompt <text>', 'run one headless prompt'],
   ['--attach <path>', 'attach a local file to the prompt; repeat for more'],
-  ['--mode <build|edit|plan|yolo|auto>', 'permission mode; default yolo runs EVERY tool with no confirmation — opt out with --mode plan'],
+  ['--mode <build|edit|plan|yolo>', 'permission mode; default yolo runs EVERY tool with no confirmation — opt out with --mode plan'],
   ['--model <provider/model|model>', 'pick the model (zagent extension — protocol-side, bare id = zai provider)'],
   ['--effort <level>', "pick the reasoning effort (zagent extension — protocol-side; default = the model's last declared level)"],
   ['--disallowed-tools <tools…>', 'comma/space-separated tool denylist (alias --disallowedTools)'],
@@ -111,6 +158,16 @@ export const COMMAND_DETAILS = {
     '',
     '  example: zagent doctor --fix',
   ],
+  snapshot: [
+    'The desktop app (not zagent) stages encrypted workspace snapshots — the',
+    'whole .git included — under ~/.zcode/v2/checkpoints and uploads them when',
+    'logged in. Every zagent run keeps that dir locked (wiping staged files)',
+    'unless you opt out with `unlock`, which persists. `status` reports staged',
+    'uploads (exit 1 when any are pending); `lock` opts back in. zagent\u2019s',
+    'rewind is unaffected (separate store).',
+    '',
+    '  example: zagent snapshot lock',
+  ],
   update: [
     '  --check   report the latest npm release without installing it',
     '  --json    machine-readable result',
@@ -119,7 +176,8 @@ export const COMMAND_DETAILS = {
   ],
   models: [
     '  models                                  your plan selection + the catalog',
-    '  models <query>                          search provider and model ids',
+    '  models <term>                           search provider and model ids',
+    '  models query <term>                     the same search, keyword form',
     '  models test <provider/model|model> [--json]   run one real connection check',
     '',
     '  example: zagent models test zai/glm-5.3',
@@ -200,6 +258,24 @@ export const COMMAND_DETAILS = {
     '  --json                  machine-readable output',
     '',
     '  example: zagent permissions revoke "npm install"',
+  ],
+  mode: [
+    'The persisted default permission mode for headless -p runs — applied',
+    'exactly like passing --mode on every -p run that lacks one (without',
+    'either, -p runs the kernel default: yolo, every tool unconfirmed).',
+    'Interactive sessions are unaffected: the TUI\'s /mode picker persists',
+    'a per-project mode — which this default also overrides on -p runs,',
+    'same as an explicit --mode would.',
+    '  show (default)              the stored default',
+    '  set <build|edit|plan|yolo>  persist a default (\'auto\' is reserved by the runtime — refused)',
+    '  clear                       remove the default (back to yolo)',
+    '  --json                      machine-readable output',
+    '',
+    '  note: `zagent cron add` jobs run -p without --mode and honor this',
+    '  default (kernel-created automations carry their own mode); the MCP',
+    '  zagent_turn tool uses it when its mode argument is omitted.',
+    '',
+    '  example: zagent mode set plan',
   ],
   memory: [
     '  show (default)       this workspace\'s memory file',
@@ -328,7 +404,7 @@ export const COMMAND_DETAILS = {
   ],
 };
 
-/** The bare verb a user types, e.g. "models [query]" -> "models". */
+/** The bare verb a user types, e.g. "models [<term>]" -> "models". */
 export const verbOf = (signature) => signature.split(/[\s[]/)[0];
 
 /** The table row for a verb, or undefined. */
