@@ -1,9 +1,9 @@
-// E6 — memory parity (r10: runtime-exact algorithm, legacy migration, locked appends).
+// memory parity (: runtime-exact algorithm, legacy migration, locked appends).
 // GLOBAL audit 2026-09-06: UPSTREAM ZCode uses project-only memory (bundle + live tree
 // show memories/projects/… only; headless runs skip extraction — a /tmp probe wrote
 // nothing). zagent INTENTIONALLY retains the global load/save/append API below as a LOCAL
 // feature — not a parity claim; do not remove it on parity grounds.
-// Workspace-id scheme copied from the runtime's rules (cx-verified spec, 2026-09-06):
+// Workspace-id scheme copied from the runtime's rules (verified spec, 2026-09-06):
 // resolve(path) → basename → lowercase → keep [a-z0-9._-] → trim edge hyphens →
 // truncate 48 → fallback 'project'; hash = sha256(resolved)[0:16] (Windows lowercases
 // the hash input). Proven against live dirs: downloads-c8eaf70bac09c0f2, e3undo-….
@@ -48,7 +48,7 @@ const legacyId = workspacePath => {
 
 export function loadProjectMemory(workspacePath) {
   const id = workspaceId(workspacePath);
-  // new layout first; fall back ONLY on ENOENT (r10: other errors must not resurrect stale data)
+  // new layout first; fall back ONLY on ENOENT (: other errors must not resurrect stale data)
   try { return readFileSync(`${PROJECT_BASE}/${id}/memory/MEMORY.md`, 'utf8'); } catch (e) {
     if (e?.code !== 'ENOENT') throw e;
   }

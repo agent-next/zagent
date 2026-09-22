@@ -17,6 +17,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MODES } from '../driver/session-control.mjs';
+import { readDefaultMode } from '../driver/default-mode.mjs';
 import { EFFORTS, modelRef } from './zagent-print.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -50,7 +51,7 @@ export const TOOLS = [
         model: { type: 'string', description: 'provider/model or bare model id (bare = zai provider)' },
         effort: { type: 'string', description: "Reasoning effort — validated against the model's resolved levels; low|high|max on the coding plan" },
         // -p semantics auto-approve tool permissions; say so on the boundary.
-        mode: { type: 'string', enum: MODES, description: 'Permission mode. Default = the -p contract (auto-approve); use plan to run read-only' },
+        mode: { type: 'string', enum: MODES, description: 'Permission mode. Default = the persisted `zagent mode` default if set, else the -p contract (auto-approve); use plan to run read-only' },
         cwd: { type: 'string', description: 'Working directory for the turn (default: the server\'s cwd)' },
       },
       required: ['prompt'],
@@ -176,6 +177,11 @@ export async function callTool(name, args, impls = defaultImpls()) {
         if (!MODES.includes(mode.toLowerCase()))
           throw new Error(`mode must be one of ${MODES.join('|')} (got '${mode}')`);
         sel.mode = mode.toLowerCase();
+      } else {
+        // The tool advertises `-p` equivalence — honor the same persisted
+        // default a flagless `-p` run would pick up (zagent.mjs injection).
+        const persisted = readDefaultMode();
+        if (persisted) sel.mode = persisted;
       }
       const cwd = strArg(args.cwd, 'cwd');
       if (cwd !== undefined) {
@@ -260,7 +266,7 @@ export async function handleMessage(msg, impls = defaultImpls()) {
 async function main() {
   // `zagent mcp` is meant to be spawned BY an MCP client, not typed by a
   // human: on a terminal it used to hang silently, and on a closed/empty
-  // stdin it exited 0 with no output at all (FLOCK-F8). Both now explain.
+  // stdin it exited 0 with no output at all (). Both now explain.
   // Args are meaningless here (the dispatcher answers `mcp --help` itself);
   // an unknown one is a usage error like every sibling command.
   if (process.argv.slice(2).length || process.stdin.isTTY) {

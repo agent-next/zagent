@@ -12,11 +12,12 @@
 // Node is already a hard dependency, so the dispatcher is written in it.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { commandFor, formatRow, ENTRY_FLAGS, HEADLESS_OPTIONS, NON_PRINT_OPTIONS, COMMAND_DETAILS } from '../packages/cli/commands.mjs';
 import { findRuntime } from '../packages/driver/runtime.mjs';
+import { autoGuard } from '../packages/driver/snapshot-guard.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [command, ...rest] = process.argv.slice(2);
@@ -35,6 +36,7 @@ const ROUTES = {
   bots: ['packages/cli/zagent-bots.mjs'],
   task: ['packages/cli/zagent-task.mjs', '--experimental-sqlite', '--no-warnings'],
   permissions: ['packages/cli/zagent-permissions.mjs'],
+  mode: ['packages/cli/zagent-mode.mjs'],
   memory: ['packages/cli/zagent-memory.mjs'],
   offpeak: ['packages/cli/zagent-offpeak.mjs'],
   models: ['packages/cli/zagent-models.mjs'],
@@ -50,6 +52,7 @@ const ROUTES = {
   remote: ['packages/cli/zagent-remote.mjs'],
   update: ['packages/cli/zagent-update.mjs'],
   'commit-msg': ['packages/cli/zagent-commit-msg.mjs'],
+  snapshot: ['packages/cli/zagent-snapshot.mjs'],
   mcp: ['packages/cli/zagent-mcp.mjs'],
 };
 
@@ -85,10 +88,50 @@ if (command === '--version' || command === '-V' || command === '-v' || command =
   }
   process.exit(0);
 }
+// Privacy guard: the desktop app stages encrypted whole-workspace uploads
+// (.git included) under ~/.zcode/v2/checkpoints whenever it is logged in —
+// no UI toggle stops it. Keep that staging dir unwritable on each dispatched
+// command (the --version fast path above exits first) unless the user opted
+// out with `zagent snapshot unlock`. Silent once applied; never breaks
+// dispatch. Skipped for `snapshot` itself so `status` reports the true state
+// instead of the post-wipe one.
+if (command !== 'snapshot') try {
+  const g = autoGuard();
+  // Report only when staged payloads were actually removed — locking an
+  // empty/absent dir is routine and must not pollute other commands' stderr,
+  // and a wipe that happened before a lock failure is still reported.
+  if (g.removedFiles) {
+    const n = `${g.removedFiles} staged file${g.removedFiles === 1 ? '' : 's'}`;
+    console.error(g.applied
+      ? `zagent: locked the desktop app's workspace-upload staging dir and removed ${n} ('zagent snapshot unlock' opts out)`
+      : `zagent: removed ${n} from the desktop app's workspace-upload staging dir but could not lock it (${g.reason})`);
+  }
+} catch { /* the guard must never break a command */ }
 if (command === '--help' || command === '-h') run('packages/cli/zagent-help.mjs');
-if (SOURCE_ONLY.has(command)) {
-  console.error(`zagent: ${command} is source-only experimental functionality, not included in this public candidate.`);
+// Only before a `--` separator. Otherwise a subcommand that takes free text —
+// `zagent memory append` — could never be given the literal string "--help",
+// because the dispatcher would answer it as a help request and never run.
+// `zagent memory append -- --help` appends the text, as POSIX users expect.
+// A `--` in command position already IS the separator — every later token is
+// positional payload (`zagent -- --json` must not count that payload as the
+// flag), the same rule flagArgs applies to a mid-argv separator.
+const sep = command === '--' ? 0 : rest.indexOf('--');
+const flagArgs = sep === -1 ? rest : rest.slice(0, sep);
+// Dispatcher refusals honor --json like every routed verb's refusal: the
+// {"error"} envelope goes to stdout (synchronously — a buffered write can be
+// lost to process.exit), the human lines stay on stderr, the exit code is
+// unchanged. A post-separator "--json" is positional payload, not the flag;
+// a glued "--json=x" still asks for JSON (the `logout --json=1` grace). The
+// leading token joins the scan too: --json is an entry flag, so a flag-led
+// argv (`zagent --json --bogus`) can still reach a dispatcher refusal.
+const wantsJson = [command, ...flagArgs].some((a) => a === '--json' || a?.startsWith('--json='));
+const refuse = (lines) => {
+  if (wantsJson) try { writeSync(1, `${JSON.stringify({ error: lines[0] })}\n`); } catch { /* broken stdout still gets stderr + the exit code */ }
+  for (const line of lines) console.error(line);
   process.exit(2);
+};
+if (SOURCE_ONLY.has(command)) {
+  refuse([`zagent: ${command} is source-only experimental functionality, not included in this public candidate.`]);
 }
 // `zagent <cmd> --help` used to be passed through to the subcommand, which had no
 // notion of it: `models --help` searched the catalog for a model named "--help",
@@ -96,12 +139,6 @@ if (SOURCE_ONLY.has(command)) {
 // id; `plugins --help` as a plugin name. Answer it here, once, from the same table
 // the palette prints, rather than teaching eleven scripts the same flag.
 const HELP_FLAGS = new Set(['--help', '-h']);
-// Only before a `--` separator. Otherwise a subcommand that takes free text —
-// `zagent memory append` — could never be given the literal string "--help",
-// because the dispatcher would answer it as a help request and never run.
-// `zagent memory append -- --help` appends the text, as POSIX users expect.
-const sep = rest.indexOf('--');
-const flagArgs = sep === -1 ? rest : rest.slice(0, sep);
 // `zagent -p --help` (or any entry flag + --help) prints the verified headless
 // option list: forwarding it would show the kernel's own usage, which names the
 // wrong product and documents flags its parser rejects. A literal "--help" can
@@ -119,6 +156,7 @@ const headlessHelp = () => {
   for (const [sig, desc] of NON_PRINT_OPTIONS) console.log(`  ${sig.padEnd(48)} ${desc}`);
   console.log('\nsafety: -p without --mode runs in yolo by default — every tool call executes without asking.');
   console.log('        pass --mode plan to make the agent only plan instead of changing things.');
+  console.log('        `zagent mode set <build|edit|plan|yolo>` persists a default so every -p run uses it (--mode still wins).');
   console.log('\nnot implemented by the runtime despite its own --help:');
   console.log('  --print --max-turns --allowed-tools --permission-mode --settings --allow-main-worktree-yolo');
 };
@@ -127,24 +165,32 @@ const headlessHelp = () => {
 const entryFlag = (token) => ENTRY_FLAGS.has(token?.split('=')[0]);
 // Closest known flag for a typo message — bounded edit distance, so '--efort'
 // names '--effort' while '--xyz123' gets no bogus suggestion.
+// Optimal-string-alignment Damerau: an adjacent transposition costs 1, so the
+// commonest human typo ('ssesion' for 'sessions') still reaches the <3 bound
+// that pure Levenshtein priced at 3.
 const editDistance = (a, b) => {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++)
-    for (let j = 1; j <= b.length; j++)
+    for (let j = 1; j <= b.length; j++) {
       d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
   return d[a.length][b.length];
 };
-const SUGGEST_FLAGS = new Set([...ENTRY_FLAGS, '--version', '--help'].filter(f => f.startsWith('--')));
-const didYouMean = (name) => {
-  if (!name.startsWith('--')) return ''; // short typos are unguessable: -x is 1 edit from -p/-c/-f/-v
+const closest = (name, candidates) => {
   let best = null, dist = 3; // strictly under 3 edits
-  for (const f of SUGGEST_FLAGS) {
-    const d = editDistance(name, f);
-    if (d < dist) { best = f; dist = d; }
+  for (const c of candidates) {
+    const d = editDistance(name, c);
+    if (d < dist) { best = c; dist = d; }
   }
   return best ? ` — did you mean '${best}'?` : '';
 };
+const SUGGEST_FLAGS = new Set([...ENTRY_FLAGS, '--version', '--help'].filter(f => f.startsWith('--')));
+const didYouMean = (name) =>
+  // short typos are unguessable: -x is 1 edit from -p/-c/-f/-v
+  name.startsWith('--') ? closest(name, SUGGEST_FLAGS) : '';
 if (flagArgs.some(a => HELP_FLAGS.has(a))) {
   if (entryFlag(command)) { headlessHelp(); process.exit(0); }
   const row = commandFor(command);
@@ -174,10 +220,15 @@ if (Object.hasOwn(ROUTES, command)) {
 // kernel and come back as "zcode 0.16.5 / Usage: zcode [command]", the wrong
 // product's usage text on stderr for the right product's mistake.
 const MAIN_ENTRY_COMMANDS = new Set(['doctor', 'login', 'logout', 'app-server']);
+// 'version' resolves above without a ROUTES entry; SOURCE_ONLY verbs are
+// deliberately excluded — suggesting one would dead-end the user. Equidistant
+// candidates tie-break to the first declared here (ROUTES order).
+const SUGGEST_COMMANDS = [...Object.keys(ROUTES), ...MAIN_ENTRY_COMMANDS, 'version'];
 if (command && !command.startsWith('-') && !MAIN_ENTRY_COMMANDS.has(command)) {
-  console.error(`zagent: unknown command '${command}'`);
-  console.error("Run 'zagent help' for the command list.");
-  process.exit(2);
+  refuse([
+    `zagent: unknown command '${command}'${closest(command, SUGGEST_COMMANDS)}`,
+    "Run 'zagent help' for the command list.",
+  ]);
 }
 // Option-led invocations packages/cli/zagent.mjs understands — the kernel entry
 // flags it and tui-launch.mjs treat as theirs, so `zagent --mode plan -p "…"`
@@ -190,9 +241,10 @@ if (command && !command.startsWith('-') && !MAIN_ENTRY_COMMANDS.has(command)) {
 const capHint = " — did you mean 'zagent doctor --capabilities'?";
 if (command && command.startsWith('-') && !entryFlag(command)) {
   const cname = command.split('=')[0];
-  console.error(`zagent: unknown option '${cname}'${cname === '--capabilities' ? capHint : didYouMean(cname)}`);
-  console.error("Run 'zagent help' for the command list.");
-  process.exit(2);
+  refuse([
+    `zagent: unknown option '${cname}'${cname === '--capabilities' ? capHint : didYouMean(cname)}`,
+    "Run 'zagent help' for the command list.",
+  ]);
 }
 // A typo'd option later in a -p argv (`-p hi --efort low`) used to forward
 // verbatim into zagent.mjs, where the credential gate answered first — a
@@ -208,9 +260,10 @@ if (command && entryFlag(command)) {
   const bad = flagArgs.find(a => a.startsWith('-') && a !== '-' && !entryFlag(a));
   if (bad) {
     const name = bad.split('=')[0];
-    console.error(`zagent: unknown option '${name}'${name === '--capabilities' ? capHint : didYouMean(name)}`);
-    console.error("Run 'zagent help' for the command list.");
-    process.exit(2);
+    refuse([
+      `zagent: unknown option '${name}'${name === '--capabilities' ? capHint : didYouMean(name)}`,
+      "Run 'zagent help' for the command list.",
+    ]);
   }
 }
 // What remains: no arguments (interactive TUI), the entry flags above, and the

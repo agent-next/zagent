@@ -3,7 +3,7 @@
 // runtime's zod schemas accept (wrong shapes give -32602 with the field named).
 //
 //   session/usage         {sessionId} -> totals + inputBaselineBySource (context breakdown)
-//   session/compact       {sessionId} -> full snapshot (E5)
+//   session/compact       {sessionId} -> full snapshot ()
 //   session/setModel      {sessionId, model:{modelId, providerId}}
 //   session/setThoughtLevel {sessionId, thoughtLevel}
 //   session/setMode       {sessionId, mode: 'plan'|'build'|'edit'|'yolo'|'auto'}
@@ -12,6 +12,21 @@
 // -32601 for automation/list — that surface is GUI-side, not protocol-side (gap note).
 
 export const MODES = ['plan', 'build', 'edit', 'yolo', 'auto'];
+
+// One-line meaning per mode, verified in the 3.12.1 runtime's permission
+// chain (zcode-runtime checkPermission): yolo answers every tool allow
+// ("Yolo mode bypasses permission prompts"); auto is a RESERVED value the
+// runtime denies with "Auto mode is reserved but not implemented yet"; edit
+// auto-allows workspace file-edit tools then falls back to build rules;
+// build runs read-only non-destructive tools free and asks on high/critical
+// risk; plan denies execution outright (the exit-plan tool is the way back).
+export const MODE_NOTES = {
+  plan: 'planning only — changes are denied',
+  build: 'asks before risky tools; read-only runs free',
+  edit: 'file edits run free; the rest still asks',
+  yolo: 'every tool runs — nothing asks',
+  auto: 'reserved by the runtime — denies tools',
+};
 
 const num = v => (typeof v === 'number' && Number.isFinite(v)) ? v : 0;
 

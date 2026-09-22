@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { conversationFileChanges, conversationFileRewindPreview, conversationSnapshot, conversationTopic, defaultSessionForRewind, forkSession, isRowActionUnavailable, isStaleConversationBase, isV4SurfaceUnavailable, listSessionCheckpoints, noCheckpointYet, pickConversationRow, resumeSession, subscribeConversation, unsubscribeConversation } from '../driver/rewind.mjs';
 import { recentSession } from './zagent-goal.mjs';
-import { NOT_RUNNING, isNotRunning } from './session-errors.mjs';
+import { isSessionScopedNotRunning } from './session-errors.mjs';
 
 export const USAGE = 'usage: zagent rewind [list|latest|<checkpointId>|changes|preview [<checkpointId>]] [--message <id>] [--session <id>] [--json]';
 const CHECKPOINT_ID = /^checkpoint_[A-Za-z0-9-]+$/;
@@ -179,14 +179,19 @@ export async function runRewind(argv, opts = {}) {
       stderr.write('rewind: no workspace checkpoint is available yet (checkpoints appear after a file-editing turn)\n');
       return 1;
     }
-    if (isNotRunning(e)) {
+    if (isSessionScopedNotRunning(e)) {
+      // Rewind RESUMES persisted sessions before querying — a not-running
+      // answer here means the id never resolved (bogus --session) or raced
+      // inactive between resume and the call: a refusal, not the
+      // live-session hint the goal/usage/subagents verbs use. A -32004
+      // carrying a non-session message is ambiguous — it falls through to
+      // the generic rewind error below rather than naming the session.
+      const msg = `rewind: session not found or no longer active: ${sessionId} — list sessions with \`zagent sessions\``;
       if (parsed.json) {
-        stderr.write(`${NOT_RUNNING}\n`);
         stdout.write(`${JSON.stringify({ sessionId, running: false }, null, 2)}\n`);
-      } else {
-        stdout.write(`${NOT_RUNNING}\n`);
       }
-      return 0;
+      stderr.write(`${msg}\n`);
+      return 1;
     }
     stderr.write(`rewind: ${e?.message ?? e}\n`);
     return 1;

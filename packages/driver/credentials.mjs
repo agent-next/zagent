@@ -57,9 +57,17 @@ export function deviceMid(env = process.env) {
 // The file holds the zcode JWT and the coding-plan key: a successful load also
 // tightens group/other bits left by an older writer (self-heal, best-effort).
 // A credential-free machine gets the sign-in remedy, not a raw ENOENT (the
-// code is preserved for programmatic discrimination).
+// code is preserved for programmatic discrimination). : the
+// message names the same failure class the Coding-Plan-key path does (a
+// sign-in problem, not a quota limit) — but the remedy stays `zagent login`
+// only: this store holds the desktop JWT, which ZAI_API_KEY cannot replace.
 export const NO_DESKTOP_CREDENTIALS =
-  'No ZCode credentials; run `zagent login` to sign in first';
+  'No ZCode credentials — a sign-in problem, not a quota limit; run `zagent login` to sign in first';
+// A corrupt or undecryptable store is the same failure class with the same
+// remedy — worded 'sign in again' so a previously-signed-in user is not told
+// they never did.
+export const CREDENTIALS_UNREADABLE =
+  'a sign-in problem, not a quota limit; run `zagent login` to sign in again';
 export function loadCredentialStore() {
   const file = `${os.homedir()}/.zcode/v2/credentials.json`;
   let store;
@@ -67,12 +75,14 @@ export function loadCredentialStore() {
   catch (e) {
     if (e?.code === 'ENOENT')
       throw Object.assign(new Error(NO_DESKTOP_CREDENTIALS), { code: 'ENOENT' });
+    if (e instanceof SyntaxError)
+      throw new Error(`credentials store is corrupt — ${CREDENTIALS_UNREADABLE}`);
     throw e;
   }
   // Same shape check the provisioner applies: `null`/`true`/`[]` are parseable
   // but not a store — name it instead of a TypeError on key lookup.
   if (!store || typeof store !== 'object' || Array.isArray(store))
-    throw new Error('credentials store is not a JSON object');
+    throw new Error(`credentials store is not a JSON object — ${CREDENTIALS_UNREADABLE}`);
   try { if ((statSync(file).mode & 0o077) !== 0) chmodSync(file, 0o600); } catch {}
   return store;
 }

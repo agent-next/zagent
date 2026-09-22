@@ -114,12 +114,13 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 
 | 命令 | 作用 |
 |---|---|
-| `zagent -p "…" [--json] [options]` | 无头一次性执行（可重试；选项见 `zagent -p --help`） |
+| `zagent -p "…" [--json] [options]` | 无头一次性执行（可重试；默认 yolo 不做任何确认即执行所有工具——改用 `--mode plan` 退出该默认；选项见 `zagent -p --help`） |
 | `zagent` | 交互式 TUI |
 | `zagent onboard` | 首次运行：检查 + live 冒烟 + 引导 |
 | `zagent doctor [--fix]` | runtime / Coding-Plan / 配置诊断 |
+| `zagent snapshot [status\|lock\|unlock]` | 查看桌面版工作区快照上传暂存目录——默认自动锁定,`unlock` 退出保护 |
 | `zagent update [--check]` | 从 npm 升级 zagent 自身 |
-| `zagent models [query]` | 搜索模型目录;`models test <provider/model>` 测试连接 |
+| `zagent models [<term>]` | 搜索模型目录(`query <term>` 等价);`models test <provider/model>` 测试连接 |
 | `zagent login [--no-browser]` | 登录账号 |
 | `zagent logout` | 退出当前账号 |
 | `zagent quota [status\|usage [--days 1..30]\|balance\|preview\|reset [claim\|use five-hour\|use week]] [--json] [--yes]` | Coding-Plan 额度 |
@@ -130,6 +131,7 @@ zagent doctor --fix                              # 写入 ~/.zcode/cli/config.js
 | `zagent commit-msg [--model provider/model\|model] [--effort <level>] [--json]` | 为已暂存（或未暂存）改动生成 commit message（ZCode 3.12.x+） |
 | `zagent task list [--all] [--json]\|archive\|unarchive\|pin\|unpin\|rename\|delete` | 查看或修改 runtime 任务记录 |
 | `zagent permissions [list\|revoke <pattern\|all>\|--reset] [--json]` | 查看或撤销已记住的 always-allow/deny 授权 |
+| `zagent mode [show\|set <build\|edit\|plan\|yolo>\|clear] [--json]` | 查看或设置持久化的 `-p` 默认权限模式（TUI 的 `/mode` 按项目持久化） |
 | `zagent cron add [--json]\|list [--json]\|remove [--json]\|tick` | 定时 prompt（本地 crontab） |
 | `zagent automation list\|create\|update\|delete\|check-binding` | 服务端定时 prompt（ZCode 3.12.x+） |
 | `zagent bots [list\|show <id>\|status] [--json]` | 桌面端已配置的聊天 bot（只读） |

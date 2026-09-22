@@ -7,7 +7,11 @@
 //
 // Nothing here is hardcoded from documentation. Effort and model items come from
 // the host arrays; the mode list is parsed out of the runtime's own /mode reply,
-// so a runtime that adds a mode gains it here without a code change.
+// so a runtime that adds a mode gains it here without a code change. The mode
+// ONE-LINERS come from the driver's MODE_NOTES (verified against the runtime's
+// own permission chain), keyed by name so an unknown mode just gets no note.
+
+import { MODE_NOTES } from '../driver/session-control.mjs';
 
 /** effortOptions: [{id, label}] — low/high/max, with the thinking budget behind them. */
 export function effortItems(effortOptions, current) {
@@ -122,8 +126,32 @@ export function parseModes(response) {
     .split(/[,\s]+/u)
     .map(s => s.trim())
     .filter(Boolean)
-    .map(mode => ({ value: mode, label: mode, note: mode === current ? '(current)' : '' }));
+    .map(mode => {
+      const key = String(mode).toLowerCase();
+      const note = Object.hasOwn(MODE_NOTES, key) ? MODE_NOTES[key] : null;
+      const cur = key === String(current ?? '').toLowerCase() ? '(current)' : null;
+      return { value: mode, label: mode, note: [note, cur].filter(Boolean).join(' · ') };
+    });
   return items.length ? { items, current } : null;
+}
+
+/** 'Bash(npm test)' — what a person remembers approving (bounded pattern). */
+export function grantLabel(g, max = 80) {
+  const p = typeof g?.pattern === 'string' && g.pattern
+    ? (g.pattern.length > max ? `${g.pattern.slice(0, max - 1)}…` : g.pattern)
+    : null;
+  return `${g?.toolName ?? '?'}${p ? `(${p})` : ''}`;
+}
+
+/**
+ * Every persisted grant as a picker row: the label is what was approved, the
+ * note is the decision, and the value is the store key — a revoke by key can
+ * never take a sibling grant whose pattern merely contains this one.
+ */
+export function grantItems(grants) {
+  return (Array.isArray(grants) ? grants : [])
+    .map(g => ({ value: g?.key, label: grantLabel(g), note: g?.optionId ?? '' }))
+    .filter(i => typeof i.value === 'string' && i.value !== '');
 }
 
 /** A bare /effort, /model, /mode, /skill, /mcp or /goal — with no argument — is a request to choose. */

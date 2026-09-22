@@ -191,6 +191,21 @@ export function forgetGrants(query, { home } = {}) {
   return { removed };
 }
 
+/**
+ * Remove exactly one grant by its store key — the /permissions picker's
+ * revoke. forgetGrants matches a pattern substring, which can take a sibling
+ * grant with it ('npm test' would also clear 'npm test --watch'); a key
+ * cannot over-match. Returns false when the key is absent.
+ */
+export function revokeGrant(key, { home } = {}) {
+  if (typeof key !== 'string' || !key) return false;
+  const file = loadGrantFile({ home });
+  if (!Object.hasOwn(file.grants, key)) return false;
+  delete file.grants[key];
+  saveGrantFile(file, { home });
+  return true;
+}
+
 export function rememberGrant(request, option, { home } = {}) {
   const id = optionIdOf(option);
   if (!isAlwaysOptionId(id)) return null;

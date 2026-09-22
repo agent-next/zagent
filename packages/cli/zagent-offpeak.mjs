@@ -98,7 +98,7 @@ const localHour = (sgtHour, on = new Date()) => {
 
 const now = new Date();
 const window = refresh ? await fetchWindow() : cachedWindow() ?? defaultWindow();
-const open = inOffPeak(now, window);
+const open = inOffPeak(now, window) && campaignActive(now, window);
 const active = campaignActive(now, window);
 const route = routeToFlash(now, { win: window });
 const untilOpen = minutesUntilWindow(now, window);

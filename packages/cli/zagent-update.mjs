@@ -33,7 +33,12 @@ const cmp = compareVersions(res.latest, installed);
 const updateAvailable = cmp === 1;
 
 if (check || !updateAvailable) {
-  if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, ok: true }));
+  // newerThanRegistry keeps the JSON as honest as the text path: installed >
+  // latest is "nothing to do", not "up to date" — a script consumer must be
+  // able to tell them apart (flock install-trust-noise finding, 2026-09-18).
+  // null when the installed version is unparseable: "can't compare" is not
+  // "not newer".
+  if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, newerThanRegistry: cmp === null ? null : cmp === -1, ok: true }));
   else if (updateAvailable) console.log(`update available: zagent ${installed} -> ${res.latest} (run 'zagent update')`);
   else if (cmp === 0) console.log(`zagent is up to date (${installed})`);
   else console.log(`zagent ${installed} is newer than the npm release (${res.latest}) — nothing to do`);
@@ -54,7 +59,7 @@ if (!asJson) {
 }
 if (r.error) {
   const msg = r.error.code === 'ENOENT' ? 'npm not found on PATH' : String(r.error.message ?? r.error);
-  if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, attempted: true, ok: false, error: msg }));
+  if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, newerThanRegistry: false, attempted: true, ok: false, error: msg }));
   else console.error(`zagent: update failed (${msg}) — run it yourself: npm install -g ${PACKAGE_NAME}@${res.latest}`);
   process.exit(1);
 }
@@ -63,9 +68,9 @@ if (r.status !== 0) {
   const hint = eacces
     ? `npm could not write the global prefix — retry with: sudo npm install -g ${PACKAGE_NAME}@${res.latest}`
     : `npm install failed (exit ${r.status ?? `signal ${r.signal}`}) — run it yourself: npm install -g ${PACKAGE_NAME}@${res.latest}`;
-  if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, attempted: true, ok: false, exitCode: r.status, error: hint }));
+  if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, newerThanRegistry: false, attempted: true, ok: false, exitCode: r.status, error: hint }));
   else console.error(`zagent: ${hint}`);
   process.exit(1);
 }
-if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, attempted: true, ok: true }));
+if (asJson) console.log(JSON.stringify({ installed, latest: res.latest, updateAvailable, newerThanRegistry: false, attempted: true, ok: true }));
 else console.log(`updated: zagent ${installed} -> ${res.latest} (verify with 'zagent --version')`);

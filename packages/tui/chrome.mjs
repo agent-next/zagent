@@ -66,7 +66,7 @@ function layoutInputBox(value, theme, width, options = {}) {
     ? Math.min(options.maskFrom, value.length) : -1;
   const masked = maskAt < 0 ? value
     : value.slice(0, maskAt) + value.slice(maskAt).replace(/./gs, g.mask);
-  // A literal U+E000 in pasted input would collide with the mark — strip it so
+  // A literal U+00 in pasted input would collide with the mark — strip it so
   // exactly one exists. The cursor is a code-unit index into the (pre-sanitise)
   // value; clamp it onto the displayed text — a stripped byte can leave it stale.
   const text = (showPlaceholder ? placeholder : masked).replaceAll(CURSOR_MARK, '');
@@ -158,22 +158,35 @@ export function statusFields(state, theme, options = {}) {
   const str = options.str ?? stringsFor();
   const fields = [];
 
-  if (turn?.active) {
+  // The spinner used to gate on turn.active alone — set by the kernel's
+  // turn_started event. Between submit and that first event (session create,
+  // MCP connect, or a stall that never emits one) the line painted as idle: a
+  // submitted turn looked exactly like no turn at all. options.busy is set at
+  // submit, so the 'waiting' phase covers the whole gap; busySince anchors the
+  // elapsed count until turn_started hands over its own startedAt.
+  if (turn?.active || options.busy) {
     const spin = theme.glyph.spinner;
     const frame = spin[(options.spinnerFrame ?? 0) % spin.length];
-    const elapsed = formatDuration(Math.max(0, (options.now ?? Date.now()) - turn.startedAt));
-    // W5 turn-status phases: a host-named activity wins; otherwise the phase is
+    // busySince is set at submit — before the kernel's turn_started stamps its
+    // own startedAt — so anchoring on the earlier of the two keeps the elapsed
+    // count monotonic across the handoff instead of visibly rewinding. A zero
+    // or absent busySince falls back to now rather than rendering epoch.
+    let startedAt = options.busySince || 0;
+    if (turn?.active && (!startedAt || turn.startedAt < startedAt)) startedAt = turn.startedAt;
+    if (!startedAt) startedAt = Date.now();
+    const elapsed = formatDuration(Math.max(0, (options.now ?? Date.now()) - startedAt));
+    // turn-status phases: a host-named activity wins; otherwise the phase is
     // 'waiting' until the first observable output, 'responding' after — the
     // working-vs-stuck answer at a glance. Host str builds may predate the keys.
     const phase = options.activity
-      ?? (turn.responded ? (str.responding ?? str.working) : (str.waiting ?? str.working));
+      ?? (turn?.active && turn.responded ? (str.responding ?? str.working) : (str.waiting ?? str.working));
     fields.push(field(`${frame} ${phase}${elapsed ? ` ${elapsed}` : ''}`, theme.accent));
     // Armed double-Esc: the first press flips the hint to confirm the second.
     // A host-supplied str may predate interruptAgain — fall back, never blank.
     fields.push(field(options.escArmed ? (str.interruptAgain ?? str.interrupt) : str.interrupt, theme.faint));
     // The ⇣ received-bytes counter sits after the interrupt hint: under width
     // pressure the hint (the way OUT of a stuck turn) outranks the counter.
-    if (Number.isFinite(turn.streamBytes) && turn.streamBytes > 0) {
+    if (turn?.active && Number.isFinite(turn.streamBytes) && turn.streamBytes > 0) {
       fields.push(field(`${theme.glyph.download ?? '⇣'}${formatTokens(turn.streamBytes)}`, theme.faint));
     }
   } else {
@@ -210,7 +223,7 @@ export function statusFields(state, theme, options = {}) {
       : `${formatTokens(ctx.contextUsed)}/${formatTokens(ctx.contextWindow)}`;
     fields.push(field(meter, theme.faint));
   } else if (Number.isFinite(ctx?.contextWindow) && ctx.contextWindow > 0) {
-    // G4: the window alone is still worth showing — seeded from the host's
+    // : the window alone is still worth showing — seeded from the host's
     // model catalog at start. '?/200k' pairs with the usual 'used/window'
     // shape without inventing a used count.
     fields.push(field(`ctx ?/${formatTokens(ctx.contextWindow)}`, theme.faint));
@@ -306,7 +319,7 @@ export function renderUserPeek(entries, index, theme, width, str, fold = null) {
   return [`  ${theme.faint(label)} ${theme.userMark('>')} ${theme.muted(clip(text, room))}${theme.faint(tag)}`];
 }
 
-// The palette page: G3 raised the window to 10 rows (top CLIs show a taller
+// The palette page: raised the window to 10 rows (top CLIs show a taller
 // list) and index.mjs pages the selection by this many on pageup/pagedown.
 export const COMPLETION_ROWS = 10;
 
@@ -348,7 +361,7 @@ export function renderCompletions(completion, theme, width, max = COMPLETION_ROW
 export const FOOTER_ROWS_BELOW_BOX = 2;
 
 /**
- * Contextual hint bar (W5): one faint row under the status line naming the
+ * Contextual hint bar (): one faint row under the status line naming the
  * keys that are real in the current state — send/newline while idle,
  * interrupt/exit while a turn runs, "esc again" while the interrupt is armed.
  * It never names a binding that does not exist: shift+tab only steps queue

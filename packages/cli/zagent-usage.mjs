@@ -40,6 +40,24 @@ const agoWords = (ms) => {
 
 export const USAGE = 'usage: zagent usage [--session <id>] [--json] | zagent usage stats [--range all|7d|30d] [--json]';
 
+// `usage` takes one positional — `stats`. A near-miss (`stat`, `st`, `sttats`)
+// names it with the same <3-edit bound as the dispatcher/quota hints, plus a
+// prefix allowance (`st` is 3 edits out). '-' tokens and <2 chars never hint.
+const editDistance = (a, b) => {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  return d[a.length][b.length];
+};
+export const usageHint = (bad) => (typeof bad === 'string' && bad.length >= 2 && !bad.startsWith('-') &&
+  ('stats'.startsWith(bad) || editDistance(bad, 'stats') < 3))
+  ? `usage: did you mean 'stats'?` : '';
+
 export function parseUsageArgs(argv) {
   let json = false;
   let session;
@@ -64,7 +82,7 @@ export function parseUsageArgs(argv) {
     positional.push(a);
   }
   if (positional.length > 1 || (positional.length === 1 && positional[0] !== 'stats')) {
-    return { error: USAGE };
+    return { error: USAGE, bad: positional.find((p) => p !== 'stats') };
   }
   if (positional[0] === 'stats') {
     if (session !== undefined) return { error: USAGE };
@@ -128,12 +146,31 @@ function printStats(stdout, snap) {
   }
 }
 
+// --json failure paths keep stdout machine-readable (the -p/quota {"error"}
+// contract): the envelope goes to stdout, the human line stays on stderr.
+// A real stream is flushed via the write callback before the caller exits —
+// a buffered write can be lost to process.exit; test captures resolve sync.
+const emitError = (stdout, msg) => new Promise((res) => {
+  const line = `${JSON.stringify({ error: msg })}\n`;
+  try {
+    // writable===true marks a live stream (flush before exit); test captures
+    // and dead/destroyed streams take the sync path (a write may throw).
+    if (stdout.writable === true) stdout.write(line, res);
+    else { stdout.write(line); res(); }
+  } catch { res(); }
+});
+
 export async function runUsage(argv, opts = {}) {
   const stdout = opts.stdout ?? process.stdout;
   const stderr = opts.stderr ?? process.stderr;
   const parsed = parseUsageArgs(argv);
   if (parsed.error) {
+    // An invalid token can end the parse before --json is reached, so scan
+    // the raw argv rather than parsed.json (same rule as quota's usage()).
+    if (argv.includes('--json')) await emitError(stdout, parsed.error);
     stderr.write(`${parsed.error}\n`);
+    const hint = usageHint(parsed.bad);
+    if (hint) stderr.write(`${hint}\n`);
     return 2;
   }
   if (parsed.action === 'stats') {
@@ -144,7 +181,9 @@ export async function runUsage(argv, opts = {}) {
         client = await (opts.createClient ?? defaultCreateClient)();
         owned = true;
       } catch (e) {
-        stderr.write(`usage stats: ${e?.message ?? e}\n`);
+        const msg = String(e?.message ?? e);
+        if (parsed.json) await emitError(stdout, msg);
+        stderr.write(`usage stats: ${msg}\n`);
         return 1;
       }
     }
@@ -160,11 +199,11 @@ export async function runUsage(argv, opts = {}) {
       }
       return 0;
     } catch (e) {
-      if (e?.code === -32601) {
-        stderr.write('usage stats: this runtime does not serve usage/stats (needs ZCode desktop 3.12.x or newer)\n');
-      } else {
-        stderr.write(`usage stats: ${e?.message ?? e}\n`);
-      }
+      const msg = e?.code === -32601
+        ? 'this runtime does not serve usage/stats (needs ZCode desktop 3.12.x or newer)'
+        : String(e?.message ?? e);
+      if (parsed.json) await emitError(stdout, msg);
+      stderr.write(`usage stats: ${msg}\n`);
       return 1;
     } finally {
       if (owned) try { client.close?.(); } catch {}
@@ -181,7 +220,9 @@ export async function runUsage(argv, opts = {}) {
     }
   }
   if (typeof sessionId !== 'string' || !sessionId.trim()) {
-    stderr.write('usage: no session (pass --session <id> or run a task first)\n');
+    const msg = 'usage: no session (pass --session <id> or run a task first)';
+    if (parsed.json) await emitError(stdout, msg);
+    stderr.write(`${msg}\n`);
     return 2;
   }
 
@@ -192,7 +233,9 @@ export async function runUsage(argv, opts = {}) {
       client = await (opts.createClient ?? defaultCreateClient)();
       owned = true;
     } catch (e) {
-      stderr.write(`usage: ${e?.message ?? e}\n`);
+      const msg = String(e?.message ?? e);
+      if (parsed.json) await emitError(stdout, msg);
+      stderr.write(`usage: ${msg}\n`);
       return 1;
     }
   }
@@ -224,7 +267,9 @@ export async function runUsage(argv, opts = {}) {
       }
       return 0;
     }
-    stderr.write(`usage: ${e?.message ?? e}\n`);
+    const msg = String(e?.message ?? e);
+    if (parsed.json) await emitError(stdout, msg);
+    stderr.write(`usage: ${msg}\n`);
     return 1;
   } finally {
     if (owned) try { client.close?.(); } catch {}
@@ -238,6 +283,12 @@ const isMain = (() => {
 if (isMain) {
   runUsage(process.argv.slice(2)).then(
     (code) => process.exit(code ?? 0),
-    (err) => { console.error(`usage: ${err?.message ?? err}`); process.exit(1); },
+    async (err) => {
+      const msg = String(err?.message ?? err);
+      if (process.argv.slice(2).includes('--json'))
+        await emitError(process.stdout, msg);
+      console.error(`usage: ${msg}`);
+      process.exit(1);
+    },
   );
 }

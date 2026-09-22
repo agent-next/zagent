@@ -1,11 +1,11 @@
-// E3 diff surfaces — read the per-tool-call change artifacts the runtime already writes.
+// diff surfaces — read the per-tool-call change artifacts the runtime already writes.
 //
 // Every file-editing tool call drops `~/.zcode/cli/artifacts/<sessionId>/call_<id>-tool-result-<uuid>.json`
 // with the GUI's diff shape (live-verified 2026-09-05, runtime 2.1.0):
 //   {version:1, kind:'workspace_file_before_change', toolCallId, toolName,
 //    createdAt, files:[{path, existedBefore, beforeContent,
 //      structuredPatch:[{oldStart, oldLines, newStart, newLines, lines:[' ctx','-old','+new']}]}]}
-// That artifact IS the diff surface: before-content (E4 rewind input) plus a unified-ish patch.
+// That artifact IS the diff surface: before-content (rewind input) plus a unified-ish patch.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
@@ -53,7 +53,7 @@ export function diffLine(artifacts) {
   return s.map(x => `${x.path.split('/').pop()} +${x.added}/-${x.removed} (${x.tools.join('/')})`).join(' · ');
 }
 
-// --- E3 undo: preview → apply, with external-modification safety ---
+// --- undo: preview → apply, with external-modification safety ---
 // Undo restores beforeContent, but ONLY if the file on disk still matches what the edit
 // produced. We reconstruct the expected after-state by applying the structuredPatch to
 // beforeContent (line-based, GUI hunk shape: {oldStart, oldLines, newStart, newLines,
@@ -152,7 +152,7 @@ export function undoApply(plans, writeCurrent, { readCurrent, removeCurrent } = 
   });
 }
 
-// --- E3 CLI surface: per-turn aggregate + per-file hunks, rendered from artifacts ---
+// --- CLI surface: per-turn aggregate + per-file hunks, rendered from artifacts ---
 
 export function sessionsWithDiffs({ home = os.homedir() } = {}) {
   const root = `${home}/.zcode/cli/artifacts`;

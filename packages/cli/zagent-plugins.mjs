@@ -19,7 +19,7 @@ if (argv.some(v => v.startsWith('-') && v !== '--offline' && v !== '--json') ||
 }
 const [arg, sub] = positional;
 // `list` is a verb, not a plugin name — `plugins list` used to answer
-// "no plugin matching 'list'" (FLOCK-F10).
+// "no plugin matching 'list'" ().
 const q = arg === 'install' || arg === 'list' ? null : arg;
 if (arg === 'install') {
   if (!sub) { console.error('usage: zagent plugins install <name>'); process.exit(2); }
