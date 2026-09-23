@@ -132,7 +132,7 @@ export function matchClientCommand(text, commands = CLIENT_COMMANDS) {
 
 // The keys a person can press, from the key handler in index.mjs — codex's `?`
 // overlay and claude's /help modal both lead with theirs; zagent's were only
-// ever visible in the one-line banner hint ().
+// ever visible in the one-line banner hint (G6).
 export const SHORTCUTS = Object.freeze([
   ['enter', 'submit'],
   ['tab', 'cycle the /command, $skill, #conversation or @file popup'],
@@ -196,7 +196,7 @@ function usageReport(ctx) {
   return lines.join('\n');
 }
 
-/** A 10-cell usage bar for a percentage — the limit bars /status shows (). */
+/** A 10-cell usage bar for a percentage — the limit bars /status shows (G5). */
 export function quotaBar(pct, width = 10) {
   if (!Number.isFinite(pct)) return '';
   const filled = Math.round(Math.min(100, Math.max(0, pct)) / 100 * width);
@@ -235,7 +235,7 @@ export function formatQuota(report, { bars = false } = {}) {
   return lines.join('\n');
 }
 
-/** One-line start-of-session quota summary for the home screen (). */
+/** One-line start-of-session quota summary for the home screen (G4). */
 export function quotaHomeLine(report) {
   if (!report || typeof report !== 'object') return null;
   const first = formatQuota(report).split('\n')[0];
@@ -374,7 +374,7 @@ export function isNewerVersion(latest, current) {
 
 const readCurrent = (p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
 
-// 0: /rename /archive /delete — `zagent task`'s session-record surface inside
+// G10: /rename /archive /delete — `zagent task`'s session-record surface inside
 // the TUI (codex/claude/opencode all manage sessions without leaving it). The
 // store is the runtime's own tasks-index.sqlite: only ever UPDATEd, never
 // created — a missing file means there is nothing to manage yet.
@@ -458,7 +458,7 @@ export const CLIENT_COMMANDS = [
       ];
       ctx.print(lines.join('\n'));
       ctx.draw();
-      // : the other top CLIs' /status carries the plan and its limit bars;
+      // G5: the other top CLIs' /status carries the plan and its limit bars;
       // ours needed a second command. The quota tail is a separate entry so a
       // slow monitor (15s timeout upstream) never stalls the local block —
       // /status must still answer instantly mid-turn. 'not reported' when the
@@ -497,7 +497,7 @@ export const CLIENT_COMMANDS = [
       if (hasUsed && hasWindow) {
         lines.push(`context: ${formatTokens(p.contextUsed)} / ${formatTokens(p.contextWindow)}`);
       } else {
-        // : the window is knowable before the first turn — the kernel may
+        // G4: the window is knowable before the first turn — the kernel may
         // report it alone, and the host's modelOptions carry it (the /model
         // picker shows it). Neither half is ever guessed: a reported 'used'
         // still prints when the window is unknown.

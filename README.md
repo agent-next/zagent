@@ -7,7 +7,7 @@
 [![npm](https://img.shields.io/npm/v/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![downloads](https://img.shields.io/npm/dm/zagent.svg)](https://www.npmjs.com/package/zagent)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/agent-next/zagent/blob/master/LICENSE)
-[![Node](https://img.shields.io/badge/node-%%89%A5%2022.15-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/package.json)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.15-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/package.json)
 [![CI](https://github.com/agent-next/zagent/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-next/zagent/actions/workflows/ci.yml)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/agent-next/zagent/blob/master/CONTRIBUTING.md)
 
@@ -51,7 +51,7 @@ already work in, on the Coding Plan you already pay for.
 
 ```console
 $ zagent
-⏺ zagent 0.0.237 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
+⏺ zagent 0.0.239 · runtime desktop-bundle 3.12.1 · account:zai/GLM-5.3
   ~/src/myproject
   ? shortcuts · / commands · @ files
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // zagent bots — read-only view of the desktop's shared bot store. The official
-// "bots" channel is host-process-internal (Electron MessagePort, ):
+// "bots" channel is host-process-internal (Electron MessagePort, probe #449):
 // the headless app-server has no bots/* methods, so parity is a native read of
 // ~/.zcode/v2/bot-config.v3.json + bot-state.v3.json. Never writes the store,
 // never reads the credential store — credentialRef/webhookSecretRef are emitted

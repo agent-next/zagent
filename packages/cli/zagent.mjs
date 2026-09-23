@@ -26,7 +26,7 @@ import { checkLatest, compareVersions, installedVersion, passiveCheckAllowed } f
 import { KERNEL_VALUE_FLAGS, KERNEL_LIST_FLAGS, KERNEL_ENUM_FLAGS, KERNEL_BOOL_FLAGS } from './commands.mjs';
 import { readDefaultMode, withPersistedMode, hasModeFlag } from '../driver/default-mode.mjs';
 
-// (/§9): every top CLI keeps a new user inside the product with
+// G1 (ux-inventory §1/§9): every top CLI keeps a new user inside the product with
 // 2-3 sign-in paths; zagent printed one line and exited 1. The card is also what
 // a headless `-p` run prints, so both surfaces name the same three paths.
 const SIGNIN_CARD = [
@@ -83,7 +83,7 @@ async function chooseSignIn() {
   const { createInterface } = await import('node:readline');
   const rl = createInterface({ input: process.stdin, output: process.stderr, historySize: 0 });
   try {
-    // Esc is the chooser's cancel affordance (): rl.close()
+    // Esc is the chooser's cancel affordance (FLOCK wave-4 T8): rl.close()
     // resolves the pending ask() undefined → pick '' → null → the caller's
     // quiet exit 2, identical to EOF/pick-3. Node's escape parser merges an
     // ESC+key struck inside its escape window into ONE meta+key keypress —
@@ -270,7 +270,7 @@ if (hasSelection(args) && !isPrintInvocation(args)) {
     // flag-followed is the same masked-usage class the selection flags were —
     // the kernel's parseArgs answers 'argument missing'/'argument is
     // ambiguous' BEFORE any credential question, so the usage error must beat
-    // the sign-in card here too (flock : `-p hi --mode` → the card).
+    // the sign-in card here too (flock wave-3: `-p hi --mode` → the card).
     // `=` forms carry their own value and post-`--` tokens are positionals;
     // --attach keeps its dedicated arity check inside the sweep too.
     const selPath = hasSelection(preSep); // selection parser owns --mode (allows 'auto')
@@ -323,7 +323,7 @@ if (hasSelection(args) && !isPrintInvocation(args)) {
       // Kernel-enum sweep: the same parseArgs also refuses an out-of-domain
       // VALUE before any credential question (`--mode=bogus` → 'Unsupported
       // --mode value' on extracted 3.12.1), so a bogus value must beat the
-      // sign-in card just like a missing one (flock residual). The
+      // sign-in card just like a missing one (flock wave-3 residual). The
       // check covers the selection path too — a bogus --locale/--surface/
       // --browser-use is wrong there anyway and splitSelection never validates
       // the value it merely parses.
@@ -362,7 +362,7 @@ if (hasSelection(args) && !isPrintInvocation(args)) {
     // --continue → --target non-empty → --target-replace requires --target →
     // --target vs --prompt → --surface invocation shape → the --cwd stat →
     // the --browser-executable stat — each still BEFORE any credential
-    // question (flock residuals: `-p hi --target x`,
+    // question (flock wave-3 residuals: `-p hi --target x`,
     // `--browser-executable /x` without --browser-use, `-p hi --cwd
     // /nonexistent` all showed the sign-in card). Value flags here are
     // KERNEL_VALUE_FLAGS members whose arity was already checked, so a space
@@ -538,7 +538,7 @@ if (args[0] === 'doctor' || !rt) {
   }
   const cfg = `${os.homedir()}/.zcode/cli/config.json`;
   const haveKey = !!(process.env.ZAI_API_KEY || existsSync(`${os.homedir()}/.config/ccz/.api_key`))
-    || oauthSignedIn(); // the kernel OAuth store is a credential too ()
+    || oauthSignedIn(); // the kernel OAuth store is a credential too (G1)
   const fixes = [];
   const warnings = [];
   let invalidConfig = false; // the config FILE is broken — drives the config: line
@@ -616,7 +616,7 @@ if (args[0] === 'doctor' || !rt) {
     finally { try { c?.close(); } catch {} } // r1: spawned runtime always terminated
   }
   console.log(`config: ${invalidConfig ? 'INVALID CONFIG — repair the JSON object manually; existing file preserved' : existsSync(cfg) ? 'present' : !rt ? 'blocked: no runtime found (fix runtime first)' : haveKey ? 'will be created on first run (doctor --fix to do it now)' : 'NO CODING-PLAN CREDENTIAL — export ZAI_API_KEY'} (${displayPath(cfg)})`);
-  // depth lines: which credential will actually be used, what extensions are
+  // G8 depth lines: which credential will actually be used, what extensions are
   // configured, and whether the machine itself is healthy — all read-only.
   const cred = doctorCredential({ config: cfgJson, hasConfig: existsSync(cfg) });
   console.log(`credential: ${cred ?? 'NONE'}`);
@@ -666,7 +666,7 @@ if (kernelVerb0 !== 'login' && kernelVerb0 !== 'logout') {
   }
   await ensureConfig(picked?.key); // oauth runs proceed with the kernel's own store
 }
-// : `login --no-browser` makes the kernel's OAuth flow wait for a
+// FLOCK-F17: `login --no-browser` makes the kernel's OAuth flow wait for a
 // sign-in code pasted on stdin; when stdin can never deliver one (fd closed,
 // /dev/null) that wait never ends — kernel parity wart turned honest refusal.
 // A pipe still forwards: `… | zagent login --no-browser` can carry the code.
@@ -680,7 +680,7 @@ if (kernelVerb0 === 'login' && preSep.some(a => a === '--no-browser' || a.starts
     process.exit(2);
   }
 }
-// : kernel `logout` prints "Logged out from Coding Plan accounts"
+// FLOCK wave-4: kernel `logout` prints "Logged out from Coding Plan accounts"
 // and exits 0 even when no session ever existed — it names a credentials file
 // that may not be on disk. Refuse honestly when the store has provably nothing
 // to clear; --json keeps the kernel's envelope keys (status/provider) so a

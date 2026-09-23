@@ -245,7 +245,7 @@ export async function runTurn(client, sessionId, prompt, { timeoutMs = 120000, o
   }
 }
 
-// --- : robustness trio (from official 3.10.1 changelog) ---
+// --- I5: robustness trio (from official 3.10.1 changelog) ---
 // 1) Auto-retry when a model response is blank or cut off mid-stream.
 // 2) NEVER retry on provider quota errors (1302/429 without retry-after).
 // 3) Surface MCP protocol-version mismatches with a clear diagnostic.
@@ -330,7 +330,7 @@ export function clearSessionCache() {
   sessionCache.clear();
 }
 
-// --- : context/token usage extraction (GUI 用量/成本/缓存 parity) ---
+// --- E7: context/token usage extraction (GUI 用量/成本/缓存 parity) ---
 // Usage rides v4/telemetry/event {kind:'usage.delta'} (live-verified 2026-09-05, glm-5.3):
 // inputTokens/outputTokens/totalTokens/reasoningTokens/cacheReadTokens/cacheWriteTokens + modelId.
 export function extractUsage(events) {
@@ -383,7 +383,7 @@ export async function turnAnswer(client, sessionId, { beforeMessages } = {}) {
   return currentAnswer(messages.slice(0, boundary), messages);
 }
 
-// --- substrate: tool-call summary from a turn's events ---
+// --- E1 substrate: tool-call summary from a turn's events ---
 // Events: computer-use/operation-event {kind: tool-scheduled|tool-started|…} plus
 // tool-call records in v4 telemetry. We surface what's actually observable: per-tool
 // call counts and ordering — no invention of fields the runtime doesn't send.
@@ -398,7 +398,7 @@ export function toolCallSummary(events, sessionId = null) {
   return { count: calls.length, tools: calls.map(c => c.tool), line: calls.length ? calls.map(c => c.tool).join(' → ') : 'no tools' };
 }
 
-// GUI tool-grouping (): changes / explore / terminal / other — the TUI's grouping lens.
+// GUI tool-grouping (E1): changes / explore / terminal / other — the TUI's grouping lens.
 export const TOOL_GROUPS = {
   changes: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'],
   explore: ['Read', 'Grep', 'Glob', 'LS', 'Search', 'WebFetch', 'WebSearch'],
@@ -413,7 +413,7 @@ export function groupTools(tools) {
   return out;
 }
 
-// : per-turn execution summary — one human line: outcome · duration · tools · tokens.
+// I6: per-turn execution summary — one human line: outcome · duration · tools · tokens.
 export function turnSummary({ end, events, turnMs, usage }, toolLens = null) {
   const outcome = { 'turn-completed': '✓', 'turn-failed': '✗', timeout: '⏱' }[end?.ended] ?? (end?.ended ?? '?');
   const dur = Number.isFinite(turnMs) && turnMs >= 0 ? ` ${(turnMs / 1000).toFixed(1)}s` : ''; // r11: no 'NaNs'

@@ -12,7 +12,7 @@
 const EN = {
   placeholder: 'Ask a task about this workspace',
   hint: '/help for commands · esc to interrupt · ctrl+c twice to exit',
-  // Rotating banner hints (): the single fixed line was the only place keys
+  // Rotating banner hints (G6): the single fixed line was the only place keys
   // were ever discoverable. Codex rotates a tip the same way.
   hints: [
     '/help for commands · esc to interrupt · ctrl+c twice to exit',
@@ -20,7 +20,7 @@ const EN = {
     'shift+up selects a turn · j/k pick a block · o toggles it · h/l fold all',
   ],
   working: 'working',
-  // turn-status phases: waiting = no model output observed yet, responding =
+  // W5 turn-status phases: waiting = no model output observed yet, responding =
   // streaming/tool activity has begun. The byte counter rides beside them.
   waiting: 'waiting',
   responding: 'responding',
@@ -68,12 +68,12 @@ const EN = {
   mcpOk: (ok, n) => `mcp ${ok}/${n}`,
   mcpFailed: (ok, n, bad) => `mcp ${ok}/${n} · ${bad} failed`,
   agents: (n) => `agents ${n}`,
-  // exit summary: a session is a resumable object — the way out names it
+  // W5 exit summary: a session is a resumable object — the way out names it
   // and hands back both ways in (the latest session in this directory, or
   // this id exactly).
   sessionEnded: (title, id) => (title ? `session "${title}" (${id})` : `session ${id}`),
   resumeHint: (id) => `resume: zagent -c · zagent --resume ${id}`,
-  // contextual hint bar: one persistent row under the status line naming the
+  // W5 contextual hint bar: one persistent row under the status line naming the
   // keys that are real in the current state. It never names a binding that does
   // not exist — shift+tab only steps queue items, so it is not a "mode" hint.
   hintIdle: 'enter send · alt+enter newline · ? shortcuts',

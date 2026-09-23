@@ -1,4 +1,4 @@
-// rewind — fork-from-checkpoint (live-verified 2026-09-05, runtime 2.1.0).
+// E4 rewind — fork-from-checkpoint (live-verified 2026-09-05, runtime 2.1.0).
 //
 // Workspace checkpoints appear automatically after file-editing turns (the runtime
 // snapshots edited files). `session/fork {sessionId}` — and ONLY {sessionId}: extra keys

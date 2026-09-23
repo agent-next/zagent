@@ -194,7 +194,7 @@ export function applyEvent(state, event) {
         turnId: str(event?.turnId), active: true, startedAt: Date.now(),
         entryStart: state.entries.length,
         usage: null, retries: 0, toolCalls: 0, errors: 0,
-        // turn-status phases: 'waiting' until the first observable model
+        // W5 turn-status phases: 'waiting' until the first observable model
         // output, 'responding' after; streamBytes is the ⇣ received counter.
         responded: false, streamBytes: 0,
       };
@@ -512,7 +512,7 @@ export function addNotice(state, text, level = 'muted') {
   return state;
 }
 
-/** HH:MM in 24-hour local time — the same stamp /status, /quota, and the
+/** HH:MM in 24-hour local time — the same stamp /status, /quota, G4 and the
  * config-gated block timestamps print (render.mjs shares it). */
 export const hhmm = (at) => {
   const d = new Date(at);
@@ -565,7 +565,7 @@ export function retryNotice(p, attempt, report) {
     const monitored = Date.parse(windowResetAt(report) ?? '');
     const stamp = hhmm(Number.isFinite(monitored) && monitored > Date.now()
       ? monitored : explained?.reset?.at);
-    // : measured receipts (2026-09-07) show the rolling window is independent
+    // G7: measured receipts (2026-09-07) show the rolling window is independent
     // of off-peak routing — 1308s land inside an open off-peak window — so the
     // honest remedy is provider-errors': wait for the reset.
     return `5-hour window used up${stamp ? ` · resets ${stamp}` : ''} · nothing will succeed until the reset`;

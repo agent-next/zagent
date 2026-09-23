@@ -1,4 +1,4 @@
-// (/§9): codex/claude doctor print an environment block —
+// G8 (ux-inventory §6/§9): codex/claude doctor print an environment block —
 // node build, credential source, config path, extension counts, disk, logs —
 // while `zagent doctor` showed three lines. These are the shared depth lines so
 // `zagent doctor` and the TUI `/doctor` mirror cannot drift apart.

@@ -57,7 +57,7 @@ export function deviceMid(env = process.env) {
 // The file holds the zcode JWT and the coding-plan key: a successful load also
 // tightens group/other bits left by an older writer (self-heal, best-effort).
 // A credential-free machine gets the sign-in remedy, not a raw ENOENT (the
-// code is preserved for programmatic discrimination). : the
+// code is preserved for programmatic discrimination). FLOCK wave-4 T5: the
 // message names the same failure class the Coding-Plan-key path does (a
 // sign-in problem, not a quota limit) — but the remedy stays `zagent login`
 // only: this store holds the desktop JWT, which ZAI_API_KEY cannot replace.

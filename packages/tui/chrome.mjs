@@ -66,7 +66,7 @@ function layoutInputBox(value, theme, width, options = {}) {
     ? Math.min(options.maskFrom, value.length) : -1;
   const masked = maskAt < 0 ? value
     : value.slice(0, maskAt) + value.slice(maskAt).replace(/./gs, g.mask);
-  // A literal U+00 in pasted input would collide with the mark — strip it so
+  // A literal U+E000 in pasted input would collide with the mark — strip it so
   // exactly one exists. The cursor is a code-unit index into the (pre-sanitise)
   // value; clamp it onto the displayed text — a stripped byte can leave it stale.
   const text = (showPlaceholder ? placeholder : masked).replaceAll(CURSOR_MARK, '');
@@ -175,7 +175,7 @@ export function statusFields(state, theme, options = {}) {
     if (turn?.active && (!startedAt || turn.startedAt < startedAt)) startedAt = turn.startedAt;
     if (!startedAt) startedAt = Date.now();
     const elapsed = formatDuration(Math.max(0, (options.now ?? Date.now()) - startedAt));
-    // turn-status phases: a host-named activity wins; otherwise the phase is
+    // W5 turn-status phases: a host-named activity wins; otherwise the phase is
     // 'waiting' until the first observable output, 'responding' after — the
     // working-vs-stuck answer at a glance. Host str builds may predate the keys.
     const phase = options.activity
@@ -223,7 +223,7 @@ export function statusFields(state, theme, options = {}) {
       : `${formatTokens(ctx.contextUsed)}/${formatTokens(ctx.contextWindow)}`;
     fields.push(field(meter, theme.faint));
   } else if (Number.isFinite(ctx?.contextWindow) && ctx.contextWindow > 0) {
-    // : the window alone is still worth showing — seeded from the host's
+    // G4: the window alone is still worth showing — seeded from the host's
     // model catalog at start. '?/200k' pairs with the usual 'used/window'
     // shape without inventing a used count.
     fields.push(field(`ctx ?/${formatTokens(ctx.contextWindow)}`, theme.faint));
@@ -319,7 +319,7 @@ export function renderUserPeek(entries, index, theme, width, str, fold = null) {
   return [`  ${theme.faint(label)} ${theme.userMark('>')} ${theme.muted(clip(text, room))}${theme.faint(tag)}`];
 }
 
-// The palette page: raised the window to 10 rows (top CLIs show a taller
+// The palette page: G3 raised the window to 10 rows (top CLIs show a taller
 // list) and index.mjs pages the selection by this many on pageup/pagedown.
 export const COMPLETION_ROWS = 10;
 
@@ -361,7 +361,7 @@ export function renderCompletions(completion, theme, width, max = COMPLETION_ROW
 export const FOOTER_ROWS_BELOW_BOX = 2;
 
 /**
- * Contextual hint bar (): one faint row under the status line naming the
+ * Contextual hint bar (W5): one faint row under the status line naming the
  * keys that are real in the current state — send/newline while idle,
  * interrupt/exit while a turn runs, "esc again" while the interrupt is armed.
  * It never names a binding that does not exist: shift+tab only steps queue

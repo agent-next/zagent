@@ -1,4 +1,4 @@
-// : plugin update semantics — marketplace version (from CDN URL path) vs installed
+// I7: plugin update semantics — marketplace version (from CDN URL path) vs installed
 // manifest version, with the suppressed-builtin marker. Shapes from the LIVE store
 // (2026-09-06): marketplace entries {name, source:{url: '…/plugins/<name>/<ver>/plugin.zip', sha256}};
 // installed plugins carry .zcode-plugin/plugin.json {name, version}.
@@ -59,7 +59,7 @@ export function installedPlugins({ home = os.homedir() } = {}) {
     let names; try { names = readdirSync(`${dir}/${base}`); } catch { continue; }
     for (const n of names) add(`${dir}/${base}/${n}/.zcode-plugin/plugin.json`);
   }
-  // : THIRD layout — cache/<marketplace>/<name>/<version>/.zcode-plugin/plugin.json
+  // I8: THIRD layout — cache/<marketplace>/<name>/<version>/.zcode-plugin/plugin.json
   // (version-nested; report the HIGHEST version per name)
   let mkts; try { mkts = readdirSync(`${dir}/cache`); } catch { mkts = []; }
   for (const mk of mkts) {
@@ -102,7 +102,7 @@ export function updateLine(rows) {
 
 // J3: plugin install — download the marketplace zip, VERIFY sha256 (entries carry it),
 // unpack into the runtime's cache layout cache/<marketplace>/<name>/<version>/.
-// The runtime discovers that layout itself (census). Refuse on hash mismatch — never
+// The runtime discovers that layout itself (I8 census). Refuse on hash mismatch — never
 // unpack unverified bytes.
 import { createHash, randomUUID } from 'node:crypto';
 import { defaultUnzipCmd } from './extract.mjs';

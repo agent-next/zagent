@@ -36,10 +36,10 @@ const CONTROL_SOURCE = '[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u
   + ']';
 
 /**
- * Tag characters (U+000-07F) are invisible and have no terminal use, but they
+ * Tag characters (U+E0000-E007F) are invisible and have no terminal use, but they
  * are astral so they cannot live in the class above. 128 of 128 were surviving.
  */
-const ASTRAL_INVISIBLE_SOURCE = '[\\u{000}-\\u{07F}\\u{1D173}-\\u{1D17A}]';
+const ASTRAL_INVISIBLE_SOURCE = '[\\u{E0000}-\\u{E007F}\\u{1D173}-\\u{1D17A}]';
 
 // DELIBERATELY KEPT, because stripping them would corrupt legitimate text:
 //   U+200D ZWJ    — joins emoji sequences (family, profession, flag modifiers)

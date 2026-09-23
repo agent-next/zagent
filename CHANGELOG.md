@@ -2,6 +2,14 @@
 
 This file is the public-facing release log for the npm package `zagent`.
 
+## 0.0.239 — 2026-09-23
+
+- fix(tui): provision standalone accounts from the cli key when v2/config.json is absent — lifts the kernel's "Model not set" login wall on 3.12+ hosts without a GUI-written config (#564)
+- chore(release): align package-lock.json with the shipped version (#563)
+- docs(readme): refresh stale example version string (#566)
+- fix(flock): exempt the sk-dummy123 scenario literal from the escape audit (#567)
+- feat(release): FLOCK_GATE_ADJUDICATED degraded-gateway release mode (#568)
+
 ## Unreleased
 
 ## 0.0.238 — 2026-09-21

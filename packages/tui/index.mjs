@@ -61,7 +61,7 @@ const isSecretCommand = (t) => SECRET_COMMAND.test(t);
 const displayFor = (t) => isSecretCommand(t) ? `${t.slice(0, secretMaskFrom(t))}[redacted]` : t;
 
 // ~/.zcode/cli/config.json {tui:{timestamps:true}} opts each transcript block
-// into a right-aligned faint HH:MM stamp (the audit-trail row). Absent or
+// into a right-aligned faint HH:MM stamp (the W5 audit-trail row). Absent or
 // invalid config stays off — the default transcript is unchanged.
 const tuiTimestampsEnabled = ({ home } = {}) => {
   try {
@@ -138,7 +138,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   ui.historyIndex = ui.history.length;
   void listConversationsAsync({}).then((rows) => { if (!exiting) ui.conversations = rows; }).catch(() => {});
 
-  // : the context window is knowable before the first turn — the host's own
+  // G4: the context window is knowable before the first turn — the host's own
   // modelOptions carry it (the /model picker shows it). Seed the meter so the
   // footer and /context can show the window while 'used' is still unreported;
   // latchMeter merges, so a real kernel sighting overwrites the seed.
@@ -173,7 +173,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     if (meter) state.projection = { ...state.projection, ...meter };
   };
 
-  // diff surface: a file-changing tool call's "updated successfully" prose
+  // W3 diff surface: a file-changing tool call's "updated successfully" prose
   // adds nothing the patch does not show better — and the runtime already wrote
   // the per-call change artifact (kind workspace_file_before_change, keyed by
   // toolCallId). Attach a bounded copy so the row paints colored +/- lines.
@@ -233,7 +233,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
   screen.writeRaw('\x1b[r' + renderBanner(theme, screen.width, {
     version: packageVersion, runtime: runtimeLabel(host), model: ui.model,
     workspace: host.workspaceDirectory, branch: host.workspaceGitBranch, str,
-    // Rotating hint (): one of str.hints per launch — the fixed line was the
+    // Rotating hint (G6): one of str.hints per launch — the fixed line was the
     // only place the keys were discoverable.
     hint: (Array.isArray(str.hints) && str.hints.length
       ? str.hints[Math.floor(Math.random() * str.hints.length)] : str.hint),
@@ -419,7 +419,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     clearCompletion();
     let trimmed = sanitizeText(text).trim();
     if (trimmed === '') return;
-    // : '?' is the one-keystroke help the other top CLIs open on — an exact
+    // G6: '?' is the one-keystroke help the other top CLIs open on — an exact
     // bare '?' resolves to /help instead of spending a model turn on it.
     if (trimmed === '?') trimmed = '/help';
     // Before the busy guard below, which would otherwise QUEUE the quit: the user
@@ -455,7 +455,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       void openPicker(picker).then(opened => { if (!opened) { recordHistory(trimmed); void submit(trimmed); } });
       return;
     }
-    // : a slash word matching NOTHING in the merged palette used to reach the
+    // G9: a slash word matching NOTHING in the merged palette used to reach the
     // kernel, which answered "Unknown command" listing only ITS commands —
     // every zagent command (incl. /exit, the way out) missing. Answer locally
     // with the merged list. Skipped when the host reports no command list:
@@ -962,7 +962,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
         c.index = (c.index + 1) % c.items.length; draw(); return true;
       case 'up':
         c.index = (c.index - 1 + c.items.length) % c.items.length; draw(); return true;
-      // : page keys step a whole window instead of a row — clamped, not
+      // G3: page keys step a whole window instead of a row — clamped, not
       // wrapped, so the bottom of the list is a stable place to land.
       case 'pagedown':
         c.index = Math.min(c.index + completionPageRows(), c.items.length - 1); draw(); return true;
@@ -984,7 +984,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       }
       case 'escape':
         clearCompletion();
-        // : closing the palette must drop slash debris too, or the next
+        // G9: closing the palette must drop slash debris too, or the next
         // typed /help becomes '//help'. Mirrored in the main escape branch.
         if (/^\/+$/.test(ui.input.value)) ui.input = { value: '', cursor: 0 };
         draw(); return true;
@@ -1158,7 +1158,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     return true;
   }
 
-  // The single-entry fold cursor (): j/k walk the selected turn's foldables
+  // The single-entry fold cursor (W3): j/k walk the selected turn's foldables
   // and o toggles just that one. Clamped every read so entries arriving or a
   // stale foldSel can never aim outside the list.
   const foldTargets = () => foldablesInTurn(state.entries, ui.userTurn);
@@ -1222,7 +1222,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     try { stdin.setRawMode?.(false); } catch {}
     screen.writeRaw('\x1b[?2004l\x1b[<u');   // paste off + kitty keyboard pop
     stdin.pause?.();
-    // exit summary: a session is a resumable object — the way out names it
+    // W5 exit summary: a session is a resumable object — the way out names it
     // and hands back both ways in (the latest in this directory, or this id
     // exactly). Only when the runtime actually started one — nothing to resume
     // means no hint. Fatal exits keep their own diagnostic line instead.
@@ -1298,7 +1298,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
       }
       ui.escArmedAt = 0;
       if (ui.queue.length > 0) { applyQueueAction(ui.queue.length - 1, 1); return; }
-      // : Esc dismissed the palette but left a bare '/', so typing /help next
+      // G9: Esc dismissed the palette but left a bare '/', so typing /help next
       // produced '//help' and the kernel's unknown-command reply. An input that
       // is only slashes is debris — drop it.
       if (/^\/+$/.test(ui.input.value)) { ui.input = { value: '', cursor: 0 }; draw(); return; }
@@ -1587,7 +1587,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     } catch {}
   }
 
-  // : the plan window on the home screen — the other top CLIs surface quota
+  // G4: the plan window on the home screen — the other top CLIs surface quota
   // at start; ours only answered on /quota. One async probe, silent on failure:
   // a missing credential is already covered by the first-run card.
   const quotaProbe = deps?.codingPlanStatus ?? codingPlanStatus;

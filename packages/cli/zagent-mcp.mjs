@@ -266,7 +266,7 @@ export async function handleMessage(msg, impls = defaultImpls()) {
 async function main() {
   // `zagent mcp` is meant to be spawned BY an MCP client, not typed by a
   // human: on a terminal it used to hang silently, and on a closed/empty
-  // stdin it exited 0 with no output at all (). Both now explain.
+  // stdin it exited 0 with no output at all (FLOCK-F8). Both now explain.
   // Args are meaningless here (the dispatcher answers `mcp --help` itself);
   // an unknown one is a usage error like every sibling command.
   if (process.argv.slice(2).length || process.stdin.isTTY) {

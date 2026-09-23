@@ -74,6 +74,20 @@ export function provisionStandaloneAccounts({
     const providers = JSON.parse(read(path.join(home, '.zcode', 'v2', 'config.json')))?.provider;
     configured = configuredAccountKeys(providers);
   } catch { /* a missing config.json just means nothing is configured */ }
+  if (!Object.keys(configured).length) {
+    // 3.12+ kernels moved the plan binding out of v2/config.json; on hosts the
+    // GUI never wrote one, the same key still lives in zagent's own cli config
+    // under the personal provider id. Map it to its builtin coding-plan
+    // sibling — the GUI binds one plan key for both account types (header
+    // note). Verified live 2026-09-23: without this fallback the standalone
+    // TUI walls every prompt behind "Model not set" (kernel bHo entitled
+    // check) while headless keeps working on the cli key alone.
+    try {
+      const cliProviders = JSON.parse(read(path.join(home, '.zcode', 'cli', 'config.json')))?.provider;
+      for (const [id, key] of Object.entries(configuredAccountKeys(cliProviders)))
+        if (!id.includes(':')) configured[`builtin:${id}-coding-plan`] = key;
+    } catch { /* no cli config either — nothing to derive */ }
+  }
   if (!Object.keys(configured).length) { result.reason = 'no configured provider keys'; return result; }
 
   // Kernel parity (fu/FE): the whole read-modify-write runs under the shared

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zagent onboard — first-run UX: one command that proves the whole chain works.
+// zagent onboard — E8 first-run UX: one command that proves the whole chain works.
 // doctor-style checks + ONE live smoke turn (runtime -> config -> API key -> answer) with
 // elapsed time, then next-step guidance. Exit 0 only if the chain is proven.
 import { spawnSync } from 'node:child_process';

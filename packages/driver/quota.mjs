@@ -16,7 +16,7 @@ export function quotaError({ status, body }) {
   return `HTTP ${status}${body.code === undefined ? '' : ` (code ${body.code})`}: ${String(message)}`;
 }
 
-// : a failing quota call must say WHICH problem it is — a rejected
+// FLOCK-F11: a failing quota call must say WHICH problem it is — a rejected
 // credential (sign-in), a real usage limit (quota window), or transport —
 // because the fixes differ. The class is derived from the HTTP status and the
 // numeric business code only; server-provided message text stays out of the
@@ -31,7 +31,7 @@ export const QUOTA_CLASS_HINT = {
   auth: 'a sign-in problem, not a quota limit — run `zagent login` to sign in',
   limit: 'a quota-window problem, not a sign-in problem — retry after the window resets (`zagent quota reset` lists reset tickets)',
 };
-// : the failure class rides the error as `quotaClass` so the --json
+// FLOCK-F15: the failure class rides the error as `quotaClass` so the --json
 // error envelope emits it as a field, not only as stderr prose. Absent = the
 // failure is unclassified (a service-shape problem, not auth/limit/network).
 const classified = (message, cls) => Object.assign(new Error(message), { quotaClass: cls });
@@ -120,7 +120,7 @@ function resetOauth(store) {
   }
   return undefined;
 }
-// : `reset use` confirms BEFORE the network call, so every
+// FLOCK wave-4 T4: `reset use` confirms BEFORE the network call, so every
 // deterministic auth-material failure resetRequest would surface must fire
 // first — a credential-free machine gets the sign-in remedy, not a demand to
 // confirm a consume it cannot perform. Mirrors resetRequest's throwing

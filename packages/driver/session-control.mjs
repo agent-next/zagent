@@ -3,7 +3,7 @@
 // runtime's zod schemas accept (wrong shapes give -32602 with the field named).
 //
 //   session/usage         {sessionId} -> totals + inputBaselineBySource (context breakdown)
-//   session/compact       {sessionId} -> full snapshot ()
+//   session/compact       {sessionId} -> full snapshot (E5)
 //   session/setModel      {sessionId, model:{modelId, providerId}}
 //   session/setThoughtLevel {sessionId, thoughtLevel}
 //   session/setMode       {sessionId, mode: 'plan'|'build'|'edit'|'yolo'|'auto'}
