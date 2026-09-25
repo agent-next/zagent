@@ -1,0 +1,7 @@
+{
+  "name": "zagent-plugins",
+  "description": "zagent plugin marketplace",
+  "description_i18n": { "en": "zagent plugin marketplace", "zh-CN": "zagent 插件市场" },
+  "owner": { "name": "zagent" },
+  "plugins": [{ "name": "zquota-panel", "source": "./plugins/zquota-panel" }]
+}

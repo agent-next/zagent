@@ -1,0 +1,17 @@
+{
+  "name": "@zagent/driver",
+  "version": "0.0.239",
+  "private": true,
+  "type": "module",
+  "main": "zcode-protocol.mjs",
+  "scripts": {
+    "test": "node test.mjs",
+    "test:unit": "node test-unit.mjs",
+    "test:router": "node test-router.mjs",
+    "test:d3": "node test-d3-e2e.mjs",
+    "test:all": "node ../../scripts/test-all.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}
