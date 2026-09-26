@@ -13,9 +13,9 @@ import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 // Shared assert helpers and hand-driven harnesses: real files, not gated tests.
-// test-registry.mjs (research/spikes/cloud-registry) drives a real localhost
-// HTTP server over fetch; the hermetic gate is offline-by-design and blocks
-// fetch, so like test-user-flow.mjs it runs on demand, ungated.
+// test-registry.mjs drives a real localhost HTTP server over fetch; the hermetic
+// gate is offline-by-design and blocks fetch, so like test-user-flow.mjs it
+// runs on demand, ungated.
 export const HELPERS = new Set(['test-util.mjs', 'test-all.mjs', 'test-user-flow.mjs', 'test-registry.mjs']);
 
 // Directories that never hold gated tests. Pruned by name at every depth.
