@@ -80,6 +80,25 @@ ok((await inboxV({ ...EV, header: { ...EV.header, token: 'wrong' } })).status ==
 ok(repliesV.length === 0, 'no reply leaked to forged events');
 ok((await inboxV({ ...EV, header: { ...EV.header, token: VT }, event: { ...EV.event, message: { ...EV.event.message, message_id: 'om_v1' } } })).status === 200, 'correct token passes');
 ok(repliesV.length === 1 && repliesV[0][1] === 'leak', 'verified event handled');
+
+// the handshake carries the verify token too — it is gated like real events
+ok(receiveEvent({ type: 'url_verification', token: 'wrong', challenge: 'c' }, { verifyToken: VT }).kind === 'unauthorized', 'bad-token challenge refused');
+ok(receiveEvent({ type: 'url_verification', challenge: 'c' }, { verifyToken: VT }).kind === 'unauthorized', 'token-less challenge refused');
+ok(receiveEvent({ type: 'url_verification', token: VT, challenge: 'c' }, { verifyToken: VT }).challenge === 'c', 'correct-token challenge echoes');
+ok(receiveEvent({ type: 'url_verification', header: { token: VT }, challenge: 'c2' }, { verifyToken: VT }).challenge === 'c2', 'v2-shaped challenge token honored');
+ok((await inboxV({ type: 'url_verification', token: 'wrong', challenge: 'leak' })).status === 401, 'inbox refuses forged challenge');
+ok((await inboxV({ type: 'url_verification', token: VT, challenge: 'ok-ch' })).body.challenge === 'ok-ch', 'inbox answers verified challenge');
+
+// bot/app senders inside an allowed chat must not drive turns (loops, injection)
+const botEv = st => ({ schema: '2.0', header: { event_type: 'im.message.receive_v1', token: VT },
+  event: { message: { chat_id: 'oc_9', message_id: `om_${st}`, content: '{"text":"hi"}' },
+           sender: { sender_type: st } } });
+ok(receiveEvent(botEv('app'), { verifyToken: VT }).kind === 'ignored', 'app sender ignored');
+ok(receiveEvent(botEv('bot'), { verifyToken: VT }).kind === 'ignored', 'bot sender ignored');
+ok(receiveEvent(botEv('user'), { verifyToken: VT }).kind === 'message', 'user sender allowed');
+let botCalls = 0;
+const inboxBot = makeInbox({ handler: async () => { botCalls++; return 'x'; }, sendReply: async () => {}, verifyToken: VT });
+ok((await inboxBot(botEv('app'))).status === 200 && botCalls === 0, 'bot message never reaches the handler');
 await inbox(EV);
 await inbox(EV); // duplicate push (docs: repeats happen; dedup by message_id)
 ok(replies.length === 1, 'message_id dedup drops repeat push');

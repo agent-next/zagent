@@ -62,16 +62,27 @@ export async function sendText(fetchImpl, token, receiveIdType, receiveId, text,
 // Webhook event ingestion. Returns:
 //   {kind:'challenge', challenge}                       — url_verification handshake
 //   {kind:'message', chatId, messageId, text, senderType}
-//   {kind:'ignored'}                                    — other events / non-text / malformed
+//   {kind:'ignored'}                                    — other events / non-text / bot senders / malformed
+//   {kind:'unauthorized'}                               — verify-token mismatch (challenge or event)
 const FEISHU_ATTACHMENT_TYPES = new Set(['image', 'file', 'audio', 'media', 'sticker']);
 
 export function receiveEvent(body, { verifyToken } = {}) {
-  if (body?.type === 'url_verification') return { kind: 'challenge', challenge: body.challenge ?? '' };
-  // Review r3 #1: events must authenticate with the app's Verification Token (docs:
-  // v2 event header carries `token`). Without this, anyone who can reach the port
-  // forges im.message.receive_v1 and drives the operator's agent.
+  // Review r3 #1: events must authenticate with the app's Verification Token.
+  // The url_verification handshake carries that token too (top-level `token`,
+  // header.token on v2-shaped payloads) — answer it before the check, not after,
+  // or the endpoint tells a stranger where the unauthenticated hole is.
+  if (body?.type === 'url_verification') {
+    if (verifyToken !== undefined && (body?.token ?? body?.header?.token) !== verifyToken)
+      return { kind: 'unauthorized' };
+    return { kind: 'challenge', challenge: body.challenge ?? '' };
+  }
   if (verifyToken !== undefined && body?.header?.token !== verifyToken) return { kind: 'unauthorized' };
   if (body?.header?.event_type !== 'im.message.receive_v1') return { kind: 'ignored' };
+  // A bot/app posting inside an allowed chat must not drive agent turns
+  // (bot-to-bot loops, cross-app injection). Absent sender_type stays admissible:
+  // real user deliveries always carry 'user'.
+  const senderType = body.event?.sender?.sender_type ?? null;
+  if (senderType !== null && senderType !== 'user') return { kind: 'ignored' };
   const msg = body.event?.message;
   let text = null;
   try { text = JSON.parse(msg?.content ?? '{}')?.text ?? null; } catch { text = null; }
@@ -82,7 +93,7 @@ export function receiveEvent(body, { verifyToken } = {}) {
     text = '';
   }
   return { kind: 'message', chatId: msg.chat_id, messageId: msg.message_id ?? null,
-    text, senderType: body.event?.sender?.sender_type ?? null };
+    text, senderType };
 }
 
 // Token cache with expiry (default 90% of reported expire, floor 60s) — one refresh
