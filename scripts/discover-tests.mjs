@@ -31,6 +31,16 @@ export const NEEDS_RUNTIME = new Set(['test.mjs', 'test-a2.mjs', 'test-permissio
 // honest bucket is Linux-only — the files also self-skip off-Linux.
 export const NEEDS_LINUX_PTY = new Set(['test-journeys.mjs', 'test-journeys-commands.mjs']);
 
+// Per-OS exclusions: the file runs on the other matrix OSes but cannot pass on
+// this one for a reason that is not a product bug and cannot be a skipped
+// assertion (the failure is at file level — e.g. the harness facility the
+// whole test drives does not exist there). `os` is a process.platform value;
+// `reason` must name the concrete failure the entry stands in for. A file
+// excluded on every OS belongs in NEEDS_RUNTIME/NEEDS_LINUX_PTY instead.
+export const PLATFORM_EXCLUDES = [
+  // { file: 'test-x.mjs', os: 'win32', reason: '...' },
+];
+
 // Both spellings are in use — scripts and packages chose the first, bench the
 // second — and a rule honouring one would silently skip half of them.
 export const isTestFile = (name) =>

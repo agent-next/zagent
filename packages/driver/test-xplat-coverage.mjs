@@ -20,7 +20,7 @@ const workflow = path.join(root, '.github', 'workflows', 'test-matrix.yml');
 
 // What counts as a gated test file, and which need a runtime or a Linux pty,
 // comes from the same module the runner uses — one answer, three readers.
-import { discoverTests, NEEDS_RUNTIME, NEEDS_LINUX_PTY } from '../../scripts/discover-tests.mjs';
+import { discoverTests, NEEDS_RUNTIME, NEEDS_LINUX_PTY, PLATFORM_EXCLUDES } from '../../scripts/discover-tests.mjs';
 
 ok(existsSync(workflow), 'test-matrix.yml exists');
 const yml = readFileSync(workflow, 'utf8');
@@ -69,5 +69,24 @@ for (const file of EXCLUDED.keys())
 // 5. Every exclusion states a reason.
 for (const [file, reason] of EXCLUDED)
   ok(typeof reason === 'string' && reason.trim().length > 0, `${file} exclusion states a reason`);
+
+// 6. Per-OS exclusions — the file still runs everywhere else, so the shape is
+//    {file, os, reason}: a real discovered test, a real platform, a concrete
+//    reason, and never a second way to skip what NEEDS_* already excludes.
+const MATRIX_PLATFORMS = new Set(['linux', 'darwin', 'win32']);
+for (const { file, os, reason } of PLATFORM_EXCLUDES) {
+  ok(discoveredBases.has(file), `${file} platform-excluded on ${os} still exists`);
+  ok(MATRIX_PLATFORMS.has(os), `${file} platform exclusion names a matrix os (${os})`);
+  ok(typeof reason === 'string' && reason.trim().length > 0, `${file} ${os} exclusion states a reason`);
+  ok(!EXCLUDED.has(file), `${file} is both fully excluded and ${os}-excluded — pick one`);
+}
+const perOsSeen = new Set();
+for (const { file, os } of PLATFORM_EXCLUDES) {
+  ok(!perOsSeen.has(`${file}:${os}`), `${file} has a duplicate ${os} exclusion`);
+  perOsSeen.add(`${file}:${os}`);
+}
+for (const file of new Set(PLATFORM_EXCLUDES.map(e => e.file)))
+  ok(PLATFORM_EXCLUDES.filter(e => e.file === file).length < MATRIX_PLATFORMS.size,
+    `${file} is excluded on every OS — that is what NEEDS_* is for`);
 
 summary('xplat-coverage');

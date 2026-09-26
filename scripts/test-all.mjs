@@ -17,7 +17,7 @@ import { findRuntime } from '../packages/driver/runtime.mjs';
 // cross-platform ledger, which used to keep its own copy of the answer. The
 // platform/runtime exclusions live there too — one list, three readers
 // (this runner, the ledger, CI via this runner).
-import { discoverTests, NEEDS_RUNTIME, NEEDS_LINUX_PTY } from './discover-tests.mjs';
+import { discoverTests, NEEDS_RUNTIME, NEEDS_LINUX_PTY, PLATFORM_EXCLUDES } from './discover-tests.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // NEEDS_RUNTIME drive a real ZCode runtime process; they are real tests, not
@@ -30,10 +30,12 @@ const runtime = live ? findRuntime()?.entry : null;
 // saying "needs ZCode runtime" on a machine that HAS the runtime installed is
 // simply false, and a gate that misreports its own skips is the same class of
 // defect as one that hides them.
-const reasonFor = base =>
-  NEEDS_LINUX_PTY.has(base) ? 'needs util-linux script(1) pty; Linux only'
-  : NEEDS_RUNTIME.has(base) ? (live ? 'no ZCode runtime found' : 'live runtime test; opt in with --live')
-  : null;
+const reasonFor = base => {
+  if (NEEDS_LINUX_PTY.has(base)) return 'needs util-linux script(1) pty; Linux only';
+  if (NEEDS_RUNTIME.has(base)) return live ? 'no ZCode runtime found' : 'live runtime test; opt in with --live';
+  const perOs = PLATFORM_EXCLUDES.find(e => e.file === base && e.os === process.platform);
+  return perOs ? `${perOs.reason} (${process.platform} exclusion)` : null;
+};
 
 const files = discoverTests(root);
 if (files.length === 0) {
