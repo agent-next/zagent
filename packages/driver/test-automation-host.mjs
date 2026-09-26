@@ -331,14 +331,18 @@ try {
   });
 
   // F4b: the store, its coordination db and the audit log are owner-only —
-  // the kernel can persist arbitrary prompt text incl. observed secrets
+  // the kernel can persist arbitrary prompt text incl. observed secrets.
+  // POSIX-only: win32 reports synthetic modes (0666) and chmod there only
+  // toggles the read-only bit, so the repair leg cannot observe a 0600 drift.
   const cliDir = f => path.join(home, '.zcode', 'cli', f);
-  for (const f of ['automations.json', 'automations.json.coordination.sqlite', 'automation-heartbeat.log'])
-    assert.equal(statSync(cliDir(f)).mode & 0o777, 0o600, `${f} must be 0600`);
-  chmodSync(cliDir('automations.json'), 0o664);
-  loadJobs({ home });
-  assert.equal(statSync(cliDir('automations.json')).mode & 0o777, 0o600,
-    'a permissive pre-existing store is repaired on read');
+  if (process.platform !== 'win32') {
+    for (const f of ['automations.json', 'automations.json.coordination.sqlite', 'automation-heartbeat.log'])
+      assert.equal(statSync(cliDir(f)).mode & 0o777, 0o600, `${f} must be 0600`);
+    chmodSync(cliDir('automations.json'), 0o664);
+    loadJobs({ home });
+    assert.equal(statSync(cliDir('automations.json')).mode & 0o777, 0o600,
+      'a permissive pre-existing store is repaired on read');
+  }
 
   // === Leg 3: `zagent automation` manages the same store =====================
   r = run(['create', '--prompt', 'nightly rebuild', '--title', 'rebuild',

@@ -135,13 +135,17 @@ try {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /registry|npm view/);
   // npm unresolvable at all (PATH without it, no co-located npm-cli.js) fails
-  // closed with the same honesty — never a stack or a silent zero.
-  r = spawnSync(process.execPath, [bin, 'update', '--check'], {
-    encoding: 'utf8', timeout: 20000,
-    env: { ...env(), PATH: '/nonexistent', npm_execpath: '' },
-  });
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /cannot check|not found/);
+  // closed with the same honesty — never a stack or a silent zero. Skipped on
+  // win32: the CI image always has an npm-cli.js beside node.exe, so the
+  // co-located arm answers no matter what PATH says.
+  if (process.platform !== 'win32') {
+    r = spawnSync(process.execPath, [bin, 'update', '--check'], {
+      encoding: 'utf8', timeout: 20000,
+      env: { ...env(), PATH: '/nonexistent', npm_execpath: '' },
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /cannot check|not found/);
+  }
 
   // --- usage errors exit 2 like the other subcommands ---
   r = run(['update', '--bogus']);

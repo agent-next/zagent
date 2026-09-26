@@ -125,7 +125,9 @@ try {
   assert.equal(boom.status, 1, boom.stdout);
   const stored = JSON.parse(readFileSync(pendingPath, 'utf8')).idempotency_key;
   assert.match(stored, /^[0-9a-f-]{36}$/);
-  assert.equal(statSync(pendingPath).mode & 0o777, 0o600, 'pending key file must be owner-only');
+  // win32 has no POSIX mode bits — Node reports a synthetic 0666 there
+  if (process.platform !== 'win32')
+    assert.equal(statSync(pendingPath).mode & 0o777, 0o600, 'pending key file must be owner-only');
   const echoPreload = `globalThis.fetch = async (url, options) => {
     const sent = JSON.parse(options.body);
     return {status:200, json:async()=>({code:0, data:{used:true, echo:sent.idempotency_key}})};
