@@ -3,10 +3,9 @@
 // WSS wss://zcode.z.ai/ws?mid=<deviceMid>, header X-Device-ID, then
 // {type:"device_register_init", device_mid, pass_hash, meta, client_ts} -> {type:"device_register_ack", device_sid}.
 import WebSocket from 'ws';
-import { readFileSync, writeFileSync as wd, mkdirSync, chmodSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
-import { decryptCredential, loadCredentialStore, deviceMid } from './credentials.mjs';
+import { decryptCredential, loadCredentialStore, deviceMid, writePrivateFileSync } from './credentials.mjs';
 
 export function relaySecrets() {
   const store = loadCredentialStore();
@@ -76,15 +75,12 @@ export function relayStatus({ home = os.homedir(), env = process.env } = {}) {
     source: cliSid ? 'cli' : null,
   };
 }
-// relay-state.json carries the device id and a credential-adjacent session id:
-// write it user-private. writeFileSync's mode only applies at creation, so a
-// pre-existing loose file is tightened with an explicit chmod.
+// relay-state.json carries the device id and a credential-adjacent session id,
+// so it goes through the shared private-write helper: the new content lands in
+// a 0600 tmp file that is renamed over the target — it is never observable at
+// a wider mode, and a dir that cannot be tightened fails the write loudly.
 export function writeRelayState(file, obj) {
-  const dir = dirname(file);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  try { chmodSync(dir, 0o700); } catch {}
-  wd(file, JSON.stringify(obj, null, 1), { mode: 0o600 });
-  try { chmodSync(file, 0o600); } catch {}
+  writePrivateFileSync(file, JSON.stringify(obj, null, 1));
 }
 
 export async function ensureDeviceSid({ deviceMid: explicitMid } = {}) {

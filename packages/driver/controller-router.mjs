@@ -1,11 +1,12 @@
 // D3 — device-side controller router (mobile/remote sync).
 // Answers the web controller's app-payloads over the relay data channel, per the
-// 18-type zcode_type catalog captured from the desktop main bundle (gui-max dossier,
-// 2026-09-04). Frame shapes: {zcode_type:'bootstrap-request',requestId} ->
+// 18-type zcode_type catalog captured from the installed desktop main bundle.
+// Frame shapes: {zcode_type:'bootstrap-request',requestId} ->
 // {zcode_type:'bootstrap-response',requestId,success,result} etc.
 // rpc-frame/rpc-frame-ack (the raw workspace bridge) are NOT implemented here — D3 phase 2.
 
-import { readFileSync, statSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { readFileSync, statSync, copyFileSync } from 'node:fs';
+import { writePrivateFileSync } from './credentials.mjs';
 import os from 'node:os';
 
 const APP_TYPES = [ // full catalog; handlers registered below answer 5, pass the rest
@@ -73,8 +74,9 @@ export function writeSettings(updates, { now = Date.now() } = {}) {
     try { copyFileSync(p, `${p}.corrupt-${now}`); } catch {}
   } }
   const next = { ...cur, ...updates };
-  mkdirSync(`${os.homedir()}/.zcode/v2`, { recursive: true });
-  writeFileSync(p, JSON.stringify(next, null, 2));
+  // Settings carry recent project paths — private state, so the write goes
+  // through the shared atomic 0600-in-0700 helper.
+  writePrivateFileSync(p, JSON.stringify(next, null, 2));
   return next;
 }
 

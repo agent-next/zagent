@@ -6,7 +6,7 @@
 // load path self-heals a permissive file (the live guarantee); saveCredentialStore
 // (mode 0600) exists for callers that write the store from this codebase.
 import { createHash, createDecipheriv, createCipheriv, randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, statSync, chmodSync, renameSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, statSync, chmodSync, renameSync, rmSync, readdirSync, rmdirSync, openSync, fsyncSync, closeSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -231,8 +231,37 @@ export function backupCorruptFileSync(file) {
   return bak;
 }
 
+// Private state/secret writes (relay session ids, connector checkpoints, daemon
+// pid files, the credential store): the target must never exist at a looser
+// mode, not even between create and chmod. Write a sibling tmp opened 'wx'
+// 0600, fsync, then rename over the target — a pre-existing loose file is
+// replaced outright, never written in place. The holding dir must end up 0700:
+// a chmod that cannot tighten it throws instead of leaving the file readable.
+export function writePrivateFileSync(file, data, { retryDelaysMs = [50, 100, 200, 400, 800] } = {}) {
+  const dir = path.dirname(file);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700); // an unchecked chmod is how loose dirs stay loose
+  const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+  try {
+    const fd = openSync(tmp, 'wx', 0o600); // exclusive create, private at birth
+    try { writeFileSync(fd, data); fsyncSync(fd); }
+    finally { closeSync(fd); }
+    for (let attempt = 0; ; attempt += 1) {
+      try { renameSync(tmp, file); break; }
+      catch (e) {
+        // bounded ladder like the kernel's: exhaust the delays, then give up
+        if (!RETRYABLE_RENAME.has(e?.code) || attempt >= retryDelaysMs.length) throw e;
+        sleepSync(retryDelaysMs[attempt]);
+      }
+    }
+  } catch (e) {
+    try { rmSync(tmp, { force: true }); } catch {}
+    throw e;
+  }
+}
+
 export function saveCredentialStore(store, file = `${os.homedir()}/.zcode/v2/credentials.json`) {
-  atomicWriteFileSync(file, JSON.stringify(store));
+  writePrivateFileSync(file, JSON.stringify(store));
   chmodSync(file, 0o600); // belt-and-suspenders where mode is advisory
   return file;
 }
