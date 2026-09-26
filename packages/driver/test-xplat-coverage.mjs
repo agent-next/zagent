@@ -3,8 +3,8 @@
 // .github/workflows/test-matrix.yml names its test files by hand. That is the
 // same shape as the old `test:all` (4 of 24 named, the rest ungated) — a new
 // pure-unit test is simply never run on Windows or macOS and nothing says so.
-// The ubuntu lane (test.yml -> scripts/test-all.mjs) still runs everything, so
-// nothing is UNGATED; what is missing is cross-platform evidence.
+// Locally `node scripts/test-all.mjs` still runs everything, so nothing is
+// UNGATED; what is missing is cross-platform evidence.
 //
 // This ledger does not guess. Every test file must be in exactly one bucket:
 //   matrix     — actually run on ubuntu + windows + macos
@@ -42,15 +42,15 @@ const EXCLUDED = new Map([
 // they are plausible matrix candidates — but that has never been demonstrated
 // on Windows or macOS, and this ledger refuses to record a reason nobody checked.
 const UNTRIAGED = [
-  'test-core-release.mjs', 'test-d3-e2e.mjs', 'test-doctor.mjs', 'test-feishu.mjs',
+  'test-core-release.mjs', 'test-d3-e2e.mjs', 'test-doctor.mjs',
   'test-goal.mjs', 'test-offpeak.mjs', 'test-packaging.mjs', 'test-permissions-rewind.mjs',
   'test-providers.mjs', 'test-public-export.mjs', 'test-public-regressions.mjs',
-  'test-queue-sm.mjs', 'test-robustness.mjs', 'test-router.mjs', 'test-rpc-bridge.mjs',
-  'test-rpc-frame.mjs', 'test-session-control.mjs', 'test-subagents.mjs',
-  'test-telegram.mjs', 'test-tool-summary.mjs', 'test-unit.mjs', 'test-usage.mjs',
+  'test-queue-sm.mjs', 'test-robustness.mjs', 'test-router.mjs',
+  'test-session-control.mjs', 'test-subagents.mjs',
+  'test-tool-summary.mjs', 'test-unit.mjs', 'test-usage.mjs',
   'test-version.mjs',
 ];
-const UNTRIAGED_BASELINE = 23; // ratchet: lower this as files move into the matrix
+const UNTRIAGED_BASELINE = 19; // ratchet: lower this as files move into the matrix
 
 ok(existsSync(workflow), 'test-matrix.yml exists');
 const yml = readFileSync(workflow, 'utf8');
