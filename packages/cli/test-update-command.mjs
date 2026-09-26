@@ -65,7 +65,11 @@ const installs = () => (existsSync(npmLog) ? readFileSync(npmLog, 'utf8') : '');
 // snapshot auto-guard really runs and leaves a non-empty mode-0000
 // checkpoints dir — rimraf cannot descend that; restore traversability first.
 const rmTree = (d) => {
-  if (process.platform !== 'win32') {
+  if (process.platform === 'darwin') {
+    // the snapshot guard locks with chflags uchg on macOS, not chattr
+    spawnSync('chflags', ['-R', 'nouchg', d], { stdio: 'ignore' });
+    spawnSync('chmod', ['-R', 'u+rwX', d], { stdio: 'ignore' });
+  } else if (process.platform !== 'win32') {
     spawnSync('chattr', ['-R', '-i', d], { stdio: 'ignore' });
     spawnSync('chmod', ['-R', 'u+rwX', d], { stdio: 'ignore' });
   }

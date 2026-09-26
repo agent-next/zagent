@@ -75,7 +75,12 @@ for (const file of files) {
     // Tests may leave deliberately-unwritable fixtures (e.g. a snapshot-guard
     // locked dir is non-empty + mode 0000 / chattr +i by design) — rimraf
     // cannot descend those, so restore traversability best-effort first.
-    if (process.platform !== 'win32') {
+    // macOS locks with chflags uchg (snapshot-guard.mjs), Linux with chattr +i —
+    // each needs its own clear before rmSync, or cleanup dies EPERM.
+    if (process.platform === 'darwin') {
+      spawnSync('chflags', ['-R', 'nouchg', sandbox], { stdio: 'ignore' });
+      spawnSync('chmod', ['-R', 'u+rwX', sandbox], { stdio: 'ignore' });
+    } else if (process.platform !== 'win32') {
       spawnSync('chattr', ['-R', '-i', sandbox], { stdio: 'ignore' });
       spawnSync('chmod', ['-R', 'u+rwX', sandbox], { stdio: 'ignore' });
     }

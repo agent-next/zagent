@@ -55,7 +55,13 @@ const workers = Array.from({ length: P }, async () => {
         p.on('error', () => { clearTimeout(t); resolve(true); });
       });
       out = bufs.join('').trimEnd();
-    } finally { rmSync(sandbox, { recursive: true, force: true }); }
+    } finally {
+      // A test may leave immutable fixtures (chattr +i / chflags uchg from the
+      // snapshot guard): restore traversability or rmSync dies with EPERM.
+      if (process.platform === 'darwin') spawnSync('chflags', ['-R', 'nouchg', sandbox], { stdio: 'ignore' });
+      else if (process.platform !== 'win32') spawnSync('chattr', ['-R', '-i', sandbox], { stdio: 'ignore' });
+      rmSync(sandbox, { recursive: true, force: true });
+    }
     if (bad) { failures.push(rel); console.log(`FAIL ${rel}\n${out.split('\n').slice(-15).map(l => `     ${l}`).join('\n')}`); }
     else console.log(`ok   ${rel}`);
   }
