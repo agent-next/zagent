@@ -7,7 +7,7 @@
 //        node packages/cli/zagentd.mjs ask "prompt"  (connect to daemon)
 //        node packages/cli/zagentd.mjs stop
 import { createServer, connect } from 'node:net';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,6 +19,11 @@ const SOCK = `${os.tmpdir()}/zagentd-${process.getuid()}.sock`;
 const PID_FILE = `${os.tmpdir()}/zagentd-${process.getuid()}.pid`;
 
 const [cmd, ...rest] = process.argv.slice(2);
+
+if (!['start', 'stop', 'ask', '--serve', 'serve'].includes(cmd)) {
+  console.error('usage: zagentd start | stop | ask "prompt"');
+  process.exit(2);
+}
 
 if (cmd === 'stop') {
   try {
