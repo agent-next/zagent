@@ -14,6 +14,7 @@ client.on('connect', () => client.write(JSON.stringify({ op: 'compact', cwd: pro
 let buf = '';
 client.on('data', d => { buf += d; const i = buf.indexOf('\n'); if (i >= 0) {
   try { const r = JSON.parse(buf.slice(0, i));
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw new Error('invalid response');
     if (r.error) { console.error(r.error); process.exit(1); } // r8 #5: failures exit 1
     console.log(JSON.stringify(r)); process.exit(0);
   } catch { console.error('unparseable daemon response'); process.exit(1); }

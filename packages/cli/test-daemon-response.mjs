@@ -45,5 +45,16 @@ syncBuiltinESMExports();
       else assert.match(child.stderr, /unparseable daemon response/);
     }
   }
+  // zagent compact renders for humans: the reply goes to stdout on success,
+  // errors go to stderr — but the same response-shape validation applies.
+  for (const [response, exit] of [['{"compacted":"s1","accepted":true}', 0], ['{"error":"workspace busy"}', 1], ['null', 1], ['[1]', 1], ['broken JSON', 1]]) {
+    const child = spawnSync(process.execPath, ['--import', adapter, path.join(root, 'packages/cli/zagent-compact.mjs')], {
+      cwd: root, env: { ...env, ZAGENT_DAEMON_TEST_RESPONSE: response }, encoding: 'utf8', timeout: 10000,
+    });
+    assert.equal(child.status, exit, `zagent-compact: ${response}\n${child.stderr}`);
+    if (exit === 0) assert.deepEqual(JSON.parse(child.stdout), { compacted: 's1', accepted: true });
+    else if (response.startsWith('{"error"')) assert.match(child.stderr, /workspace busy/);
+    else assert.match(child.stderr, /unparseable daemon response/);
+  }
   console.log('PASS daemon ask/compact response exit codes: success, structured error, null, malformed JSON');
 } finally { rmSync(sandbox, { recursive: true, force: true }); }
