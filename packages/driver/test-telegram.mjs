@@ -113,5 +113,57 @@ release?.({ ok: true, result: [{ update_id: 9, message: { chat: { id: 1 }, text:
 await new Promise(r => setTimeout(r, 100));
 ok(handled4.length === 0, 'handler not started after stop() (r2 #4)');
 
+// --- r3 #5: an update is not acknowledged until its reply is delivered ---
+// sendMessage fails once, then works: the same update_id must come back (offset
+// stayed behind), the handler must NOT re-run, and the cached reply is resent.
+{
+  const handled5 = [], sends5 = [];
+  const fRedeliver = async (url, init) => {
+    if (url.includes('getUpdates')) {
+      const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+      if (off <= 41) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
+        { update_id: 41, message: { chat: { id: 8 }, text: 'job' } } ] }) };
+      return { ok: true, status: 200, json: async () => new Promise(() => {}) }; // acked: idle
+    }
+    if (url.includes('sendMessage')) { sends5.push(JSON.parse(init.body));
+      if (sends5.length === 1) return { ok: false, status: 500, json: async () => ({ ok: false }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) }; }
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+  };
+  const ev5 = [];
+  const bot5 = await runBot({ token: 'T', fetchImpl: fRedeliver, pollTimeout: 0,
+    handler: async (c, t) => { handled5.push(t); return 'answer-42'; }, onEvent: (t, d) => ev5.push(t) });
+  for (let i = 0; i < 60 && sends5.length < 2; i++) await new Promise(r => setTimeout(r, 100));
+  bot5.stop();
+  ok(sends5.length >= 2 && sends5.every(s => s.text === 'answer-42'), 'undelivered reply is resent on redelivery');
+  ok(handled5.length === 1, 'handler not re-run for a redelivered update');
+  ok(ev5.includes('delivery_error'), 'delivery failure is observable');
+}
+
+// bounded drop: a chat whose sends always fail is acked after maxDeliveryAttempts
+// so one dead chat cannot stall every later update.
+{
+  const handled6 = [];
+  let maxOffsetSeen = 0;
+  const fDead = async (url, init) => {
+    if (url.includes('getUpdates')) {
+      const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+      maxOffsetSeen = Math.max(maxOffsetSeen, off);
+      if (off <= 7) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
+        { update_id: 7, message: { chat: { id: 1 }, text: 'hi' } } ] }) };
+      return { ok: true, status: 200, json: async () => new Promise(() => {}) };
+    }
+    return { ok: false, status: 500, json: async () => ({ ok: false }) }; // every send fails
+  };
+  const ev6 = [];
+  const bot6 = await runBot({ token: 'T', fetchImpl: fDead, pollTimeout: 0, maxDeliveryAttempts: 2,
+    handler: async (c, t) => { handled6.push(t); return 'never seen'; }, onEvent: (t, d) => ev6.push(t) });
+  for (let i = 0; i < 60 && !(ev6.includes('dropped') && maxOffsetSeen > 7); i++) await new Promise(r => setTimeout(r, 100));
+  bot6.stop();
+  ok(ev6.includes('dropped'), 'undeliverable update dropped after maxDeliveryAttempts');
+  ok(handled6.length === 1, 'dropped update still ran the handler once');
+  ok(maxOffsetSeen > 7, 'offset advances past the dropped update');
+}
+
 console.log(fails ? `FAIL (${fails})` : 'PASS telegram-d5-full');
 process.exit(fails ? 1 : 0);
