@@ -83,8 +83,13 @@ try {
   // absolute, trailing slashes normalize, non-strings never throw.
   assert.equal(displayPath(path.join(home, 'x', 'y'), home), '~/x/y');
   assert.equal(displayPath(home, home), '~');
-  assert.equal(displayPath(`${home}-sibling/f`, home), `${home}-sibling/f`, 'a prefix-sibling path is not under home');
-  assert.equal(displayPath('/etc/hosts', '/'), '/etc/hosts', 'home=/ keeps absolute paths');
+  assert.equal(displayPath(`${home}-sibling/f`, home),
+    path.resolve(`${home}-sibling`, 'f').split(path.sep).join('/'),
+    'a prefix-sibling path is not under home');
+  // there is no '/' root-home on win32 ('/' resolves to the cwd drive root),
+  // so the root-home edge is only meaningful on POSIX
+  if (process.platform !== 'win32')
+    assert.equal(displayPath('/etc/hosts', '/'), '/etc/hosts', 'home=/ keeps absolute paths');
   assert.equal(displayPath(path.join(home, 'f'), `${home}/`), '~/f', 'trailing-slash home still matches');
   assert.equal(displayPath(undefined, home), '', 'non-string input never throws');
   // displayText edges: embedded home paths relativize at a boundary, a
