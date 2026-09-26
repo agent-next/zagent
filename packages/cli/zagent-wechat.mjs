@@ -17,9 +17,16 @@ if (!allowed.length) {
 }
 const workspace = wxEnv('WORKSPACE') ?? os.homedir();
 
-let WeChatBot;
-try { ({ WeChatBot } = await import('@wechatbot/wechatbot')); }
-catch { console.error('SDK not installed: npm i -g @wechatbot/wechatbot (iLink Bot API SDK — QR login, DM-only)'); process.exit(1); }
+// The SDK is an optional peer we do not ship: a bare import covers repo-local
+// `npm i`, and loadWeChatSdk also resolves the global npm root so the printed
+// `npm i -g` remedy is real (bare ESM specifiers never see global packages).
+const { loadWeChatSdk } = await import('./wechat-sdk.mjs');
+const sdk = await loadWeChatSdk();
+const WeChatBot = sdk?.WeChatBot;
+if (typeof WeChatBot !== 'function') {
+  console.error('SDK not installed: npm i -g @wechatbot/wechatbot — or `npm i @wechatbot/wechatbot` in the zagent checkout (iLink Bot API SDK, QR login, DM-only)');
+  process.exit(1);
+}
 
 const { ZCodeProtocolClient } = await import('../driver/zcode-protocol.mjs');
 const { createChatTurnRunner } = await import('../driver/chat-turns.mjs');
