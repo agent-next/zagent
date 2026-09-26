@@ -25,7 +25,14 @@ async function cardRun({ keys = [], env = {} } = {}) {
   const stubRuntime = path.join(home, 'stub-runtime.cjs');
   writeFileSync(stubRuntime, '// test stub: existence is all the gate checks\n');
   const quote = (v) => `'${v.replaceAll("'", "'\\''")}'`;
-  const child = spawn('script', ['-qfec', `${quote(process.execPath)} ${quote(BIN)}`, '/dev/null'], {
+  const cmd = `${quote(process.execPath)} ${quote(BIN)}`;
+  // util-linux script(1): `-qfec` propagates the child's exit status. BSD
+  // script(1) on macOS knows neither flag — it execvp's the command words and
+  // always exits 0, so the child reports its own status over the pty instead.
+  const darwin = process.platform === 'darwin';
+  const child = spawn('script',
+    darwin ? ['-q', '/dev/null', '/bin/sh', '-c', `${cmd}; printf '\\nSGNEXIT:%d\\n' "$?"`]
+           : ['-qfec', cmd, '/dev/null'], {
     env: { ...process.env, ...env, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home,
            ZCODE_RUNTIME: stubRuntime, TERM: 'xterm-256color', NO_COLOR: '1' },
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -43,8 +50,12 @@ async function cardRun({ keys = [], env = {} } = {}) {
     child.stdin.write(k);
     await sleep(700);
   }
-  const code = await Promise.race([exit, sleep(8000).then(() => 'timeout')]);
+  let code = await Promise.race([exit, sleep(8000).then(() => 'timeout')]);
   if (code === 'timeout') child.kill('SIGKILL');
+  // BSD script exits 0 regardless — the real status is the marker the
+  // command printed; a missing marker means the leg died before exiting.
+  if (darwin && code !== 'timeout')
+    code = Number(/SGNEXIT:(\d+)/.exec(raw)?.[1] ?? NaN);
   rmSync(home, { recursive: true, force: true });
   return { raw, code, home };
 }
