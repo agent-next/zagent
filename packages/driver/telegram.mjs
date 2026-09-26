@@ -22,8 +22,7 @@ export async function sendMessage(fetchImpl, token, chatId, text, { api } = {}) 
 // One long-poll batch. Returns {updates, nextOffset} — offset advances past confirmed
 // update_ids (TG semantics: offset = last update_id + 1 acks everything before it).
 export async function getUpdates(fetchImpl, token, offset, { timeout = 0, api } = {}) {
-  const url = `${apiBase(token, api)}/getUpdates?timeout=${timeout}&offset=${offset}` +
-    (offset === 0 ? '' : ''); // offset=0 = no cursor: first poll
+  const url = `${apiBase(token, api)}/getUpdates?timeout=${timeout}&offset=${offset}`; // offset=0 = no cursor: first poll
   const r = await fetchImpl(url);
   const body = await r.json().catch(() => ({}));
   if (!r.ok || body.ok !== true) throw new Error(`telegram getUpdates failed: http ${r.status}`);
