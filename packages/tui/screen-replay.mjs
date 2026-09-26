@@ -14,8 +14,8 @@
 // characters wider than one cell and writes past the last column wrap like a
 // real terminal.
 //
-// Extracted from scripts/tui-smoke.mjs so the hermetic journey harness and the
-// live smoke assert against the same screen.
+// Shared screen model: the hermetic journey harness (journey.mjs) replays the
+// raw capture through this instead of grepping bytes that were later erased.
 import { charWidth, stringWidth } from './width.mjs';
 
 // The first `cells` terminal cells of a line: overwrite positions are column
@@ -104,8 +104,8 @@ export function replayScreen(raw, columns = 120) {
 // Bounded terminal model — the oracle for the DECSTBM scroll-region writer.
 //
 // replayScreen's unbounded line stack cannot express the pinned live-region
-// scheme (docs/TUI-CORE-SPEC.md wave 5): commits are written INSIDE a DECSTBM
-// scroll region where a '\n' at the region's last row scrolls only that
+// scheme: commits are written INSIDE a DECSTBM scroll region where a '\n' at
+// the region's last row scrolls only that
 // region — its top line leaves into scrollback — instead of walking the
 // cursor down, and the live region below is repainted by absolute CUP, never
 // erased. This model runs a fixed rows×columns screen plus a scrollback
