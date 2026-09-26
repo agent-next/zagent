@@ -46,8 +46,8 @@ const inbox = makeInbox({
 });
 const server = http.createServer((req, res) => {
   if (req.method !== 'POST') { res.writeHead(405).end(); return; }
-  let buf = '';
-  req.on('data', c => { buf += c; if (buf.length > 1e6) req.destroy(); }); // 1MB guard
+  let buf = '', bytes = 0;
+  req.on('data', c => { buf += c; bytes += c.length; if (bytes > 1e6) req.destroy(); }); // 1MB guard — c.length is bytes (Buffer); buf.length would count UTF-16 chars
   req.on('end', async () => {
     try {
       let body; try { body = JSON.parse(buf); } catch { res.writeHead(400).end(); return; }
