@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSyn
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { findRuntime, DEFAULT_RUNTIME } from './runtime.mjs';
 import { ZCodeProtocolClient } from './zcode-protocol.mjs';
 import { acceptRequest, currentAnswer, isolatedTurn, serializeWorkspaces, DAEMON_TURN_TIMEOUT_MS, DAEMON_RESPONSE_TIMEOUT_MS } from '../cli/daemon-request.mjs';
@@ -47,7 +48,7 @@ try {
     finally { client.close(); }
     mkdirSync(`${home}/.zcode/cli`, { recursive: true });
     writeFileSync(`${home}/.zcode/cli/config.json`, '{}');
-    const cli = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, '-p', 'fixture'], {
+    const cli = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), '-p', 'fixture'], {
       env: { ...process.env, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home }, encoding: 'utf8', timeout: 10000,
     });
     assert.equal(cli.status, 0, cli.stderr);

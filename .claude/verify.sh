@@ -11,8 +11,9 @@ export AGENT_GATE_ROOT="$PWD"
 exec node --input-type=module - <<'NODE'
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir, cpus } from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 const { discoverTests } = await import(`${process.env.AGENT_GATE_ROOT}/scripts/discover-tests.mjs`);
 
 const root = process.env.AGENT_GATE_ROOT;
@@ -43,7 +44,8 @@ const workers = Array.from({ length: P }, async () => {
       Object.assign(env, { HOME: sandbox, USERPROFILE: sandbox, TMPDIR: temp, TEMP: temp, TMP: temp,
         XDG_CONFIG_HOME: path.join(sandbox, '.config'), ZAGENT_TEST_SANDBOX: sandbox,
         ZCODE_RUNTIME: path.join(sandbox, 'no-runtime'),
-        NODE_OPTIONS: `--import=${path.join(root, 'scripts/offline-test-preload.mjs')}` });
+        // --import takes a module specifier: file: URL, not a bare path (win32).
+        NODE_OPTIONS: `--import=${pathToFileURL(path.join(root, 'scripts/offline-test-preload.mjs')).href}` });
       bad = await new Promise(resolve => {
         const p = spawn(process.execPath, [file], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
         const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 120000);

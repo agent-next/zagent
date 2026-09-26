@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 const sandbox = mkdtempSync(path.join(os.tmpdir(), 'zmemory-'));
@@ -71,7 +71,7 @@ syncBuiltinESMExports();
 `);
 const cli = fileURLToPath(new URL('../cli/zagent-memory.mjs', import.meta.url));
 const appends = await Promise.all(Array.from({ length: 12 }, (_, i) => new Promise((resolve, reject) => {
-  const child = spawn(process.execPath, ['--import', preload, cli, 'append', `parallel-${i}`], {
+  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, cli, 'append', `parallel-${i}`], {
     cwd: appendWorkspace,
     timeout: 10000,
     env: { ...process.env, HOME: sandbox, USERPROFILE: sandbox, ZAGENT_TEST_SANDBOX: sandbox, TMPDIR: sandbox, TEMP: sandbox, TMP: sandbox },

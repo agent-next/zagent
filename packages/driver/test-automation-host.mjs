@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -88,7 +88,7 @@ try {
       prompt: 'quiet bypass attempt', mode: 'bypassPermissions' } },
   ];
   let r = spawnSync(process.execPath, ['--input-type=module', '-e', `
-    import { ZCodeProtocolClient } from '${path.join(root, 'packages/driver/zcode-protocol.mjs')}';
+    import { ZCodeProtocolClient } from '${pathToFileURL(path.join(root, 'packages/driver/zcode-protocol.mjs')).href}';
     import fs from 'node:fs';
     const c = new ZCodeProtocolClient({ cwd: process.cwd() });
     await c.ready;

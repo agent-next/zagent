@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadJobs, saveJobs, mutateJobs } from '../driver/automation.mjs';
 
 const home = mkdtempSync(path.join(tmpdir(), 'zcron-concurrency-'));
@@ -57,7 +57,7 @@ syncBuiltinESMExports();
   const cli = fileURLToPath(new URL('./zagent-cron.mjs', import.meta.url));
   const env = { ...process.env, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home, TMPDIR: path.join(home, 'tmp'), TEMP: path.join(home, 'tmp'), TMP: path.join(home, 'tmp'), CRON_TEST_HOME: home };
   const run = args => new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--import', preload, cli, ...args], {
+    const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, cli, ...args], {
       cwd: home, timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'],
       env,
     });

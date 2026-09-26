@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -104,7 +104,7 @@ try {
 
   // --- session/create applies the stored flag — and sheds it for old runtimes --
   const drive = extra => spawnSync(process.execPath, ['--input-type=module', '-e', `
-    import { ZCodeProtocolClient } from '${path.join(root, 'packages/driver/zcode-protocol.mjs')}';
+    import { ZCodeProtocolClient } from '${pathToFileURL(path.join(root, 'packages/driver/zcode-protocol.mjs')).href}';
     const c = new ZCodeProtocolClient({ cwd: process.cwd() });
     await c.ready;
     const res = await c.createSession(process.cwd());

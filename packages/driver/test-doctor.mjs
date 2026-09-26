@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { displayPath, displayText } from './doctor.mjs';
 
 const home = mkdtempSync(path.join(os.tmpdir(), 'zagent-doctor-'));
@@ -16,14 +17,14 @@ try {
     '{"model":{"main":"zai"},"provider":{"zai":{}}}', '{"model":{"main":"zai/model"},"provider":{"zai":[]}}']) {
     writeFileSync(config, value);
     for (const args of [['doctor'], ['doctor', '--fix']]) {
-      const r = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, ...args], { env, encoding: 'utf8', cwd: home });
+      const r = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), ...args], { env, encoding: 'utf8', cwd: home });
       assert.equal(r.status, 1, `doctor must reject invalid config ${value}`);
       assert.match(r.stdout + r.stderr, /invalid config/i);
       assert.equal(readFileSync(config, 'utf8'), value, 'doctor must preserve corrupt user config');
     }
   }
   writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } } }));
-  const r = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env, encoding: 'utf8', cwd: home });
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), 'doctor'], { env, encoding: 'utf8', cwd: home });
   assert.equal(r.status, 0, 'valid object remains accepted with an environment key');
   // doctor reports environment depth — node build, credential source, config
   // path, plugin/hook/MCP counts, disk and log dir — like other harness doctor
@@ -49,7 +50,7 @@ try {
     mcp: { servers: { fs: { command: 'mcp-fs' }, db: { command: 'mcp-db' } } },
   }));
   const envNoKey = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home, ZCODE_RUNTIME: runtime };
-  const r2 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
+  const r2 = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
   assert.equal(r2.status, 0, r2.stderr);
   assert.match(r2.stdout, /^credential: cli config provider "zai"$/m, 'doctor names the config credential source');
   assert.match(r2.stdout, /^plugins: 1 installed$/m);
@@ -62,20 +63,20 @@ try {
   mkdirSync(path.join(home, '.config', 'ccz'), { recursive: true });
   writeFileSync(path.join(home, '.config', 'ccz', '.api_key'), 'fallback-key');
   writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: {} } } }));
-  const r3 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
+  const r3 = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
   assert.equal(r3.status, 0, r3.stderr);
   assert.match(r3.stdout, /^credential: NONE$/m, 'doctor reports no credential honestly');
   assert.match(r3.stdout, /^warn: no Coding Plan credential/m, 'a credential-less config is warned, not silent');
   // with no config file at all the fallback file IS the bootstrap source
   rmSync(config);
-  const r4 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
+  const r4 = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
   assert.match(r4.stdout, /^credential: ccz fallback/m, 'fallback file is claimed only when no cli config exists');
   writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } } }));
   // a staged desktop update is reported read-only and never blocks a healthy verdict
   const pendingDir = path.join(home, '.cache', '@zcodedesktop-updater', 'pending');
   mkdirSync(pendingDir, { recursive: true });
   writeFileSync(path.join(pendingDir, 'update-info.json'), JSON.stringify({ fileName: 'ZCode-3.12.1-linux-x64.deb' }));
-  const p = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env, encoding: 'utf8', cwd: home });
+  const p = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), 'doctor'], { env, encoding: 'utf8', cwd: home });
   assert.equal(p.status, 0, 'a pending desktop update stays a warning, not a failure');
   assert.match(p.stdout + p.stderr, /desktop update pending: ZCode-3\.12\.1-linux-x64\.deb/);
   // displayPath edges: a prefix-sibling is NOT under home, home='/' degrades to

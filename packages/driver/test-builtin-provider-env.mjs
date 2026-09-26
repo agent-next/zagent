@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { kernelEnv } from './runtime.mjs';
 import { ZCodeProtocolClient } from './zcode-protocol.mjs';
 
@@ -48,7 +49,7 @@ if (process.argv[2] === 'app-server') {
   mkdirSync(path.dirname(cfg), { recursive: true });
   writeFileSync(cfg, '{"schemaVersion":1}');
 
-  const zagent = new URL('../cli/zagent.mjs', import.meta.url).pathname;
+  const zagent = fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url));
   const fakeHome = path.join(tmp, 'home'); // ensureConfig writes ~/.zcode/cli here, never the real one
   const baseEnv = { PATH: process.env.PATH, HOME: fakeHome, USERPROFILE: fakeHome,
     TMPDIR: process.env.TMPDIR, ZCODE_RUNTIME: entry, ZAI_API_KEY: 'fixture-key' };

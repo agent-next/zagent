@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const sandbox = mkdtempSync(path.join(os.tmpdir(), 'zdaemon-response-'));
@@ -33,11 +33,13 @@ syncBuiltinESMExports();
 `);
   const env = Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'LANG'].filter(k => process.env[k]).map(k => [k, process.env[k]]));
   Object.assign(env, { HOME: sandbox, USERPROFILE: sandbox, TMPDIR: temp, TMP: temp, TEMP: temp,
-    ZAGENT_TEST_SANDBOX: sandbox, NODE_OPTIONS: `--import=${path.join(root, 'scripts/offline-test-preload.mjs')}`,
+    // --import takes a module specifier: a bare absolute path is
+    // ERR_UNSUPPORTED_ESM_URL_SCHEME on win32 — always a file: URL.
+    ZAGENT_TEST_SANDBOX: sandbox, NODE_OPTIONS: `--import=${pathToFileURL(path.join(root, 'scripts/offline-test-preload.mjs')).href}`,
   });
   for (const [script, args] of [['zagentd.mjs', ['ask', 'fixture prompt']], ['zagentd-compact.mjs', []]]) {
     for (const [response, exit] of [['{"answer":"你好"}', 0], ['{"error":"workspace busy; retry after the active request completes"}', 1], ['null', 1], ['broken JSON', 1]]) {
-      const child = spawnSync(process.execPath, ['--import', adapter, path.join(root, 'packages/cli', script), ...args], {
+      const child = spawnSync(process.execPath, ['--import', pathToFileURL(adapter).href, path.join(root, 'packages/cli', script), ...args], {
         cwd: root, env: { ...env, ZAGENT_DAEMON_TEST_RESPONSE: response }, encoding: 'utf8', timeout: 10000,
       });
       assert.equal(child.status, exit, `${script}: ${response}\n${child.stderr}`);
@@ -48,7 +50,7 @@ syncBuiltinESMExports();
   // zagent compact renders for humans: the reply goes to stdout on success,
   // errors go to stderr — but the same response-shape validation applies.
   for (const [response, exit] of [['{"compacted":"s1","accepted":true}', 0], ['{"error":"workspace busy"}', 1], ['null', 1], ['[1]', 1], ['broken JSON', 1]]) {
-    const child = spawnSync(process.execPath, ['--import', adapter, path.join(root, 'packages/cli/zagent-compact.mjs')], {
+    const child = spawnSync(process.execPath, ['--import', pathToFileURL(adapter).href, path.join(root, 'packages/cli/zagent-compact.mjs')], {
       cwd: root, env: { ...env, ZAGENT_DAEMON_TEST_RESPONSE: response }, encoding: 'utf8', timeout: 10000,
     });
     assert.equal(child.status, exit, `zagent-compact: ${response}\n${child.stderr}`);
