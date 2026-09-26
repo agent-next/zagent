@@ -11,7 +11,8 @@ jobs:
       fail-fast: false
       matrix:
         # All three run here: this repo is public, so Actions minutes are free
-        # and unlimited.
+        # and unlimited. The private source repo runs ubuntu only, because there
+        # Windows bills 2x and macOS 10x.
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -24,12 +25,7 @@ jobs:
       - name: installed package smoke (cross-platform)
         run: npm test
         shell: bash
-      # Pure-unit suite: no runtime, no API key, no PTY. Proven on Linux; per-file
-      # Windows/macOS evidence is the ratchet in test-xplat-coverage.mjs — these
-      # names are the ledger's 'matrix' bucket, so they must stay listed here even
-      # though the step only runs on ubuntu for now. Live-protocol and PTY suites
-      # are not hermetic and stay out entirely.
-      - name: unit tests
-        if: matrix.os == 'ubuntu-latest'
-        run: node --test packages/driver/test-util.mjs packages/driver/test-runtime-xplat.mjs packages/driver/test-extract.mjs packages/driver/test-runtime-info.mjs packages/driver/test-plugins.mjs packages/driver/test-attachments.mjs packages/driver/test-mentions.mjs packages/driver/test-memory.mjs packages/driver/test-diffs.mjs packages/driver/test-reset-shape.mjs packages/driver/test-automation.mjs packages/driver/test-settings.mjs packages/driver/test-tasks-index.mjs packages/driver/test-headless-retry.mjs packages/driver/test-xplat-coverage.mjs packages/driver/test-path-hygiene.mjs packages/driver/test-release-gate.mjs packages/driver/test-offpeak-command.mjs packages/driver/test-offpeak-tools.mjs packages/driver/test-automation-host.mjs packages/driver/test-tui-launch.mjs packages/tui/test-theme.mjs packages/tui/test-events.mjs packages/tui/test-render.mjs packages/tui/test-chrome.mjs packages/tui/test-keys.mjs packages/tui/test-screen.mjs packages/tui/test-markdown.mjs packages/tui/test-syntax.mjs packages/tui/test-sanitize.mjs packages/tui/test-width.mjs packages/tui/test-strings.mjs packages/tui/test-runtui.mjs packages/tui/test-frame-cache.mjs packages/tui/test-frames.mjs packages/tui/test-complete.mjs packages/tui/test-commands.mjs packages/tui/test-pickers.mjs packages/tui/test-paste-chips.mjs packages/tui/test-paste-burst.mjs packages/tui/test-history.mjs packages/tui/test-cells.mjs packages/tui/test-screen-replay.mjs packages/tui/test-screen-pinned.mjs packages/driver/test-marketplace-refresh.mjs packages/driver/test-provider-errors.mjs packages/tui/test-turn-end.mjs packages/driver/test-catalog.mjs packages/driver/test-import-external.mjs packages/driver/test-hooks-cli.mjs packages/driver/test-repo-wiki.mjs packages/driver/test-builtin-provider-env.mjs packages/tui/test-journeys-first-run.mjs packages/tui/test-journeys-index.mjs packages/driver/test-account-provider.mjs packages/driver/test-account-config.mjs packages/driver/test-default-mode.mjs
-        shell: bash
+      # No `node --test` unit step here on purpose: the exported tree ships no
+      # test files (forbidden by the public-payload gate), so a unit step would
+      # reference files that do not exist. The unit suite runs in the source
+      # repo's own .github/workflows/test-matrix.yml instead.
