@@ -8,11 +8,12 @@
 //        node packages/cli/zagentd.mjs stop
 import { createServer, connect } from 'node:net';
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acceptRequest, isolatedTurn, serializeWorkspaces, DAEMON_RESPONSE_TIMEOUT_MS } from './daemon-request.mjs';
 import { daemonPaths, pidIsZagentd } from './zagentd-paths.mjs';
+import { acquireFileLockSync, writePrivateFileSync } from '../driver/credentials.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url))); // = repo root
 const [cmd, ...rest] = process.argv.slice(2);
@@ -23,7 +24,19 @@ if (!['start', 'stop', 'ask', '--serve', 'serve'].includes(cmd)) {
 }
 // Resolve after the usage check so a bad invocation touches nothing on disk.
 // Throws if the runtime dir is squatter-owned or world-accessible.
-const { sock: SOCK, pid: PID_FILE } = daemonPaths();
+const { dir: RUN_DIR, sock: SOCK, pid: PID_FILE } = daemonPaths();
+// Single-instance lock (mkdir-based): serializes `start` and the daemon's own
+// socket setup inside the private runtime dir. A lock whose owner pid is dead
+// is reclaimed by acquireFileLockSync; a live holder is never stolen from.
+const START_LOCK = path.join(RUN_DIR, 'zagentd-start');
+
+// The pid file names a live zagentd --serve process, or there is no daemon.
+// Anything else recorded there is stale/foreign and must not be trusted.
+const liveDaemonPid = () => {
+  let pid = null;
+  try { pid = Number(readFileSync(PID_FILE, 'utf8').trim()); } catch {}
+  return pidIsZagentd(pid) ? pid : null;
+};
 
 if (cmd === 'stop') {
   let pid = null;
@@ -78,23 +91,56 @@ if (cmd === 'ask') {
 }
 
 if (cmd === 'start') {
-  if (existsSync(PID_FILE)) {
-    let pid = null;
-    try { pid = Number(readFileSync(PID_FILE, 'utf8').trim()); } catch {}
-    if (pidIsZagentd(pid)) { console.log('daemon already running'); process.exit(0); }
-    rmSync(PID_FILE, { force: true }); // stale or foreign record — never trust it
+  const alreadyRunning = () => { console.log('daemon already running'); process.exit(0); };
+  if (liveDaemonPid()) alreadyRunning();
+  // Take the single-instance lock BEFORE spawning: without it two concurrent
+  // starts both find no pid file and each fork a daemon that then overwrites
+  // the pid file and unlinks the other's socket path.
+  let release;
+  try {
+    release = acquireFileLockSync(START_LOCK, { maxWaitMs: 10000 });
+  } catch (e) {
+    // Contention that outlives the holder usually means the other start just
+    // won: its pid file names a live --serve child now.
+    if (e?.code === 'ELOCKTIMEOUT' && liveDaemonPid()) alreadyRunning();
+    throw e;
   }
-  // Daemon mode: fork ourselves detached
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve'],
-    { detached: true, stdio: 'ignore', env: process.env });
-  child.unref();
-  console.log(`daemon started (pid ${child.pid})`);
+  try {
+    if (liveDaemonPid()) { release(); alreadyRunning(); }
+    rmSync(PID_FILE, { force: true }); // stale or foreign record — never trust it
+    // Daemon mode: fork ourselves detached
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve'],
+      { detached: true, stdio: 'ignore', env: process.env });
+    child.unref();
+    // Record the child pid before releasing the lock: the --serve argv is live
+    // from spawn, so a racing `start` sees a live daemon even while this child
+    // is still loading its modules.
+    writePrivateFileSync(PID_FILE, `${child.pid}\n`);
+    console.log(`daemon started (pid ${child.pid})`);
+  } finally { try { release?.(); } catch {} }
   process.exit(0);
 }
 
 if (cmd === '--serve' || cmd === 'serve') {
   // === THE DAEMON ===
-  const { ZCodeProtocolClient, runTurn, extractUsage, usageLine, toolCallSummary, groupTools, turnSummary } = await import(new URL('../driver/zcode-protocol.mjs', import.meta.url).href);
+  // Hold the start lock through socket setup: a second serve serializes behind
+  // this one, then sees a live socket owner and refuses instead of unlinking
+  // the path out from under the running daemon.
+  const release = acquireFileLockSync(START_LOCK, { maxWaitMs: 15000 });
+  let released = false;
+  const releaseLock = () => { if (!released) { released = true; try { release(); } catch {} } };
+  try {
+    if (existsSync(SOCK)) {
+      const owned = await new Promise(res => {
+        const probe = connect(SOCK);
+        probe.once('connect', () => { probe.destroy(); res(true); });
+        probe.once('error', () => res(false));
+      });
+      if (owned) { console.error(`zagentd already running: ${SOCK} is owned by a live instance`); process.exit(1); }
+      rmSync(SOCK, { force: true }); // stale socket file — safe to replace
+    }
+    writePrivateFileSync(PID_FILE, `${process.pid}\n`);
+    const { ZCodeProtocolClient, runTurn, extractUsage, usageLine, toolCallSummary, groupTools, turnSummary } = await import(new URL('../driver/zcode-protocol.mjs', import.meta.url).href);
   const { sessionUsage, compactSession } = await import(new URL('../driver/session-control.mjs', import.meta.url).href);
   const { autoAllow } = await import(new URL('../driver/permissions.mjs', import.meta.url).href);
   const sessions = new Map(); // cwd -> { client, sessionId, lastUsed, usage }
@@ -109,9 +155,6 @@ if (cmd === '--serve' || cmd === 'serve') {
     for (const [m, v] of [...Object.entries(a), ...Object.entries(b)]) out[m] = mergeTotals(out[m], v);
     return out;
   };
-  writeFileSync(PID_FILE, `${process.pid}\n`);
-  if (existsSync(SOCK)) rmSync(SOCK, { force: true });
-
   const handleRequest = serializeWorkspaces(async req => {
       if (req.op === 'compact') { // compact the daemon's WARM session for this cwd (live sessions live here)
         try { // r8: exactly ONE response on every path; compact is async — report ACCEPTED, not a raced after-value
@@ -163,6 +206,11 @@ if (cmd === '--serve' || cmd === 'serve') {
   server.listen(SOCK, () => {
     console.log(`zagentd listening on ${SOCK} (pid ${process.pid})`);
   });
+  // Release the single-instance lock only once the socket is bound — a second
+  // daemon serialized behind us then sees a live owner and refuses to start,
+  // rather than probing a not-yet-listening path and unlinking it.
+  server.once('listening', releaseLock);
+  server.once('error', e => { releaseLock(); console.error(`zagentd listen failed: ${e.message}`); process.exit(1); });
 
   process.on('SIGTERM', () => {
     for (const { client } of sessions.values()) try { client.close(); } catch {}
@@ -170,4 +218,5 @@ if (cmd === '--serve' || cmd === 'serve') {
     if (existsSync(PID_FILE)) rmSync(PID_FILE, { force: true });
     process.exit(0);
   });
+  } catch (e) { releaseLock(); throw e; }
 }

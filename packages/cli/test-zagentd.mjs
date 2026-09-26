@@ -104,6 +104,41 @@ try {
   assert(pidIsZagentd(daemonPid));
   assert.equal(cli(['stop']).status, 0);
   daemonPid = null;
+
+  // single-instance: two concurrent `start`s must produce exactly ONE daemon.
+  // Without the pre-spawn lock both find no pid file and each fork a server
+  // that unlinks the other's socket path. (spawnSync serializes the callers,
+  // so the race needs real concurrent child processes.)
+  const startAsync = () => new Promise((res, rej) => {
+    const c = spawn(process.execPath, [zagentd, 'start'], { cwd: root, env: baseEnv() });
+    let out = '', err = '';
+    c.stdout.on('data', d => { out += d; });
+    c.stderr.on('data', d => { err += d; });
+    c.on('exit', (status, signal) => res({ status, signal, stdout: out, stderr: err }));
+    c.on('error', rej);
+  });
+  const [s1, s2] = await Promise.all([startAsync(), startAsync()]);
+  assert.equal(s1.status, 0, `first concurrent start exits clean: ${s1.stderr}`);
+  assert.equal(s2.status, 0, `second concurrent start exits clean: ${s2.stderr}`);
+  const started = [s1, s2].filter(r => /daemon started/.test(r.stdout));
+  const already = [s1, s2].filter(r => /daemon already running/.test(r.stdout));
+  assert.equal(started.length, 1, `exactly one start spawned a daemon: ${s1.stdout} | ${s2.stdout}`);
+  assert.equal(already.length, 1, `the loser exits with "already running": ${s1.stdout} | ${s2.stdout}`);
+  const sock3 = waitFor(() => existsSync(paths.sock) && paths.sock);
+  assert(sock3, 'the single daemon socket appears');
+  daemonPid = Number(readFileSync(paths.pid, 'utf8').trim());
+  assert(pidIsZagentd(daemonPid), 'pid file names the one live daemon');
+  const pgrep = spawnSync('pgrep', ['-f', 'zagentd.mjs --serve'], { encoding: 'utf8' });
+  if (pgrep.status === 0) {
+    // scope to THIS test's daemons — another sandbox's daemon is not our leak
+    const ours = pgrep.stdout.trim().split('\n').map(Number).filter(p => {
+      try { return readFileSync(`/proc/${p}/environ`, 'utf8').includes(`ZAGENT_TEST_SANDBOX=${sandbox}`); }
+      catch { return false; }
+    });
+    assert.equal(ours.length, 1, `exactly one serve process: ${pgrep.stdout}`);
+  }
+  assert.equal(cli(['stop']).status, 0);
+  daemonPid = null;
   console.log('PASS zagentd');
 } finally {
   try { foreign.kill('SIGKILL'); } catch {}
