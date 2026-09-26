@@ -26,7 +26,11 @@ const home = mkdtempSync(path.join(os.tmpdir(), 'zagent-update-'));
 const fakebin = path.join(home, 'fakebin');
 mkdirSync(fakebin, { recursive: true });
 const npmLog = path.join(home, 'npm-install.log');
-writeFileSync(path.join(fakebin, 'npm'), `#!/usr/bin/env node
+// npmInvocation prefers npm_execpath then the npm-cli.js beside execPath, and
+// only accepts *.js files — the PATH shim alone never wins on win32 (an
+// extensionless `npm` is not executable and the co-located npm-cli.js would
+// serve the REAL registry). A fake npm-cli.js keeps every OS deterministic.
+writeFileSync(path.join(fakebin, 'npm-cli.js'), `#!/usr/bin/env node
 const fs = require('fs');
 const a = process.argv.slice(2);
 if (process.env.FAKE_NPM_VIEW_FAIL) { console.error('npm ERR! network EAI_AGAIN registry.npmjs.org'); process.exit(1); }
@@ -39,7 +43,7 @@ if (a[0] === 'install') {
 }
 process.exit(0);
 `);
-chmodSync(path.join(fakebin, 'npm'), 0o755);
+chmodSync(path.join(fakebin, 'npm-cli.js'), 0o755);
 
 // A runtime stub so `doctor` reaches the healthy path; it must never run.
 const runtime = path.join(home, 'runtime.cjs');
@@ -51,6 +55,7 @@ writeFileSync(path.join(home, '.zcode/cli/config.json'),
 const env = (extra = {}) => ({
   PATH: `${fakebin}${path.delimiter}${process.env.PATH}`,
   HOME: home, USERPROFILE: home, ZCODE_RUNTIME: runtime, ZAI_API_KEY: 'fixture',
+  npm_execpath: path.join(fakebin, 'npm-cli.js'),
   FAKE_NPM_LOG: npmLog, ...extra,
 });
 const run = (args, extra = {}) =>
