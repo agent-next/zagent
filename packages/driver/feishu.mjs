@@ -47,12 +47,24 @@ export async function getTenantToken(fetchImpl, appId, appSecret, { api = FEISHU
   return { token: tok, expireSec: Number(body?.expire) || 0 };
 }
 
+// The docs cap is 150KB of UTF-8 — String.slice counts UTF-16 units, so a CJK
+// reply (3 bytes/char) would overshoot ~3x. Truncate by bytes on a code-point
+// boundary: a continuation byte (0b10xxxxxx) means the cut landed mid-char, so
+// back off to that char's lead byte and drop it too.
+function utf8Cap(text, maxBytes) {
+  const buf = Buffer.from(String(text), 'utf8');
+  if (buf.length <= maxBytes) return String(text);
+  let end = maxBytes;
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+  return buf.subarray(0, end).toString('utf8');
+}
+
 export async function sendText(fetchImpl, token, receiveIdType, receiveId, text, { api = FEISHU_API } = {}) {
   const r = await fetchImpl(`${api}/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=utf-8' },
     body: JSON.stringify({ receive_id: receiveId, msg_type: 'text',
-      content: JSON.stringify({ text: text.slice(0, 150 * 1024) }) }), // docs cap: 150KB text
+      content: JSON.stringify({ text: utf8Cap(text, 150 * 1024) }) }), // docs cap: 150KB text
   });
   const body = await r.json().catch(() => ({}));
   if (!r.ok || body?.code !== 0) throw new Error(`feishu send failed: http ${r.status} code ${body?.code} ${String(body?.msg ?? '').slice(0, 100)}`);

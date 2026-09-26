@@ -25,6 +25,12 @@ ok(body.msg_type === 'text' && body.receive_id === 'oc_1', 'body fields');
 ok(body.content === '{"text":"hello"}', 'content is serialized JSON string (docs)');
 await sendText(fTok, 't', 'open_id', 'ou_1', 'x'.repeat(200000));
 ok(JSON.parse(calls.at(-1).init.body).content.length < 150 * 1024 + 50, '150KB cap applied');
+// The cap is in UTF-8 BYTES, not UTF-16 units: '汉' is 1 char / 3 bytes, so
+// 60000 chars is 180KB and must truncate to a whole-char boundary at <=150KB.
+await sendText(fTok, 't', 'open_id', 'ou_1', '汉'.repeat(60000));
+const cappedText = JSON.parse(JSON.parse(calls.at(-1).init.body).content).text;
+ok(Buffer.byteLength(cappedText, 'utf8') <= 150 * 1024, '150KB cap counts UTF-8 bytes (CJK input)');
+ok(cappedText.length === Math.floor(150 * 1024 / 3) && !cappedText.includes('\ufffd'), 'byte cap ends on a code-point boundary');
 
 // receiveEvent shapes
 ok(receiveEvent({ type: 'url_verification', challenge: 'c123' }).challenge === 'c123', 'challenge passthrough');
