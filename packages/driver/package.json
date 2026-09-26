@@ -12,6 +12,6 @@
     "test:all": "node ../../scripts/test-all.mjs"
   },
   "dependencies": {
-    "ws": "^8.21.3"
+    "ws": "8.21.3"
   }
 }
