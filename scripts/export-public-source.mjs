@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Export the reviewed distribution sources, never private repository history.
+// Export the reviewed distribution sources, never repository history.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, copyFileSync, rmSync, lstatSync, existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -42,13 +42,11 @@ try {
     mkdirSync(path.dirname(path.join(output, rel)), { recursive: true });
     copyFileSync(source, path.join(output, rel));
   }
-  // Files whose public path differs from their private one.
+  // Files whose exported path differs from their source-tree path.
   //
-  // The cross-platform matrix runs on the PUBLIC repo, where Actions minutes are
-  // free and unlimited. On the private source repo Windows bills at 2x and macOS
-  // at 10x, which is what exhausted the quota — so that repo now runs ubuntu only.
-  // The public repo ships the generated export, i.e. exactly the code users
-  // install, so it is the more honest place to make a cross-platform claim anyway.
+  // The cross-platform matrix belongs on the public repo: it ships the
+  // generated export, i.e. exactly the code users install, so it is the honest
+  // place to make a cross-platform claim.
   const RENAMED = new Map([
     ['.github/public-workflows/test-matrix.yml', '.github/workflows/test-matrix.yml'],
     // The public repo's CHANGELOG.md is public-only (the overlay preserves it),
@@ -67,14 +65,14 @@ try {
 
   const pkg = JSON.parse(readFileSync(path.join(output, 'package.json'), 'utf8'));
   pkg.scripts = { test: 'node scripts/verify-public-package.mjs' };
-  // Public package metadata (the private source repo's url must not travel to npm).
-  // The NAME is part of that metadata. The private source is named zagent too, but
-  // this explicit rewrite stays as a defensive invariant: without it any future
-  // rename of the private manifest would ship the wrong package AND rewrite the
-  // public repo's package.json name away from zagent.
+  // Public package metadata (the source tree's repo url must not travel to npm).
+  // The NAME is part of that metadata. The source manifest is named zagent too,
+  // but this explicit rewrite stays as a defensive invariant: without it any
+  // future rename of the source manifest would ship the wrong package AND
+  // rewrite the public repo's package.json name away from zagent.
   pkg.name = 'zagent';
-  // The source manifest is private:true so an accidental `npm publish` from the
-  // source tree cannot touch the live public name; the export must strip it.
+  // A source manifest may carry private:true so an accidental `npm publish`
+  // from the source tree cannot touch the live public name; strip it here.
   delete pkg.private;
   // The lockfile is copied verbatim, so its name fields are forced to zagent
   // alongside the manifest — npm treats a manifest/lockfile name mismatch as a
@@ -96,7 +94,7 @@ try {
   pkg.keywords = [...new Set([...(pkg.keywords || []), 'zagent', 'glm', 'glm-coding-plan', 'coding-agent', 'terminal', 'tui', 'cli', 'ai', 'llm', 'agent'])].sort();
   writeFileSync(path.join(output, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
   console.log(JSON.stringify({ output, files: files.length, historyIncluded: false,
-    scope: 'distribution sources plus offline package smoke; private development tests are not exported',
+    scope: 'distribution sources plus offline package smoke; development tests are not exported',
     reviewRequired: true }, null, 2));
 } catch (error) {
   if (created) rmSync(output, { recursive: true, force: true });
