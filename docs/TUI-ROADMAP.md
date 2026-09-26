@@ -1,7 +1,7 @@
-# TUI & Architecture Roadmap — mined from grok-build / codex / opencode (2026-09-04)
+# TUI & Architecture Roadmap — surveyed from public agent harnesses (2026-09)
 
-Sources: a survey of public harnesses (file:line evidence in dossiers).
-Phase: applies AFTER GUI-parity v0.x; the fork TUI is the base, these patterns upgrade it.
+Sources: a survey of public harnesses.
+Phase: applies AFTER GUI-parity v0.x; the TUI is the base, these patterns upgrade it.
 
 | # | Pattern (source) | What |
 |---|---|---|

@@ -182,8 +182,8 @@ export function createFakeHost(options = {}) {
       // contextWindow is real host contract — the /model picker shows it and
       // the G4 seed reads it for the pre-turn context window.
       modelOptions: [{ alias: 'main', id: 'zai/glm-5.3', name: 'GLM-5.3', contextWindow: 200000 }],
-      // The real kernel injects 20 commands through host.slashCommands
-      // (ux-inventory §3). The fake host must advertise the same set: the TUI's
+      // The real kernel injects 20 commands through host.slashCommands.
+      // The fake host must advertise the same set: the TUI's
       // local unknown-command reply trusts this list, so a fake host missing
       // /rewind would make a perfectly real command look unknown.
       slashCommands: [

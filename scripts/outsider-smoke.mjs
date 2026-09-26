@@ -89,7 +89,7 @@ try {
     });
   }
 
-  // J8 (ux-inventory-20260914.md §10): a stranger's first diagnostic commands —
+  // J8: a stranger's first diagnostic commands —
   // doctor explains, inspect --json parses. Neither may need a runtime.
   check('J8 `zagent doctor` diagnoses instead of printing a stack', () => {
     const { out, err } = zagent(['doctor']);

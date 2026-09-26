@@ -26,7 +26,7 @@ import { checkLatest, compareVersions, installedVersion, passiveCheckAllowed } f
 import { KERNEL_VALUE_FLAGS, KERNEL_LIST_FLAGS, KERNEL_ENUM_FLAGS, KERNEL_BOOL_FLAGS } from './commands.mjs';
 import { readDefaultMode, withPersistedMode, hasModeFlag } from '../driver/default-mode.mjs';
 
-// G1 (ux-inventory §1/§9): every top CLI keeps a new user inside the product with
+// G1: every top CLI keeps a new user inside the product with
 // 2-3 sign-in paths; zagent printed one line and exited 1. The card is also what
 // a headless `-p` run prints, so both surfaces name the same three paths.
 const SIGNIN_CARD = [

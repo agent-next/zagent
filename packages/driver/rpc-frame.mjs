@@ -8,7 +8,7 @@
 //   relay envelope: {type:'data', payload: frame|ack, client_ts?, server_ts?}
 //   limits: maxFragments 64, assemblyTimeoutMs 30_000.
 // Checksum scope note: whole-MESSAGE crc32 (verified by reassembly success); if live relay
-// traffic ever disagrees, this is the line to re-check (receipt d3-rpc-frame-2026-09-06).
+// traffic ever disagrees, this is the line to re-check.
 
 export const LIMITS = { maxFragments: 64, maxPhysicalFrameBytes: 64 * 1024, maxMessageBytes: 4 * 1024 * 1024,
   maxBufferedMessages: 64, maxBufferedBytes: 8 * 1024 * 1024, maxTotalBufferedBytes: 32 * 1024 * 1024,

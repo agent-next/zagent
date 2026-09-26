@@ -3,7 +3,7 @@
 // 1-based step anchoring, atomic (tmp+rename) state writes, ENOENT-only empty read,
 // per-job claim/complete lifecycle (no batch replay, no silent double-fire).
 // No daemon: the user's crontab calls `zagent cron tick`; every tick appends a heartbeat
-// receipt and exits nonzero on failures (no-bare-cron rule).
+// record and exits nonzero on failures (no-bare-cron rule).
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, appendFileSync, chmodSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
