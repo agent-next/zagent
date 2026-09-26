@@ -8,30 +8,41 @@
 //        node packages/cli/zagentd.mjs stop
 import { createServer, connect } from 'node:net';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
+import { existsSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acceptRequest, isolatedTurn, serializeWorkspaces, DAEMON_RESPONSE_TIMEOUT_MS } from './daemon-request.mjs';
+import { daemonPaths, pidIsZagentd } from './zagentd-paths.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url))); // = repo root
-const SOCK = `${os.tmpdir()}/zagentd-${process.getuid()}.sock`;
-const PID_FILE = `${os.tmpdir()}/zagentd-${process.getuid()}.pid`;
-
 const [cmd, ...rest] = process.argv.slice(2);
 
 if (!['start', 'stop', 'ask', '--serve', 'serve'].includes(cmd)) {
   console.error('usage: zagentd start | stop | ask "prompt"');
   process.exit(2);
 }
+// Resolve after the usage check so a bad invocation touches nothing on disk.
+// Throws if the runtime dir is squatter-owned or world-accessible.
+const { sock: SOCK, pid: PID_FILE } = daemonPaths();
 
 if (cmd === 'stop') {
-  try {
-    const pid = parseInt(readFileSync(PID_FILE, 'utf8').trim(), 10);
-    process.kill(pid, 'SIGTERM');
+  let pid = null;
+  try { pid = Number(readFileSync(PID_FILE, 'utf8').trim()); } catch {}
+  if (Number.isInteger(pid) && pid > 0) {
+    if (pidIsZagentd(pid)) {
+      process.kill(pid, 'SIGTERM');
+      rmSync(PID_FILE, { force: true });
+      console.log('daemon stopped');
+      process.exit(0);
+    }
+    // Never signal a pid we cannot prove is the daemon: it may be a recycled
+    // same-uid process, and the pid file itself may have been planted.
+    let alive = false;
+    try { process.kill(pid, 0); alive = true; } catch {}
     rmSync(PID_FILE, { force: true });
-    console.log('daemon stopped');
-  } catch { console.log('daemon not running'); }
+    if (alive) { console.error(`pid file names non-zagentd process ${pid}; removed it`); process.exit(1); }
+  }
+  console.log('daemon not running');
   process.exit(0);
 }
 
@@ -68,8 +79,10 @@ if (cmd === 'ask') {
 
 if (cmd === 'start') {
   if (existsSync(PID_FILE)) {
-    try { process.kill(parseInt(readFileSync(PID_FILE, 'utf8').trim(), 10), 0); console.log('daemon already running'); process.exit(0); }
-    catch { rmSync(PID_FILE, { force: true }); } // stale PID
+    let pid = null;
+    try { pid = Number(readFileSync(PID_FILE, 'utf8').trim()); } catch {}
+    if (pidIsZagentd(pid)) { console.log('daemon already running'); process.exit(0); }
+    rmSync(PID_FILE, { force: true }); // stale or foreign record — never trust it
   }
   // Daemon mode: fork ourselves detached
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve'],

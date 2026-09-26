@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // zagentd compact — ask the daemon to compact its warm session for this cwd.
 import { connect } from 'node:net';
-import os from 'node:os';
-const SOCK = `${os.tmpdir()}/zagentd-${process.getuid()}.sock`;
+import { daemonPaths } from './zagentd-paths.mjs';
+const SOCK = daemonPaths().sock;
 const client = connect(SOCK);
 client.on('error', () => { console.error('daemon not running (zagentd start)'); process.exit(1); });
 client.on('connect', () => client.write(JSON.stringify({ op: 'compact', cwd: process.cwd() }) + '\n'));

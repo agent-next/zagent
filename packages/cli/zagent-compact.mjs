@@ -3,8 +3,8 @@
 // runtime process CANNOT compact another process's session — r8: never silently
 // resume/mutate a foreign live session). No daemon → honest guidance.
 import { connect } from 'node:net';
-import os from 'node:os';
-const SOCK = `${os.tmpdir()}/zagentd-${process.getuid()}.sock`;
+import { daemonPaths } from './zagentd-paths.mjs';
+const SOCK = daemonPaths().sock;
 const client = connect(SOCK);
 client.on('error', () => {
   console.error('compact applies to LIVE sessions. Start the daemon first (zagentd start), send an ask, then: zagent compact\n(for the interactive TUI use its own /compact — sessions are process-local).');
