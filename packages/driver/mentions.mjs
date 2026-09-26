@@ -1,8 +1,9 @@
 // E1: @-mention extraction — the TUI's mention sugar for headless/bot surfaces.
 // Pure function: pull @tokens from a prompt, resolve each against the workspace root
-// (existsSync check), and report found/missing. NO content injection here — callers
-// decide how to attach (the runtime's own tools read files); this only validates and
-// rewrites the token to the resolved path.
+// (existsSync check), and report found/missing/rejected. NO content injection here —
+// callers decide how to attach (the runtime's own tools read files); this validates
+// and rewrites each resolved token to its absolute path. Tokens that resolve
+// outside the workspace root are refused (@/etc/passwd, @../x), not resolved.
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
@@ -19,7 +20,11 @@ export function extractMentions(prompt) {
 }
 
 export function resolveMentions(prompt, workspaceRoot = process.cwd()) {
-  const found = [], missing = [];
+  const found = [], missing = [], rejected = [];
+  const root = path.resolve(workspaceRoot);
+  // Containment on the RESOLVED absolute path: `..` segments and absolute tokens
+  // would otherwise let a bot-supplied mention point anywhere on the filesystem.
+  const inside = p => p.startsWith(root + path.sep); // a file is always strictly under root
   const cache = new Map(); // r15 #3: duplicate tokens resolved once
   let budget = MAX_MENTIONS;
   const rewritten = String(prompt ?? '').replace(TOKEN, (full, boundary, tok) => {
@@ -27,17 +32,18 @@ export function resolveMentions(prompt, workspaceRoot = process.cwd()) {
     let p;
     if (cache.has(tok)) p = cache.get(tok);
     else {
-      p = path.resolve(workspaceRoot, tok);
+      p = path.resolve(root, tok);
       cache.set(tok, p);
     }
+    budget--; // r16 #4: budget consumes on EVERY probe (missing mentions are also fs work)
+    if (!inside(p)) { rejected.push({ token: tok, path: p }); return full; }
     let ok = false;
     try { ok = existsSync(p) && statSync(p).isFile(); } catch {}
-    budget--; // r16 #4: budget consumes on EVERY probe (missing mentions are also fs work)
-    if (ok) { found.push({ token: tok, path: p }); return `${boundary}@${tok}`; } // r15 #1: boundary preserved EXACTLY
+    if (ok) { found.push({ token: tok, path: p }); return `${boundary}@${p}`; } // r15 #1: boundary preserved EXACTLY
     missing.push({ token: tok, path: p });
     return full;
   });
-  return { found, missing, rewritten };
+  return { found, missing, rejected, rewritten };
 }
 
 export function mentionsLine(r) {
@@ -50,8 +56,10 @@ export function mentionsLine(r) {
 // send `note` as the reply when set and skip the turn.
 export function preprocessForBot(prompt, workspaceRoot) {
   const r = resolveMentions(prompt, workspaceRoot);
-  if (r.missing.length) return { prompt: null,
-    note: `unresolved mention(s): ${r.missing.map(m => '@' + m.token).join(', ')} — not found under ${workspaceRoot}` };
+  const parts = [];
+  if (r.missing.length) parts.push(`unresolved mention(s): ${r.missing.map(m => '@' + m.token).join(', ')} — not found under ${workspaceRoot}`);
+  if (r.rejected.length) parts.push(`refused mention(s) outside the workspace: ${r.rejected.map(m => '@' + m.token).join(', ')}`);
+  if (parts.length) return { prompt: null, note: parts.join('; ') };
   if (r.found.length) return { prompt: `${r.rewritten}\n(referenced: ${r.found.map(f => f.path).join(', ')})`, note: null };
   return { prompt, note: null };
 }
