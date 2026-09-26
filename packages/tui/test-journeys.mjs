@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { THROW, THROW_MID, HANG, TOOL, PERMISSION, THINKING, STREAM, PROVIDER_USAGE_LIMIT, PROVIDER_RATE_LIMIT } from './fake-host.mjs';
 
-if (process.platform === 'win32') { console.log('SKIP journeys: needs a POSIX pty (script(1))'); process.exit(0); }
+if (process.platform !== 'linux') { console.log('SKIP journeys: needs util-linux script(1) (-qfec), Linux only'); process.exit(0); }
 const ESC = String.fromCharCode(27);
 
 let pass = 0, fail = 0;

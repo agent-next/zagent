@@ -565,7 +565,7 @@ export async function runTui(host = {}, { deps = null } = {}) {
     try {
       // submitPrompt, not sendInput: the kernel's sendInput wrapper dereferences
       // an undefined `result` on this build and throws before the turn starts
-      // (verified 2026-09-07 — receipt official-tui-seam-2026-09-07.md).
+      // (verified on the installed build).
       // Chips stay compact in the transcript, queue and history; only the
       // payload the runtime receives expands back to the pasted text.
       const expanded = expandChips(chips, trimmed);

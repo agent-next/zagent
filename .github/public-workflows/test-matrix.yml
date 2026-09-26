@@ -1,0 +1,30 @@
+name: test-matrix
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        # All three run here: this repo is public, so Actions minutes are free
+        # and unlimited.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      # Verify the generated package that consumers install on each OS.
+      - name: installed package smoke (cross-platform)
+        run: npm test
+        shell: bash
+      # No `node --test` unit step here on purpose: the exported tree ships no
+      # test files (forbidden by the public-payload gate), so a unit step would
+      # reference files that do not exist. The unit suite runs in the source
+      # checkout's own .github/workflows/test-matrix.yml instead.

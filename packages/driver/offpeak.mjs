@@ -225,7 +225,7 @@ export async function offPeakTurn(messages, { ticketId, maxTokens = 4096,
   return { status: r.status, body: clean(body) };
 }
 
-// C4: error classification per the dossier's semantics
+// C4: error classification per the kernel's semantics
 export function classifyOffPeakError(status, code) {
   if (code === 3102) return { action: 'abort_retake', retry: false };                    // ticket expired
   // Live HTTP 400 "parameter error". Kernel isUnsignedModelRequestPath includes

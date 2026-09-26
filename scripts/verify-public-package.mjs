@@ -30,7 +30,7 @@ export const allowed = file => ['package.json', 'package-lock.json', 'VERSION', 
 // harness. They are dev infrastructure — a published CLI has no business shipping
 // a scriptable fake of its own runtime — but they do not start with "test", so the
 // release gate would otherwise demand they be added to files[].
-export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|chat-turns|daemon-request|zagent-(?:telegram|feishu|wechat|compact)|zagentd[^/]*|fake-host|journey|journey-entry|screen-replay)\.mjs$/;
+export const forbidden = /(?:^|\/)(?:test[^/]*|node_modules|\.env[^/]*|\.git|artifacts|docs)(?:\/|$)|(?:telegram|feishu|attachments|mentions|relay|controller-router|rpc-frame|rpc-bridge|chat-turns|daemon-request|zagent-(?:telegram|feishu|wechat|compact)|wechat-sdk|zagentd[^/]*|fake-host|journey|journey-entry|screen-replay)\.mjs$/;
 
 export function installationPaths(prefix, pkg, platform = process.platform) {
   const paths = platform === 'win32' ? path.win32 : path.posix;

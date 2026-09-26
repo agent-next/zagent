@@ -22,12 +22,40 @@ mkdirSync(`${ws}/dir-only`, { recursive: true });
 let r = resolveMentions('fix @calc.py using @src/util.js and @nope.md', ws);
 ok(r.found.length === 2 && r.found[0].token === 'calc.py' && r.found[0].path === path.resolve(ws, 'calc.py'), 'found resolved absolute');
 ok(r.missing.length === 1 && r.missing[0].token === 'nope.md', 'missing reported');
-ok(r.rewritten.includes('@calc.py') && r.rewritten.includes('@src/util.js') && r.rewritten.includes('@nope.md'), 'rewritten preserves text');
+ok(r.rejected.length === 0, 'in-root mentions are not rejected');
+// Header contract: resolved tokens are rewritten to their absolute path; missing
+// tokens stay verbatim so the note can quote them.
+ok(r.rewritten.includes(`@${path.resolve(ws, 'calc.py')}`) && r.rewritten.includes(`@${path.resolve(ws, 'src/util.js')}`),
+  'resolved tokens rewritten to absolute paths');
+ok(r.rewritten.includes('@nope.md'), 'missing token preserved verbatim');
 r = resolveMentions('see @dir-only', ws);
 ok(r.missing.length === 1 && r.found.length === 0, 'directories are NOT valid mentions (files only)');
-// Resolve outside a nested workspace using our own fixture, independent of /tmp depth.
+// Escapes resolve outside the workspace root and are refused outright — a bot
+// prompt must not turn a mention into an absolute path probe.
 r = resolveMentions('see @../calc.py', `${ws}/src`);
-ok(r.found.length === 1 && r.found[0].path === path.resolve(ws, 'calc.py'), 'escape resolves (read-only annotation, no sandbox claim)'); // separator-safe
+ok(r.found.length === 0 && r.missing.length === 0 && r.rejected.length === 1 && r.rejected[0].token === '../calc.py',
+  '.. escape refused (outside workspace root)');
+r = resolveMentions(`see @${path.resolve(ws, 'calc.py')}`, `${ws}/src`);
+ok(r.rejected.length === 1 && r.found.length === 0, 'absolute token outside root refused');
+r = resolveMentions(`see @src/../calc.py`, ws);
+ok(r.rejected.length === 0 && r.found.length === 1, 'dot-segments that stay inside root still resolve');
+// A symlink inside the workspace that points OUTSIDE it is an escape — lexical
+// containment alone would accept it, so the real path is what must be checked.
+// (symlink creation needs privilege on Windows; the check is skipped there)
+import { symlinkSync, realpathSync } from 'node:fs';
+let linked = false;
+const outside = mkdtempSync(path.join(os.tmpdir(), 'zmention-out-'));
+writeFileSync(`${outside}/secret.txt`, 's');
+try { symlinkSync(path.resolve(ws, 'calc.py'), `${ws}/link-in.py`); symlinkSync(`${outside}/secret.txt`, `${ws}/link-out.py`); symlinkSync(`${outside}/dangling`, `${ws}/link-dead.py`); linked = true; } catch {}
+if (linked) {
+  r = resolveMentions('see @link-in.py and @link-out.py and @link-dead.py', ws);
+  ok(r.found.length === 1 && r.found[0].token === 'link-in.py' && r.found[0].path === realpathSync(`${ws}/link-in.py`),
+    'in-workspace symlink resolves to its real path');
+  ok(r.rejected.length === 2 && r.rejected.some(x => x.token === 'link-out.py') && r.rejected.some(x => x.token === 'link-dead.py'),
+    'symlink escape refused (outside workspace root, live or dangling)');
+  ok(!r.rewritten.includes(outside), 'escape target path not rewritten into the prompt');
+}
+rmSync(outside, { recursive: true, force: true });
 ok(mentionsLine({ found: [], missing: [] }) === 'no file mentions', 'empty line');
 ok(mentionsLine(resolveMentions('a @calc.py', ws)).includes('→'), 'line format');
 rmSync(ws, { recursive: true, force: true });
@@ -41,6 +69,8 @@ let b = preprocessForBot('read @f.txt', ws2);
 ok(b.note === null && b.prompt.includes('(referenced:') && b.prompt.includes('f.txt'), 'valid mention annotated');
 b = preprocessForBot('read @missing.txt', ws2);
 ok(b.prompt === null && b.note.includes('@missing.txt'), 'missing mention → note, no prompt');
+b = preprocessForBot('read @../../etc/passwd', ws2);
+ok(b.prompt === null && b.note.includes('refused') && b.note.includes('@../../etc/passwd'), 'outside-root mention → refused note, no prompt');
 b = preprocessForBot('plain prompt', ws2);
 ok(b.note === null && b.prompt === 'plain prompt', 'plain passthrough untouched');
 rmSync(ws2, { recursive: true, force: true });
@@ -52,9 +82,9 @@ const ws3 = mkdtempSync(path.join(os.tmpdir(), 'zmr15-'));
 writeFileSync(`${ws3}/a.json`, 'x');
 let r15 = rm2('A\n@ a.json', ws3); // newline boundary form: @ then space? use real token on next line
 r15 = rm2('A\n@a.json', ws3);
-ok(r15.rewritten === 'A\n@a.json', 'newline boundary preserved (not collapsed to space)');
+ok(r15.rewritten === `A\n@${path.resolve(ws3, 'a.json')}`, 'newline boundary preserved (not collapsed to space)');
 r15 = rm2('\t@a.json', ws3);
-ok(r15.rewritten === '\t@a.json', 'tab boundary preserved');
+ok(r15.rewritten === `\t@${path.resolve(ws3, 'a.json')}`, 'tab boundary preserved');
 const uni = '文件-' + '😀';
 writeFileSync(`${ws3}/${uni}.txt`, 'x');
 r15 = rm2(`see @${uni}.txt`, ws3);

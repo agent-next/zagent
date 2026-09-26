@@ -99,8 +99,9 @@ try {
   try { namedReport = JSON.parse(namedRun.stdout); } catch (e) {
     ok(false, `named inspect --json parse failed: ${e.message} stdout=${JSON.stringify(namedRun.stdout)} stderr=${JSON.stringify(namedRun.stderr)}`);
   }
-  // Paths under the spawned home render as ~/..., never absolute.
-  const shownWiki = `~${namedFile.slice(named.home.length)}`;
+  // Paths under the spawned home render as ~/..., never absolute. displayPath
+  // forward-slashes separators, so the ~-suffix expectation does too.
+  const shownWiki = `~${namedFile.slice(named.home.length).split(path.sep).join('/')}`;
   ok(namedReport.wiki && namedReport.wiki.path === shownWiki, 'inspect --json includes home-relative wiki.path');
   ok(namedReport.wiki.title === 'demo-repo', 'inspect --json includes wiki.title');
   ok(Object.keys(namedReport.wiki).sort().join(',') === 'path,title', 'inspect wiki keys are path,title only');

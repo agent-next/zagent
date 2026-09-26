@@ -25,8 +25,7 @@ const exhausted = e => {
 // retry just respawns the same rejection 8s later and then misreports 'empty
 // output' while the real diagnostic sat on stderr (observed on the installed
 // build: `--mode bogus`, `--cwd /nonexistent`). Signatures verified by
-// executing the installed kernel (3.12.1 / zcode 0.16.5; receipts:
-// w2a-headless-flags-20260915.md + argv-rejections-20260916.md), each
+// executing the installed kernel (3.12.1 / zcode 0.16.5), each
 // line-anchored: kernel-side 'Unknown option', 'Unsupported --<flag> value:',
 // '--<flag> path is not accessible:', '--<flag> must be one of …',
 // '--<flag> requires …', '--<flag> cannot be used with …', 'Error: Session

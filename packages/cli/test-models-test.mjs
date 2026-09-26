@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -152,7 +152,7 @@ try {
   assert.match(pushes[0].params.revision, /^account:/);
   // The kernel's zcodeBuiltinRevision = zcode-builtin:<rev>:<sha256(resolve(active path))>
   // where the app-server's effective builtin path is the managed runtime file.
-  const { kernelActiveBuiltinPath } = await import(path.join(root, 'packages', 'driver', 'account-config.mjs'));
+  const { kernelActiveBuiltinPath } = await import(pathToFileURL(path.join(root, 'packages', 'driver', 'account-config.mjs')).href);
   const expectedBasedOn = `zcode-builtin:7:${(await import('node:crypto')).createHash('sha256')
     .update(path.resolve(kernelActiveBuiltinPath({ env: {}, home }))).digest('hex')}`;
   assert.equal(pushes[0].params.basedOnZCodeBuiltinRevision, expectedBasedOn);

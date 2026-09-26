@@ -492,10 +492,11 @@ for (const flagArgs of [
   // The kernel refuses --browser-executable without --browser-use=headless —
   // the forward-verbatim row must carry the pair (extracted 3.12.1:
   // '--browser-executable requires --browser-use=headless'). POSIX-only:
-  // win32 reads /bin/true as relative ('must be absolute') and its X_OK is a
-  // no-op, so the exec-bit asserts below cannot discriminate there either.
+  // win32 has no exec-bit to discriminate, and the fixture must name a real
+  // executable on every POSIX host — process.execPath qualifies everywhere
+  // (/bin/true failed the macOS CI image's X_OK probe).
   ...(process.platform === 'win32' ? [] : [
-    ['--browser-use', 'headless', '--browser-executable', '/bin/true', '-p', 'hi'],
+    ['--browser-use', 'headless', '--browser-executable', process.execPath, '-p', 'hi'],
   ]),
   ['--surface', 'terminal', '-p', 'hi'],
   ['--output-format', 'stream-json', '-p', 'hi'],

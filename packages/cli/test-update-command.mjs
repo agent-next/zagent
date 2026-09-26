@@ -26,7 +26,11 @@ const home = mkdtempSync(path.join(os.tmpdir(), 'zagent-update-'));
 const fakebin = path.join(home, 'fakebin');
 mkdirSync(fakebin, { recursive: true });
 const npmLog = path.join(home, 'npm-install.log');
-writeFileSync(path.join(fakebin, 'npm'), `#!/usr/bin/env node
+// npmInvocation prefers npm_execpath then the npm-cli.js beside execPath, and
+// only accepts *.js files — the PATH shim alone never wins on win32 (an
+// extensionless `npm` is not executable and the co-located npm-cli.js would
+// serve the REAL registry). A fake npm-cli.js keeps every OS deterministic.
+writeFileSync(path.join(fakebin, 'npm-cli.js'), `#!/usr/bin/env node
 const fs = require('fs');
 const a = process.argv.slice(2);
 if (process.env.FAKE_NPM_VIEW_FAIL) { console.error('npm ERR! network EAI_AGAIN registry.npmjs.org'); process.exit(1); }
@@ -39,7 +43,7 @@ if (a[0] === 'install') {
 }
 process.exit(0);
 `);
-chmodSync(path.join(fakebin, 'npm'), 0o755);
+chmodSync(path.join(fakebin, 'npm-cli.js'), 0o755);
 
 // A runtime stub so `doctor` reaches the healthy path; it must never run.
 const runtime = path.join(home, 'runtime.cjs');
@@ -51,6 +55,7 @@ writeFileSync(path.join(home, '.zcode/cli/config.json'),
 const env = (extra = {}) => ({
   PATH: `${fakebin}${path.delimiter}${process.env.PATH}`,
   HOME: home, USERPROFILE: home, ZCODE_RUNTIME: runtime, ZAI_API_KEY: 'fixture',
+  npm_execpath: path.join(fakebin, 'npm-cli.js'),
   FAKE_NPM_LOG: npmLog, ...extra,
 });
 const run = (args, extra = {}) =>
@@ -60,7 +65,11 @@ const installs = () => (existsSync(npmLog) ? readFileSync(npmLog, 'utf8') : '');
 // snapshot auto-guard really runs and leaves a non-empty mode-0000
 // checkpoints dir — rimraf cannot descend that; restore traversability first.
 const rmTree = (d) => {
-  if (process.platform !== 'win32') {
+  if (process.platform === 'darwin') {
+    // the snapshot guard locks with chflags uchg on macOS, not chattr
+    spawnSync('chflags', ['-R', 'nouchg', d], { stdio: 'ignore' });
+    spawnSync('chmod', ['-R', 'u+rwX', d], { stdio: 'ignore' });
+  } else if (process.platform !== 'win32') {
     spawnSync('chattr', ['-R', '-i', d], { stdio: 'ignore' });
     spawnSync('chmod', ['-R', 'u+rwX', d], { stdio: 'ignore' });
   }
@@ -135,13 +144,17 @@ try {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /registry|npm view/);
   // npm unresolvable at all (PATH without it, no co-located npm-cli.js) fails
-  // closed with the same honesty — never a stack or a silent zero.
-  r = spawnSync(process.execPath, [bin, 'update', '--check'], {
-    encoding: 'utf8', timeout: 20000,
-    env: { ...env(), PATH: '/nonexistent', npm_execpath: '' },
-  });
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /cannot check|not found/);
+  // closed with the same honesty — never a stack or a silent zero. Skipped on
+  // win32: the CI image always has an npm-cli.js beside node.exe, so the
+  // co-located arm answers no matter what PATH says.
+  if (process.platform !== 'win32') {
+    r = spawnSync(process.execPath, [bin, 'update', '--check'], {
+      encoding: 'utf8', timeout: 20000,
+      env: { ...env(), PATH: '/nonexistent', npm_execpath: '' },
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /cannot check|not found/);
+  }
 
   // --- usage errors exit 2 like the other subcommands ---
   r = run(['update', '--bogus']);
