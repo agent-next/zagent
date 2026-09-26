@@ -12,15 +12,26 @@ import { installPlugin } from './plugins.mjs';
 
 const home = mkdtempSync(path.join(os.tmpdir(), 'zcore-'));
 try {
-  const local = `${home}/.local/opt/zcode-app-cli/node_modules/zcode-app-cli/bin/zcode.js`;
-  const cwdEntry = `${home}/workspace/node_modules/zcode-app-cli/bin/zcode.js`;
-  const choose = available => findRuntime({ env: {}, home, cwd: `${home}/workspace`, exists: p => available.includes(p) });
-  assert.equal(choose([local, cwdEntry, DEFAULT_RUNTIME]).entry, DEFAULT_RUNTIME); // official desktop first
+  // The per-user app-cli root differs per OS: ~/.local/opt on POSIX,
+  // %APPDATA%\npm on win32 — feed the matching env so the probe path is real.
+  const roaming = path.join(home, 'app-roaming');
+  const appEnv = process.platform === 'win32' ? { APPDATA: roaming } : {};
+  const userRoot = process.platform === 'win32'
+    ? path.join(roaming, 'npm')
+    : `${home}/.local/opt/zcode-app-cli`;
+  const local = path.join(userRoot, 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js');
+  const cwdEntry = path.join(home, 'workspace', 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js');
+  const choose = available => findRuntime({ env: appEnv, home, cwd: path.join(home, 'workspace'), exists: p => available.includes(p) });
+  // the official desktop bundle is probed from the per-OS table — the win32
+  // table never contains the linux deb literal, so name the matching root
+  const desktopEntry = process.platform === 'win32'
+    ? 'C:\\Program Files\\ZCode\\resources\\glm\\zcode.cjs' : DEFAULT_RUNTIME;
+  assert.equal(choose([local, cwdEntry, desktopEntry]).entry, desktopEntry); // official desktop first
   assert.equal(choose([local, cwdEntry]).entry, local); // app-cli install root before cwd
-  assert.equal(choose([cwdEntry, DEFAULT_RUNTIME]).entry, DEFAULT_RUNTIME);
-  assert.equal(choose([DEFAULT_RUNTIME]).entry, DEFAULT_RUNTIME);
+  assert.equal(choose([cwdEntry, desktopEntry]).entry, desktopEntry);
+  assert.equal(choose([desktopEntry]).entry, desktopEntry);
   assert.equal(choose([]), null);
-  assert.equal(findRuntime({ env: { ZCODE_RUNTIME: 'override' }, cwd: home, exists: () => true }).entry, `${home}/override`);
+  assert.equal(findRuntime({ env: { ZCODE_RUNTIME: 'override' }, cwd: home, exists: () => true }).entry, path.resolve(home, 'override'));
   assert.equal(findRuntime({ env: { ZCODE_RUNTIME: 'missing' }, exists: p => p === DEFAULT_RUNTIME }), null);
   const runtime = path.join(home, 'runtime.cjs');
   writeFileSync(runtime, `if (process.argv.includes('app-server')) {

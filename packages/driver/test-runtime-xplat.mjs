@@ -90,12 +90,13 @@ assert.equal(findRuntime({ env: { ZCODE_RUNTIME: appCliEntry }, platform: 'linux
 // fixture dirs: the same probes through the real filesystem
 const fixtureRoot = mkdtempSync(path.join(os.tmpdir(), 'zrt-'));
 try {
-  // darwin so the desktop probe is path-local (no .deb metadata in play)
+  // real host paths → the host platform: a simulated platform makes findRuntime
+  // resolve them under the OTHER os's path rules and they never exist
   const glm = path.join(fixtureRoot, 'ZCode.app', 'Contents', 'Resources', 'glm');
   mkdirSync(glm, { recursive: true });
   writeFileSync(path.join(glm, 'zcode.cjs'), '');
   writeFileSync(path.join(glm, '..', 'app-update.yml'), 'provider: generic\nversion: 9.8.7\n');
-  const fxDesktop = findRuntime({ env: { ZCODE_RUNTIME: path.join(glm, 'zcode.cjs') }, platform: 'darwin' });
+  const fxDesktop = findRuntime({ env: { ZCODE_RUNTIME: path.join(glm, 'zcode.cjs') }, platform: process.platform });
   assert.equal(fxDesktop.kind, 'explicit');
   assert.equal(fxDesktop.version, '9.8.7');
   // zcode-app-cli layout reads the adjacent package.json
@@ -103,13 +104,13 @@ try {
   mkdirSync(cliBin, { recursive: true });
   writeFileSync(path.join(cliBin, 'zcode.js'), '');
   writeFileSync(path.join(cliBin, '..', 'package.json'), '{"version":"3.10.2-19"}');
-  const fxCli = findRuntime({ env: { ZCODE_RUNTIME: path.join(cliBin, 'zcode.js') }, platform: 'linux' });
+  const fxCli = findRuntime({ env: { ZCODE_RUNTIME: path.join(cliBin, 'zcode.js') }, platform: process.platform });
   assert.equal(fxCli.kind, 'explicit');
   assert.equal(fxCli.version, '3.10.2-19');
   // a real lone file keeps version null even where a zcode .deb is installed
   const lone = path.join(fixtureRoot, 'z.cjs');
   writeFileSync(lone, '');
-  assert.equal(findRuntime({ env: { ZCODE_RUNTIME: lone }, platform: 'linux' }).version, null);
+  assert.equal(findRuntime({ env: { ZCODE_RUNTIME: lone }, platform: process.platform }).version, null);
 
   // a real asar: out/metadata/build-meta.json appVersion is the app's own label
   const asarRoot = path.join(fixtureRoot, 'zcode121', 'resources');
@@ -122,12 +123,12 @@ try {
   const base = Math.ceil((16 + hdr.length) / 4) * 4;
   writeFileSync(path.join(asarRoot, 'app.asar'),
     Buffer.concat([head, hdr, Buffer.alloc(base - 16 - hdr.length), meta]));
-  const fxAsar = findRuntime({ env: { ZCODE_RUNTIME: path.join(asarRoot, 'glm', 'zcode.cjs') }, platform: 'linux' });
+  const fxAsar = findRuntime({ env: { ZCODE_RUNTIME: path.join(asarRoot, 'glm', 'zcode.cjs') }, platform: process.platform });
   assert.equal(fxAsar.kind, 'explicit');
   assert.equal(fxAsar.version, '3.12.1', 'asar build-meta labels a runtime outside the dpkg roots');
   // ...and it still wins where dpkg would answer (the stanza is for /opt, not here)
   assert.equal(findRuntime({ env: { ZCODE_RUNTIME: path.join(asarRoot, 'glm', 'zcode.cjs') },
-    platform: 'linux', read: p => p === '/var/lib/dpkg/status' ? dpkgStatus : '' }).version, '3.12.1');
+    platform: process.platform, read: p => p === '/var/lib/dpkg/status' ? dpkgStatus : '' }).version, '3.12.1');
 } finally {
   rmSync(fixtureRoot, { recursive: true, force: true });
 }

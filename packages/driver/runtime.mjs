@@ -76,49 +76,51 @@ export function asarFile(asarPath, inner) {
 
 // The .deb stanza is system-wide, so it only applies under the install roots
 // the package actually owns — an explicit runtime elsewhere must not inherit it.
-const DPKG_ROOTS = DESKTOP_BUNDLES.linux.map(e => path.resolve(path.dirname(e), '..', '..'));
-const dpkgOwned = entry => {
-  const e = path.resolve(entry);
-  return DPKG_ROOTS.some(r => e === r || e.startsWith(r + path.sep));
+// The roots are Linux literals: build them with path.posix so a simulated
+// 'linux' platform on a win32 host still compares separators correctly.
+const DPKG_ROOTS = DESKTOP_BUNDLES.linux.map(e => path.posix.resolve(path.posix.dirname(e), '..', '..'));
+const dpkgOwned = (entry, paths = path) => {
+  const e = paths.resolve(entry);
+  return DPKG_ROOTS.some(r => e === r || e.startsWith(r + paths.sep));
 };
 
-function desktopVersion(entry, platform, read, asar) {
-  const glmDir = path.dirname(entry);
+function desktopVersion(entry, platform, read, asar, paths = path) {
+  const glmDir = paths.dirname(entry);
   // out/metadata/build-meta.json carries the app's own appVersion in every
   // layout (3.11.2 and 3.12.1 both ship it) — authoritative where dpkg is not.
   try {
-    const v = JSON.parse(asar(path.join(glmDir, '..', 'app.asar'), 'out/metadata/build-meta.json'))?.appVersion;
+    const v = JSON.parse(asar(paths.join(glmDir, '..', 'app.asar'), 'out/metadata/build-meta.json'))?.appVersion;
     if (typeof v === 'string' && v) return v;
   } catch { /* older or partial installs may lack the asar index or the file */ }
-  if (platform === 'linux' && dpkgOwned(entry)) {
+  if (platform === 'linux' && dpkgOwned(entry, paths)) {
     const v = debVersion(read);
     if (v) return v;
   }
   try {
-    const v = read(path.join(glmDir, '..', 'app-update.yml'))
+    const v = read(paths.join(glmDir, '..', 'app-update.yml'))
       .match(/^version:[ \t]*['"]?([^\s'"]+)['"]?[ \t]*$/m)?.[1];
     if (v) return v;
   } catch { /* absent on some installs */ }
-  return jsonVersion(path.join(glmDir, '.node-bundle-meta.json'), read);
+  return jsonVersion(paths.join(glmDir, '.node-bundle-meta.json'), read);
 }
 
 // An explicit override keeps kind 'explicit' but still reports a version when
 // its parent tree matches a known layout — the desktop resources/glm bundle or
 // a zcode-app-cli npm install. The .deb metadata is only consulted through the
 // desktop layout check, never for an arbitrary path.
-function explicitVersion(entry, platform, read, asar) {
-  const dir = path.dirname(entry);
+function explicitVersion(entry, platform, read, asar, paths = path) {
+  const dir = paths.dirname(entry);
   const tail = entry.replaceAll('\\', '/').toLowerCase(); // macOS uses Resources/, others resources/
-  if (tail.endsWith('/resources/glm/zcode.cjs')) return desktopVersion(entry, platform, read, asar);
-  if (tail.endsWith('/zcode-app-cli/bin/zcode.js')) return jsonVersion(path.join(dir, '..', 'package.json'), read);
+  if (tail.endsWith('/resources/glm/zcode.cjs')) return desktopVersion(entry, platform, read, asar, paths);
+  if (tail.endsWith('/zcode-app-cli/bin/zcode.js')) return jsonVersion(paths.join(dir, '..', 'package.json'), read);
   return null;
 }
 
-function runtimeVersion(entry, kind, { platform, read, asar }) {
+function runtimeVersion(entry, kind, { platform, read, asar, paths = path }) {
   try {
-    if (kind === 'zcode-app-cli') return jsonVersion(path.join(path.dirname(entry), '..', 'package.json'), read);
-    if (kind === 'desktop-bundle') return desktopVersion(entry, platform, read, asar);
-    if (kind === 'explicit') return explicitVersion(entry, platform, read, asar);
+    if (kind === 'zcode-app-cli') return jsonVersion(paths.join(paths.dirname(entry), '..', 'package.json'), read);
+    if (kind === 'desktop-bundle') return desktopVersion(entry, platform, read, asar, paths);
+    if (kind === 'explicit') return explicitVersion(entry, platform, read, asar, paths);
   } catch { /* version probing must never break discovery */ }
   return null;
 }
@@ -155,12 +157,16 @@ export function kernelResolves(entry, specifier) {
 export function findRuntime({ env = process.env, home = os.homedir(), cwd = process.cwd(),
                               platform = process.platform, exists = existsSync,
                               read = p => readFileSync(p, 'utf8'), asar = asarFile } = {}) {
+  // All path math runs in the SIMULATED platform's namespace: a test that
+  // injects platform:'linux' with POSIX-shaped mocks must not see win32
+  // separators in the paths exists/read are probed with (and vice versa).
+  const paths = platform === 'win32' ? path.win32 : path.posix;
   const p = { home, localAppData: env.LOCALAPPDATA ?? '', appData: env.APPDATA ?? '' };
   const candidate = (entry, kind) => entry && exists(entry)
-    ? { entry, kind, root: path.dirname(entry), version: runtimeVersion(entry, kind, { platform, read, asar }) }
+    ? { entry, kind, root: paths.dirname(entry), version: runtimeVersion(entry, kind, { platform, read, asar, paths }) }
     : null;
   // An explicit override is authoritative, including when it is invalid.
-  if (env.ZCODE_RUNTIME) return candidate(path.resolve(cwd, env.ZCODE_RUNTIME), 'explicit');
+  if (env.ZCODE_RUNTIME) return candidate(paths.resolve(cwd, env.ZCODE_RUNTIME), 'explicit');
   // official desktop bundle, per-OS install roots in priority order
   for (const entry of desktopRuntimeEntries({ env, home, platform })) {
     const found = candidate(entry, 'desktop-bundle');
@@ -168,10 +174,10 @@ export function findRuntime({ env = process.env, home = os.homedir(), cwd = proc
   }
   // third-party zcode-app-cli (npm layout per-OS), then cwd install
   const appCliRoots = platform === 'win32'
-    ? [path.join(p.appData ?? '', 'npm'), path.join(p.localAppData ?? '', 'npm'), cwd] // r1: %APPDATA%\npm is the standard per-user prefix
+    ? [paths.join(p.appData ?? '', 'npm'), paths.join(p.localAppData ?? '', 'npm'), cwd] // r1: %APPDATA%\npm is the standard per-user prefix
     : [`${home}/.local/opt/zcode-app-cli`, cwd];
   for (const root of appCliRoots) {
-    const found = candidate(path.join(root, 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js'), 'zcode-app-cli');
+    const found = candidate(paths.join(root, 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js'), 'zcode-app-cli');
     if (found) return found;
   }
   return null;
