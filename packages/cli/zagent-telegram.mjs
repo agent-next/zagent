@@ -29,6 +29,9 @@ const turns = createChatTurnRunner({ workspace,
 
 const bot = await runBot({
   token, allowedChatIds: chatIds,
+  // Restart-safe redelivery: an answered-but-undelivered update survives a
+  // process restart here and is resent, never re-run.
+  stateFile: `${os.homedir()}/.zcode/cli/telegram-state.json`,
   handler: async (chatId, text, rawMessage) => {
     if (text === '/ping') return 'pong';
     const att = attachmentsNote(telegramAttachments(rawMessage));

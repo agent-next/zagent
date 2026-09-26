@@ -42,6 +42,9 @@ const inbox = makeInbox({
     return attSuffix ? `${ans}\n(${attSuffix})` : ans;
   },
   sendReply, allowedChatIds: allowed, verifyToken,
+  // Restart-safe dedup/redelivery: a webhook retry after a restart resends the
+  // persisted answer instead of re-running the turn.
+  stateFile: `${os.homedir()}/.zcode/cli/feishu-inbox-state.json`,
   onEvent: (t, d) => { if (t !== 'message') console.error(`[${t}]`, String(d).slice(0, 120)); },
 });
 const server = http.createServer((req, res) => {

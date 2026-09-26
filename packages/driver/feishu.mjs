@@ -9,10 +9,12 @@
 //    Dedup by message_id (NOT event_id — repeats happen). url_verification handshake:
 //    {type:'url_verification', challenge} → echo the challenge.
 //  - tenant_access_token: POST /open-apis/auth/v3/tenant_access_token/internal {app_id,
-//    app_secret} (endpoint referenced by the send-message doc; exact response field set
-//    verified at first live use — receipt notes this).
+//    app_secret} (endpoint referenced by the send-message doc; the exact response
+//    field set is verified at first live use).
 // All HTTP via injectable fetchImpl; secrets never logged.
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { writePrivateFileSync } from './credentials.mjs';
 
 export const FEISHU_API = 'https://open.feishu.cn';
 
@@ -120,21 +122,44 @@ export function tokenCache({ fetchImpl, appId, appSecret, api } = {}) {
   };
 }
 
+// Restart checkpoint for the inbox: {seen:[messageId], pending:{messageId:{chatId,reply}}}.
+// Feishu redelivers an event when the webhook answers non-200, so dedup and
+// answered-but-undelivered replies must outlive the process — otherwise the
+// retry after a restart re-runs a turn that already changed the workspace.
+// Corrupt/missing state reads as a fresh start: the pre-checkpoint behaviour,
+// not a new risk.
+function readInboxState(file) {
+  try {
+    const st = JSON.parse(readFileSync(file, 'utf8'));
+    return st && typeof st === 'object' && !Array.isArray(st) ? st : null;
+  } catch { return null; }
+}
+
 // Message-processing core shared by any transport (webhook server, test harness):
 // challenge pass-through, message_id dedup, default-deny allowlist, handler errors
 // reported back to the chat instead of killing the process.
-export function makeInbox({ handler, sendReply, allowedChatIds = null, onEvent = () => {}, maxDedup = 500, verifyToken } = {}) {
-  const seen = new Set(), inFlight = new Map(), pendingReplies = new Map();
+export function makeInbox({ handler, sendReply, allowedChatIds = null, onEvent = () => {}, maxDedup = 500, verifyToken, stateFile } = {}) {
+  const persisted = stateFile ? readInboxState(stateFile) : null;
+  const seen = new Set(Array.isArray(persisted?.seen) ? persisted.seen : []);
+  const inFlight = new Map(), pendingReplies = new Map();
+  for (const [k, v] of Object.entries(persisted?.pending ?? {}))
+    if (v && typeof v.reply === 'string' && v.chatId != null) pendingReplies.set(k, v);
   const allowed = allowedChatIds == null ? null : new Set(allowedChatIds);
+  const persist = () => {
+    if (stateFile)
+      writePrivateFileSync(stateFile, JSON.stringify({ seen: [...seen].slice(-maxDedup), pending: Object.fromEntries(pendingReplies) }, null, 1));
+  };
   let queued = Promise.resolve();
   const rememberCompleted = id => {
     if (!id) return;
     seen.add(id);
     if (seen.size > maxDedup) seen.delete(seen.values().next().value);
+    persist();
   };
   const boundedSet = (map, key, value) => {
     map.set(key, value);
     if (map.size > maxDedup) map.delete(map.keys().next().value);
+    persist();
   };
   return async function ingest(rawBody) {
     const ev = receiveEvent(rawBody, { verifyToken });
@@ -153,11 +178,11 @@ export function makeInbox({ handler, sendReply, allowedChatIds = null, onEvent =
       try {
         // Keep a successful model response until delivery succeeds. A webhook retry
         // after sendReply failure must not run the agent's side effects again.
-        if (pendingReplies.has(key)) reply = pendingReplies.get(key);
+        if (pendingReplies.has(key)) reply = pendingReplies.get(key).reply;
         else {
           reply = await handler(ev.chatId, ev.text, rawBody);
           reply = reply ? String(reply) : '';
-          boundedSet(pendingReplies, key, reply);
+          boundedSet(pendingReplies, key, { chatId: ev.chatId, reply });
         }
       } catch (e) {
         onEvent('handler_error', String(e?.message ?? e));
@@ -168,14 +193,14 @@ export function makeInbox({ handler, sendReply, allowedChatIds = null, onEvent =
         }
         // Unknown/started failures may already have changed the workspace. Deliver
         // their error once, then deduplicate; retries can resend only this reply.
-        boundedSet(pendingReplies, key, reply);
+        boundedSet(pendingReplies, key, { chatId: ev.chatId, reply });
       }
       try { if (reply) await sendReply(ev.chatId, reply); }
       catch (e) {
         onEvent('delivery_error', String(e?.message ?? e));
         return { status: 503, body: {} };
       }
-      pendingReplies.delete(key);
+      pendingReplies.delete(key); persist();
       rememberCompleted(ev.messageId);
       return { status: 200, body: {} };
     });

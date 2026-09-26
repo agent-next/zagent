@@ -5,6 +5,9 @@
 // No SDK dependency, no background threads: runBot() is an async loop the caller owns
 // (and can stop via the returned handle). Token comes from env — never logged.
 
+import { readFileSync } from 'node:fs';
+import { writePrivateFileSync } from './credentials.mjs';
+
 export const TELEGRAM_API = 'https://api.telegram.org';
 
 function apiBase(token, api = TELEGRAM_API) { return `${api}/bot${token}`; }
@@ -42,6 +45,16 @@ export function messageText(update) {
   return { chatId: m.chat?.id, text, isCommand: text.startsWith('/') };
 }
 
+// Restart checkpoint: {offset, pending:{update_id:{chatId,reply,attempts}}}.
+// Corrupt/missing state reads as a fresh start — worst case a redelivered
+// update re-runs once, which is the pre-checkpoint behaviour, not a new risk.
+function readBotState(file) {
+  try {
+    const st = JSON.parse(readFileSync(file, 'utf8'));
+    return st && typeof st === 'object' && !Array.isArray(st) ? st : null;
+  } catch { return null; }
+}
+
 // The bot loop: poll → for each text update → handler(chatId, text) → reply with its
 // return string. Errors are reported to the chat (not thrown) so one bad turn cannot
 // kill the bot; poll failures back off exponentially (cap 60s) per TG best practice.
@@ -52,24 +65,50 @@ export function messageText(update) {
 // sendMessage acknowledged an update whose answer never arrived. A completed
 // handler result is cached in `pending` so a redelivery resends the same reply
 // instead of re-running the turn's side effects.
-export async function runBot({ token, handler, fetchImpl = fetch, pollTimeout = 25, api, onEvent = () => {}, allowedChatIds, maxDeliveryAttempts = 4 }) {
+//
+// Restart safety: an in-memory `pending` is not enough — a process that dies
+// between a finished turn and a failed sendMessage gets the same update
+// redelivered on next boot and would run it again. With `stateFile` set, the
+// answered-but-undelivered replies and the acked offset are persisted (private
+// write) before the cursor advances, and a fresh runBot resends the pending
+// answers on startup instead of re-executing the handler.
+export async function runBot({ token, handler, fetchImpl = fetch, pollTimeout = 25, api, onEvent = () => {}, allowedChatIds, maxDeliveryAttempts = 4, stateFile } = {}) {
   if (!token) throw new Error('runBot: token required (set ZAGENT_TELEGRAM_TOKEN)');
   if (typeof handler !== 'function') throw new Error('runBot: handler(chatId, text) required');
   // Authorization (review r2 #1): when an allowlist is set, updates from other chats are
   // dropped BEFORE the handler — an open bot would let ANY sender drive the operator's
   // account. Empty allowlist = driver-level allow-all (the CLI layer must default-deny).
   const allowed = allowedChatIds == null ? null : new Set(allowedChatIds);
-  const pending = new Map(); // update_id -> {reply, attempts}: settled turn, unsettled send
+  const persisted = stateFile ? readBotState(stateFile) : null; // {offset, pending:{id:{chatId,reply,attempts}}}
+  const pending = new Map(); // update_id -> {chatId, reply, attempts}: settled turn, unsettled send
+  for (const [k, v] of Object.entries(persisted?.pending ?? {})) {
+    const id = Number(k);
+    if (Number.isInteger(id) && v && typeof v.reply === 'string' && v.chatId != null)
+      pending.set(id, { chatId: v.chatId, reply: v.reply, attempts: Number(v.attempts) || 0 });
+  }
+  let offset = Number.isInteger(persisted?.offset) ? persisted.offset : 0;
+  const persist = () => {
+    if (stateFile)
+      writePrivateFileSync(stateFile, JSON.stringify({ offset, pending: Object.fromEntries(pending) }, null, 1));
+  };
   const remember = (id, entry) => {
     pending.set(id, entry);
     if (pending.size > 500) pending.delete(pending.keys().next().value);
+    persist();
   };
-  const settle = id => { if (Number.isInteger(id)) offset = Math.max(offset, id + 1); };
-  let offset = 0, stopped = false, failures = 0;
+  const settle = id => { if (Number.isInteger(id)) { offset = Math.max(offset, id + 1); persist(); } };
+  let stopped = false, failures = 0;
   const stop = () => { stopped = true; };
   const sleep = async ms => { for (const end = Date.now() + ms; Date.now() < end && !stopped;) await new Promise(r => setTimeout(r, Math.min(200, end - Date.now()))); };
   const loop = (async () => {
     onEvent('start');
+    // Crash recovery: answers that outlived the previous process are re-sent
+    // from the state file — the turn is never re-run.
+    for (const [id, held] of pending) {
+      if (stopped) break;
+      try { await sendMessage(fetchImpl, token, held.chatId, held.reply, { api }); pending.delete(id); settle(id); }
+      catch (e) { onEvent('delivery_error', String(e?.message ?? e)); remember(id, { ...held, attempts: held.attempts + 1 }); }
+    }
     while (!stopped) {
       let resendWait = 0;
       try {
@@ -89,15 +128,19 @@ export async function runBot({ token, handler, fetchImpl = fetch, pollTimeout = 
             onEvent('message', m);
             try { reply = await handler(m.chatId, m.text, u.message ?? u.edited_message); if (reply != null) reply = String(reply); }
             catch (e) { onEvent('handler_error', String(e?.message ?? e)); reply = `error: ${String(e?.message ?? e).slice(0, 200)}`; }
+            // Persist the finished answer BEFORE the first send attempt: if the
+            // process dies between a completed turn and the failed send, the
+            // restart resends this reply — it must never re-run the handler.
+            if (reply && Number.isInteger(id)) remember(id, { chatId: m.chatId, reply, attempts: 0 });
           }
           if (reply) {
-            try { await sendMessage(fetchImpl, token, m.chatId, reply, { api }); pending.delete(id); }
+            try { await sendMessage(fetchImpl, token, m.chatId, reply, { api }); pending.delete(id); persist(); }
             catch (e) {
               onEvent('delivery_error', String(e?.message ?? e));
-              const entry = held ?? { reply, attempts: 0 };
+              const entry = held ?? { chatId: m.chatId, reply, attempts: 0 };
               entry.attempts += 1;
               if (entry.attempts >= maxDeliveryAttempts) {
-                pending.delete(id); onEvent('dropped', id); // bounded: a dead chat cannot block the queue forever
+                pending.delete(id); persist(); onEvent('dropped', id); // bounded: a dead chat cannot block the queue forever
               } else {
                 remember(id, entry);
                 resendWait = Math.min(1000 * 2 ** (entry.attempts - 1), 60000);

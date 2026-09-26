@@ -248,6 +248,37 @@ await regression('bot startup failures are explicitly safe to retry', async () =
   finally { turns.close(); }
 });
 
+await regression('a webhook retry after a restart resends the persisted answer, never re-runs the turn', async () => {
+  // Two makeInbox instances over one stateFile simulate a process restart:
+  // the first dies after the turn completes but before delivery; the second
+  // must answer the retry from disk, not by re-executing the handler.
+  const { mkdtempSync, rmSync, readFileSync, statSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'zfs-state-'));
+  try {
+    const stateFile = join(dir, 'feishu-inbox-state.json');
+    let executions = 0, deliveries = 0;
+    const inbox1 = makeInbox({ stateFile,
+      handler: async () => { executions++; return 'completed work'; },
+      sendReply: async () => { throw new Error('send unavailable'); } });
+    assert.equal((await inbox1(event('restart'))).status, 503);
+    const st = JSON.parse(readFileSync(stateFile, 'utf8'));
+    assert.equal(st.pending?.restart?.reply, 'completed work');
+    if (process.platform !== 'win32')
+      assert.equal(statSync(stateFile).mode & 0o777, 0o600, 'inbox state file is 0600');
+
+    const inbox2 = makeInbox({ stateFile,
+      handler: async () => { executions++; return 're-run'; },
+      sendReply: async (chat, text) => { deliveries++; assert.equal(text, 'completed work'); } });
+    assert.equal((await inbox2(event('restart'))).status, 200);
+    assert.equal(executions, 1, 'the completed turn is not re-executed');
+    assert.equal(deliveries, 1, 'the persisted answer is delivered on retry');
+    assert.equal((await inbox2(event('restart'))).status, 200);
+    assert.equal(deliveries, 1, 'a settled message_id stays deduplicated across restart');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 await regression('Feishu messages without usable IDs are rejected before execution', async () => {
   let calls = 0;
   const inbox = makeInbox({ handler: async () => { calls++; }, sendReply: async () => {} });

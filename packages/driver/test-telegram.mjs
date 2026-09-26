@@ -165,5 +165,59 @@ ok(handled4.length === 0, 'handler not started after stop() (r2 #4)');
   ok(maxOffsetSeen > 7, 'offset advances past the dropped update');
 }
 
+// --- r3: restart persistence — a completed turn whose reply failed to send
+// must never re-execute after a process restart. Two runBot instances share
+// one stateFile (the second simulates the restarted process); the handler
+// must run exactly once across both.
+{
+  const { mkdtempSync, rmSync, statSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'ztg-state-'));
+  const stateFile = join(dir, 'telegram-state.json');
+  try {
+    const handled7 = [], sends7 = [];
+    // First process: polls return update 41, every sendMessage fails.
+    const fFail = async (url, init) => {
+      if (url.includes('getUpdates')) {
+        const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+        if (off <= 41) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
+          { update_id: 41, message: { chat: { id: 8 }, text: 'job' } } ] }) };
+        return { ok: true, status: 200, json: async () => new Promise(() => {}) };
+      }
+      if (url.includes('sendMessage')) { sends7.push(JSON.parse(init.body)); return { ok: false, status: 500, json: async () => ({ ok: false }) }; }
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+    };
+    const bot7a = await runBot({ token: 'T', fetchImpl: fFail, pollTimeout: 0, stateFile,
+      handler: async (c, t) => { handled7.push('a'); return 'answer-42'; }, onEvent: () => {} });
+    for (let i = 0; i < 60 && sends7.length < 1; i++) await new Promise(r => setTimeout(r, 100));
+    bot7a.stop();
+    ok(handled7.length === 1 && sends7.length >= 1, 'first process ran the handler once, send failed');
+    const st = JSON.parse(readFileSync(stateFile, 'utf8'));
+    ok(st.pending?.['41']?.reply === 'answer-42' && st.offset <= 41, 'pending answer + un-acked offset persisted');
+    if (process.platform !== 'win32')
+      ok((statSync(stateFile).mode & 0o777) === 0o600, 'state file is 0600');
+
+    // Second process (the restart): the pending answer is resent — the handler
+    // must not run again. This bot's sendMessage succeeds.
+    const sends7b = [];
+    const fRestart = async (url, init) => {
+      if (url.includes('getUpdates'))
+        return { ok: true, status: 200, json: async () => new Promise(() => {}) }; // idle: nothing new
+      if (url.includes('sendMessage')) { sends7b.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) }; }
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+    };
+    const bot7b = await runBot({ token: 'T', fetchImpl: fRestart, pollTimeout: 0, stateFile,
+      handler: async () => { handled7.push('b'); return 're-run'; }, onEvent: () => {} });
+    // The send fires before the settle write lands — wait on the file itself.
+    const settled = () => { try { const s = JSON.parse(readFileSync(stateFile, 'utf8')); return s.offset > 41 && !Object.keys(s.pending ?? {}).length; } catch { return false; } };
+    for (let i = 0; i < 60 && !settled(); i++) await new Promise(r => setTimeout(r, 100));
+    bot7b.stop();
+    ok(sends7b.length >= 1 && sends7b[0].text === 'answer-42', 'restarted bot resends the persisted answer');
+    ok(handled7.length === 1, 'handler ran exactly once across the restart');
+    ok(settled(), 'delivered answer settles the offset');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
 console.log(fails ? `FAIL (${fails})` : 'PASS telegram-d5-full');
 process.exit(fails ? 1 : 0);
