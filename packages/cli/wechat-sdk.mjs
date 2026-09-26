@@ -18,16 +18,31 @@ export function npmGlobalRoot() {
   } catch { return null; }
 }
 
+// Walk an exports value down the conditions an ESM import honours.
+const pickEntry = exp => {
+  if (typeof exp === 'string') return exp;
+  if (exp && typeof exp === 'object') return pickEntry(exp.import ?? exp.node ?? exp.default);
+  return null;
+};
+
 // <root>/@wechatbot/wechatbot → importable file URL. Reads package.json
 // directly: require.resolve honours the "require" condition and can miss an
-// ESM-only exports map.
+// ESM-only exports map. Manifest shapes handled: string sugar
+// ("exports": "./sdk.mjs"), a conditions object ({"import":…,"default":…})
+// either at top level or under ".", a subpath map (keys start with '.'),
+// then module/main, then index.js.
 export function sdkEntryUrl(root) {
   const dir = join(root, ...WECHAT_SDK.split('/'));
   let pkg;
   try { pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')); }
   catch { return null; }
-  const exp = pkg.exports?.['.'];
-  const rel = (typeof exp === 'string' ? exp : exp?.import ?? exp?.default) ?? pkg.module ?? pkg.main ?? 'index.js';
+  const exp = pkg.exports;
+  const subpathMap = exp != null && typeof exp === 'object' && Object.keys(exp).some(k => k.startsWith('.'));
+  const rel = (typeof exp === 'string' ? exp : null)
+    ?? (subpathMap ? pickEntry(exp['.']) : pickEntry(exp))
+    ?? (typeof pkg.module === 'string' ? pkg.module : null)
+    ?? (typeof pkg.main === 'string' ? pkg.main : null)
+    ?? 'index.js';
   const file = join(dir, rel);
   return existsSync(file) ? pathToFileURL(file).href : null;
 }
