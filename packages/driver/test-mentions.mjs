@@ -39,6 +39,23 @@ r = resolveMentions(`see @${path.resolve(ws, 'calc.py')}`, `${ws}/src`);
 ok(r.rejected.length === 1 && r.found.length === 0, 'absolute token outside root refused');
 r = resolveMentions(`see @src/../calc.py`, ws);
 ok(r.rejected.length === 0 && r.found.length === 1, 'dot-segments that stay inside root still resolve');
+// A symlink inside the workspace that points OUTSIDE it is an escape — lexical
+// containment alone would accept it, so the real path is what must be checked.
+// (symlink creation needs privilege on Windows; the check is skipped there)
+import { symlinkSync, realpathSync } from 'node:fs';
+let linked = false;
+const outside = mkdtempSync(path.join(os.tmpdir(), 'zmention-out-'));
+writeFileSync(`${outside}/secret.txt`, 's');
+try { symlinkSync(path.resolve(ws, 'calc.py'), `${ws}/link-in.py`); symlinkSync(`${outside}/secret.txt`, `${ws}/link-out.py`); symlinkSync(`${outside}/dangling`, `${ws}/link-dead.py`); linked = true; } catch {}
+if (linked) {
+  r = resolveMentions('see @link-in.py and @link-out.py and @link-dead.py', ws);
+  ok(r.found.length === 1 && r.found[0].token === 'link-in.py' && r.found[0].path === realpathSync(`${ws}/link-in.py`),
+    'in-workspace symlink resolves to its real path');
+  ok(r.rejected.length === 2 && r.rejected.some(x => x.token === 'link-out.py') && r.rejected.some(x => x.token === 'link-dead.py'),
+    'symlink escape refused (outside workspace root, live or dangling)');
+  ok(!r.rewritten.includes(outside), 'escape target path not rewritten into the prompt');
+}
+rmSync(outside, { recursive: true, force: true });
 ok(mentionsLine({ found: [], missing: [] }) === 'no file mentions', 'empty line');
 ok(mentionsLine(resolveMentions('a @calc.py', ws)).includes('→'), 'line format');
 rmSync(ws, { recursive: true, force: true });

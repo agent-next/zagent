@@ -2,9 +2,10 @@
 // Pure function: pull @tokens from a prompt, resolve each against the workspace root
 // (existsSync check), and report found/missing/rejected. NO content injection here —
 // callers decide how to attach (the runtime's own tools read files); this validates
-// and rewrites each resolved token to its absolute path. Tokens that resolve
-// outside the workspace root are refused (@/etc/passwd, @../x), not resolved.
-import { existsSync, statSync } from 'node:fs';
+// and rewrites each resolved token to its canonical (real) path. Tokens that
+// resolve outside the workspace root are refused (@/etc/passwd, @../x, and
+// symlinks pointing out of the workspace), not resolved.
+import { lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const TOKEN = /(^|\s)@([^\s@]+)/gu; // r15 #2: full token + unicode mode (no 200-char surrogate splits)
@@ -22,9 +23,13 @@ export function extractMentions(prompt) {
 export function resolveMentions(prompt, workspaceRoot = process.cwd()) {
   const found = [], missing = [], rejected = [];
   const root = path.resolve(workspaceRoot);
-  // Containment on the RESOLVED absolute path: `..` segments and absolute tokens
-  // would otherwise let a bot-supplied mention point anywhere on the filesystem.
-  const inside = p => p.startsWith(root + path.sep); // a file is always strictly under root
+  // Containment is checked twice: lexically on the joined path (cheap reject for
+  // `..` and absolute tokens), then on the REAL path — statSync follows links,
+  // so a symlink inside the workspace could otherwise point a bot's mention at
+  // any file on the filesystem.
+  const inside = (p, base) => p.startsWith(base + path.sep); // a file is always strictly under root
+  let realRoot = root;
+  try { realRoot = realpathSync(root); } catch {}
   const cache = new Map(); // r15 #3: duplicate tokens resolved once
   let budget = MAX_MENTIONS;
   const rewritten = String(prompt ?? '').replace(TOKEN, (full, boundary, tok) => {
@@ -36,10 +41,26 @@ export function resolveMentions(prompt, workspaceRoot = process.cwd()) {
       cache.set(tok, p);
     }
     budget--; // r16 #4: budget consumes on EVERY probe (missing mentions are also fs work)
-    if (!inside(p)) { rejected.push({ token: tok, path: p }); return full; }
+    if (!inside(p, root)) { rejected.push({ token: tok, path: p }); return full; }
+    let real = null;
+    try { real = realpathSync(p); } catch {}
+    if (real === null) {
+      // Missing — or a dangling symlink: read the link itself so a planted link
+      // pointing outside the workspace is refused rather than quietly missing.
+      try {
+        if (lstatSync(p).isSymbolicLink()
+            && !inside(path.resolve(realpathSync(path.dirname(p)), readlinkSync(p)), realRoot)) {
+          rejected.push({ token: tok, path: p });
+          return full;
+        }
+      } catch {}
+      missing.push({ token: tok, path: p });
+      return full;
+    }
+    if (!inside(real, realRoot)) { rejected.push({ token: tok, path: p }); return full; } // symlink escape
     let ok = false;
-    try { ok = existsSync(p) && statSync(p).isFile(); } catch {}
-    if (ok) { found.push({ token: tok, path: p }); return `${boundary}@${p}`; } // r15 #1: boundary preserved EXACTLY
+    try { ok = real !== null && statSync(real).isFile(); } catch {}
+    if (ok) { found.push({ token: tok, path: real }); return `${boundary}@${real}`; } // r15 #1: boundary preserved EXACTLY
     missing.push({ token: tok, path: p });
     return full;
   });
