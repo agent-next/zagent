@@ -11,7 +11,7 @@ import path from 'node:path';
 import { runJourney, KEY } from './journey.mjs';
 import { HANG } from './fake-host.mjs';
 
-if (process.platform === 'win32') { console.log('SKIP journeys: needs a POSIX pty (script(1))'); process.exit(0); }
+if (process.platform !== 'linux') { console.log('SKIP journeys: needs util-linux script(1) (-qfec), Linux only'); process.exit(0); }
 // PTY golden journeys are unreliable inside containers (script(1) pty vs
 // container /dev/pts sizing) - skip where /.dockerenv marks a container.
 if (existsSync('/.dockerenv')) { console.log('SKIP journeys: container pty unreliable for TUI goldens'); process.exit(0); }

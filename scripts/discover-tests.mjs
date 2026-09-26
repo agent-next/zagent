@@ -21,6 +21,16 @@ export const HELPERS = new Set(['test-util.mjs', 'test-all.mjs', 'test-user-flow
 // Directories that never hold gated tests. Pruned by name at every depth.
 export const PRUNE = new Set(['node_modules', '.git', '.worktrees', 'artifacts', 'usertest', '.cache']);
 
+// Tests that drive a real ZCode runtime process. Real tests, not hermetic
+// ones: test-all runs them only under --live and the ledger buckets them
+// EXCLUDED, so the reason is written in exactly one place.
+export const NEEDS_RUNTIME = new Set(['test.mjs', 'test-a2.mjs', 'test-permission-live.mjs', 'test-journeys-live.mjs']);
+
+// Tests that need util-linux script(1) (`script -qfec`). That flag set does
+// not exist in BSD/macOS script and there is no pty at all on Windows, so the
+// honest bucket is Linux-only — the files also self-skip off-Linux.
+export const NEEDS_LINUX_PTY = new Set(['test-journeys.mjs', 'test-journeys-commands.mjs']);
+
 // Both spellings are in use — scripts and packages chose the first, bench the
 // second — and a rule honouring one would silently skip half of them.
 export const isTestFile = (name) =>

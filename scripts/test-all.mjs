@@ -11,25 +11,29 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findRuntime } from '../packages/driver/runtime.mjs';
 // What counts as a gated test file lives in one module, shared with the
-// cross-platform ledger, which used to keep its own copy of the answer.
-import { discoverTests } from './discover-tests.mjs';
+// cross-platform ledger, which used to keep its own copy of the answer. The
+// platform/runtime exclusions live there too — one list, three readers
+// (this runner, the ledger, CI via this runner).
+import { discoverTests, NEEDS_RUNTIME, NEEDS_LINUX_PTY } from './discover-tests.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// These drive a real ZCode runtime process; they are real tests, not hermetic
-// ones. Where the runtime is absent they are SKIPPED LOUDLY rather than failed
-// (a missing proprietary desktop install is not a code defect) and never
-// silently counted as passing.
-const NEEDS_RUNTIME = new Set(['test.mjs', 'test-a2.mjs', 'test-permission-live.mjs', 'test-journeys-live.mjs']);
+// NEEDS_RUNTIME drive a real ZCode runtime process; they are real tests, not
+// hermetic ones. Where the runtime is absent they are SKIPPED LOUDLY rather
+// than failed (a missing proprietary desktop install is not a code defect)
+// and never silently counted as passing.
 const live = process.argv.includes('--live') || process.env.ZAGENT_LIVE === '1';
 const runtime = live ? findRuntime()?.entry : null;
-// Why a runtime test was skipped. Without --live it is policy, not a missing
-// install: saying "needs ZCode runtime" on a machine that HAS the runtime
-// installed is simply false, and a gate that misreports its own skips is the
-// same class of defect as one that hides them.
-const skipReason = live ? 'no ZCode runtime found' : 'live runtime test; opt in with --live';
+// Why a test was skipped. Without --live it is policy, not a missing install:
+// saying "needs ZCode runtime" on a machine that HAS the runtime installed is
+// simply false, and a gate that misreports its own skips is the same class of
+// defect as one that hides them.
+const reasonFor = base =>
+  NEEDS_LINUX_PTY.has(base) ? 'needs util-linux script(1) pty; Linux only'
+  : NEEDS_RUNTIME.has(base) ? (live ? 'no ZCode runtime found' : 'live runtime test; opt in with --live')
+  : null;
 
 const files = discoverTests(root);
 if (files.length === 0) {
@@ -41,10 +45,12 @@ const failures = [];
 const skipped = [];
 for (const file of files) {
   const rel = path.relative(root, file);
-  const needsRuntime = NEEDS_RUNTIME.has(path.basename(file));
-  if (needsRuntime && !runtime) {
+  const base = path.basename(file);
+  const needsRuntime = NEEDS_RUNTIME.has(base);
+  const reason = NEEDS_LINUX_PTY.has(base) && process.platform === 'linux' ? null : reasonFor(base);
+  if (reason !== null && !(needsRuntime && runtime)) {
     skipped.push(rel);
-    console.log(`skip ${rel} (${skipReason})`);
+    console.log(`skip ${rel} (${reason})`);
     continue;
   }
   const sandbox = mkdtempSync(path.join(tmpdir(), 'zagent-test-'));
@@ -56,7 +62,7 @@ for (const file of files) {
     Object.assign(env, { HOME: sandbox, USERPROFILE: sandbox, TMPDIR: temp, TEMP: temp, TMP: temp,
       XDG_CONFIG_HOME: path.join(sandbox, '.config'), ZAGENT_TEST_SANDBOX: sandbox,
       ZCODE_RUNTIME: needsRuntime ? runtime : path.join(sandbox, 'no-runtime'),
-      NODE_OPTIONS: needsRuntime ? '' : `--import=${path.join(root, 'scripts/offline-test-preload.mjs')}` });
+      NODE_OPTIONS: needsRuntime ? '' : `--import=${pathToFileURL(path.join(root, 'scripts/offline-test-preload.mjs')).href}` });
     if (live) {
       env.ZAGENT_LIVE = '1'; // self-gating live tests (test-journeys-live.mjs) see the opt-in
       // Live journeys seed a throwaway HOME from the real config — the sandbox
@@ -88,7 +94,7 @@ for (const file of files) {
 
 const ran = files.length - skipped.length;
 console.log(`\n${ran - failures.length}/${ran} test files passed` +
-  (skipped.length ? ` (${skipped.length} skipped — ${skipReason}: ${skipped.join(', ')})` : ''));
+  (skipped.length ? ` (${skipped.length} skipped with per-file reasons above)` : ''));
 if (failures.length) {
   console.log(`FAILED: ${failures.join(', ')}`);
   process.exit(1);
