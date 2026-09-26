@@ -3,7 +3,7 @@
 // WSS wss://zcode.z.ai/ws?mid=<deviceMid>, header X-Device-ID, then
 // {type:"device_register_init", device_mid, pass_hash, meta, client_ts} -> {type:"device_register_ack", device_sid}.
 import WebSocket from 'ws';
-import { readFileSync, writeFileSync as wd, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync as wd, mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import os from 'node:os';
 import { decryptCredential, loadCredentialStore, deviceMid } from './credentials.mjs';
@@ -76,13 +76,23 @@ export function relayStatus({ home = os.homedir(), env = process.env } = {}) {
     source: cliSid ? 'cli' : null,
   };
 }
+// relay-state.json carries the device id and a credential-adjacent session id:
+// write it user-private. writeFileSync's mode only applies at creation, so a
+// pre-existing loose file is tightened with an explicit chmod.
+export function writeRelayState(file, obj) {
+  const dir = dirname(file);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try { chmodSync(dir, 0o700); } catch {}
+  wd(file, JSON.stringify(obj, null, 1), { mode: 0o600 });
+  try { chmodSync(file, 0o600); } catch {}
+}
+
 export async function ensureDeviceSid({ deviceMid: explicitMid } = {}) {
   const mid = explicitMid ?? deviceMid();
   const cached = cachedDeviceSid(mid);
   if (cached) return cached;
   const ack = await registerDevice({ deviceMid: mid });
-  mkdirSync(dirname(STATE), { recursive: true });
-  wd(STATE, JSON.stringify({ deviceMid: mid, deviceSid: ack.device_sid, at: Date.now() }, null, 1));
+  writeRelayState(STATE, { deviceMid: mid, deviceSid: ack.device_sid, at: Date.now() });
   return ack.device_sid;
 }
 
@@ -122,7 +132,7 @@ export function connectDevice({ deviceSid, tasks = [], initialViewState = {}, on
       watchdog = setTimeout(() => ws.terminate(), ackTimeoutMs + heartbeatMs);
       try {
         const st = readStateFile(STATE) ?? {};
-        wd(STATE, JSON.stringify({ ...st, lastAck }, null, 1));
+        writeRelayState(STATE, { ...st, lastAck });
       } catch {}
     }
     // D3 phase 2: route data-envelope app payloads; replies go straight back over the relay
