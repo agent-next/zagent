@@ -356,7 +356,9 @@ function buildPersonalProviderPlan({
     // A typeless access block is what the first seeder wrote; the kernel's
     // strict parser rejects it. When it carries a string key the only missing
     // piece is the tag every xz serialization emits, so the plan carries a
-    // repaired document and the -p path rewrites the file once.
+    // repaired document and the seeding paths (the only readers of this file:
+    // the app-server registry behind --model/--effort, commit-msg, models test)
+    // rewrite it once.
     let repaired = false;
     const rules = providerRules.map(r => {
       const a = r?.config?.access;
@@ -374,8 +376,12 @@ function buildPersonalProviderPlan({
         return malformed('the personal provider config is malformed (personalModelIds)');
     }
     const base = { write: false, doc: null, reason: 'personal provider config already present', source: FILE_SOURCE };
-    if (repaired) base.repair = { ...parsed, config: { ...parsed.config,
-      providerConfigRules: { ...parsed.config.providerConfigRules, providerRules: rules } } };
+    // The file on disk is what the kernel reads until a seeding run rewrites
+    // it, so the verdict is NOT-RESOLVABLE now, with the way out in the detail.
+    if (repaired) return { ...base, repair: { ...parsed, config: { ...parsed.config,
+      providerConfigRules: { ...parsed.config.providerConfigRules, providerRules: rules } } },
+      resolves: sel ? { ok: false, detail: 'the personal provider config lacks access.type — the next --model, commit-msg or models test run rewrites it' } : null,
+      unverified: null };
     return planVerdict(sel, rules, loadTemplates, base);
   }
 

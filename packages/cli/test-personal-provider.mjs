@@ -620,6 +620,9 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
   const ehome = tempHome(famCli('zai-api/GLM-5.3'));
   const er = provisionPersonalProviderConfig({ home: ehome, env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bfile } });
   ok(er.provisioned, 'family selection seeds from the env-named builtin config');
+  const epre = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bfile }, home: ehome, config: famCli('zai-api/not-in-list') });
+  ok(epre?.ok === false && /not in the builtin template's model list/.test(epre.detail),
+    `the env-named builtin file's list is actually read (${epre?.detail})`);
   rmSync(ehome, { recursive: true, force: true });
   rmSync(bfile, { force: true });
 }
@@ -750,7 +753,7 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
   mkdirSync(path.dirname(rpath), { recursive: true });
   writeFileSync(rpath, JSON.stringify(mk({ apiKey: KEY }), null, 2));
   const rcheck = modelResolutionCheck({ env: {}, home: rhome, config: cfg, builtin: BUILTIN_FIXTURE });
-  ok(rcheck?.ok === true, `typeless block with a key is judged as the repair would leave it (${rcheck?.detail})`);
+  ok(rcheck?.ok === false && /access\.type/.test(rcheck.detail), `typeless block on disk is NOT resolvable until rewritten (${rcheck?.detail})`);
   ok(JSON.parse(readFileSync(rpath, 'utf8')).config.providerConfigRules.providerRules[0].config.access.type === undefined,
     'doctor (read-only) leaves the typeless file untouched');
   const rr = provisionPersonalProviderConfig({ env: {}, home: rhome, builtin: BUILTIN_FIXTURE });
