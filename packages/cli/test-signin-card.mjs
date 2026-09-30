@@ -18,7 +18,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let passed = 0, failed = 0;
 const ok = (cond, name) => { cond ? passed++ : failed++; console.log(`${cond ? 'ok' : 'FAIL'} - ${name}`); };
 
-async function cardRun({ keys = [], env = {} } = {}) {
+async function cardRun({ keys = [], waits = [], env = {} } = {}) {
   const home = mkdtempSync(path.join(tmpdir(), 'zagent-signin-'));
   // The card sits behind the runtime gate (no runtime → doctor report, not the
   // card). findRuntime only checks the file exists, so a stub reaches it.
@@ -40,12 +40,23 @@ async function cardRun({ keys = [], env = {} } = {}) {
   if (process.platform === 'darwin') {
     // Tcl-safe by construction: the payload rides in braces (no Tcl metas in a
     // shell-quoted command), and each key byte goes out as a \xHH escape.
+    // Sends are OUTPUT-GATED: the first key waits for the card to paint, and
+    // a key with a `waits[i]` pattern waits for that prompt. On a slow runner
+    // the card paints seconds after spawn; a fixed-delay send lands in the
+    // cooked line discipline, which echoes it — leaking a pasted secret and
+    // leaving typed fragments on screen. Once the prompt renders, readline
+    // holds the tty in raw mode and nothing echoes.
     const bytes = (s) => [...Buffer.from(s, 'utf8')].map((b) => `\\x${b.toString(16).padStart(2, '0')}`).join('');
     const tcl = [
-      'set timeout -1', // the outer race below owns the deadline
+      'set timeout 10',
       `spawn /bin/sh -c {${cmd}}`,
-      'after 2500',
-      ...keys.flatMap((k) => [`catch {send -- "${bytes(k)}"}`, 'after 700']),
+      'expect -re {choose a sign-in path}',
+      'after 400',
+      ...keys.flatMap((k, i) => [
+        ...(waits[i] ? [`expect -re {${waits[i]}}`, 'after 200'] : []),
+        `catch {send -- "${bytes(k)}"}`,
+        'after 700',
+      ]),
       'expect eof',
       'exit [lindex [wait] 3]',
     ].join('\n');
@@ -68,7 +79,9 @@ async function cardRun({ keys = [], env = {} } = {}) {
       await sleep(700);
     }
   }
-  let code = await Promise.race([exit, sleep(8000).then(() => 'timeout')]);
+  // darwin legs are output-gated, so their budget covers slow paints too.
+  const budget = process.platform === 'darwin' ? 25000 : 8000;
+  let code = await Promise.race([exit, sleep(budget).then(() => 'timeout')]);
   if (code === 'timeout') child.kill('SIGKILL');
   rmSync(home, { recursive: true, force: true });
   return { raw, code, home };
@@ -98,9 +111,11 @@ async function cardRun({ keys = [], env = {} } = {}) {
 }
 
 // Pick 2 asks for a key; an empty paste declines and leaves quietly — and the
-// prompt never echoes the pasted secret back.
+// prompt never echoes the pasted secret back. The secret send is gated on the
+// paste prompt actually rendering: readline only mutes the tty once that
+// question is pending.
 {
-  const r = await cardRun({ keys: ['2\r', 'sk-card-secret-xyz\r'] });
+  const r = await cardRun({ keys: ['2\r', 'sk-card-secret-xyz\r'], waits: [null, 'paste ZAI_API_KEY: '] });
   ok(r.raw.includes('paste ZAI_API_KEY:'), 'pick 2 prompts for the key');
   ok(!/TypeError|Cannot read prop/.test(r.raw), 'pick 2 + pasted key prints no stack');
   ok(!r.raw.includes('sk-card-secret-xyz'), 'the pasted key is not echoed to the terminal');
@@ -153,9 +168,11 @@ async function cardRun({ keys = [], env = {} } = {}) {
   ok(r.code === 2, `Esc+char exits 2 — the answer can never become 'orld' (got ${r.code})`);
 }
 
-// At the masked key paste: same cancel, still quiet.
+// At the masked key paste: same cancel, still quiet. The Esc is gated on the
+// paste prompt rendering — it must strike a pending question, not the cooked
+// tty before the card is ready.
 {
-  const r = await cardRun({ keys: ['2\r', '\x1b'] });
+  const r = await cardRun({ keys: ['2\r', '\x1b'], waits: [null, 'paste ZAI_API_KEY: '] });
   ok(r.raw.includes('paste ZAI_API_KEY:'), 'pick 2 prompts for the key (Esc-cancel leg)');
   ok(!/TypeError|Cannot read prop/.test(r.raw), 'Esc at the key paste prints no stack');
   ok(r.code === 2, `Esc at the key paste exits 2, quietly (got ${r.code})`);
