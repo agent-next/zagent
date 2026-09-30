@@ -220,8 +220,14 @@ const tempHome = (cli = CLI_FIXTURE) => {
   const miss = modelResolutionCheck({ env, home, config: CLI_FIXTURE });
   ok(miss?.ok === false && /not in the provider's model list/.test(miss.detail),
     `existing file wins: a missing model is flagged (${miss?.detail})`);
-  ok(modelResolutionCheck({ env, home, config: { model: { main: 'other/m' } } })?.ok === false,
-    'provider absent from the existing file is flagged');
+  // The file carries provider 'other' (models ['x']) but not its model 'm':
+  // the verdict must name the missing MODEL, not a missing provider.
+  const wrongModel = modelResolutionCheck({ env, home, config: { model: { main: 'other/m' } } });
+  ok(wrongModel?.ok === false && /model other\/m is not in the provider's model list/.test(wrongModel.detail),
+    `existing file: a configured provider without the model is flagged precisely (${wrongModel?.detail})`);
+  const noProvider = modelResolutionCheck({ env, home, config: { model: { main: 'ghost/m' } } });
+  ok(noProvider?.ok === false && /provider 'ghost' is not configured/.test(noProvider.detail),
+    `existing file: an absent provider is flagged precisely (${noProvider?.detail})`);
   ok(modelResolutionCheck({ env, home, config: { model: { main: 'account:zai-individual-coding-plan/glm-5.3' } } }) === null,
     'account/builtin selections cannot be judged statically -> null');
   ok(modelResolutionCheck({ env, home, config: { model: { main: 'builtin:zapi/m' } } }) === null,
@@ -470,6 +476,151 @@ const tempHome = (cli = CLI_FIXTURE) => {
   ok(doc2.status === 1 && /^model: .+NOT RESOLVABLE$/m.test(doc2.stdout) && !/TypeError/.test(doc2.stdout + doc2.stderr),
     'doctor prints a model: verdict for a malformed personal config instead of crashing');
   rmSync(home, { recursive: true, force: true });
+}
+
+// --- provider ids are normalised everywhere (import AND the key gate) ---
+// The importer trims map keys ('zai ' -> rule id 'zai'); the gates must look
+// the cli entry up the same way, or an entry keyed 'zai ' slips past the
+// unusable-key gate and seeds an empty-key file the doctor calls resolvable.
+{
+  const withRawId = (rawId, apiKey) => {
+    const c = JSON.parse(JSON.stringify(CLI_FIXTURE));
+    const entry = c.provider.zai;
+    delete c.provider.zai;
+    entry.options.apiKey = apiKey;
+    c.provider[rawId] = entry;
+    return c;
+  };
+  const bad = withRawId('zai ', '');
+  const home = tempHome(bad);
+  const env = {};
+  const r = provisionPersonalProviderConfig({ home, env });
+  ok(!r.provisioned && !existsSync(personalProviderConfigPath({ home, env })),
+    `untrimmed map key with an empty key refuses to seed (${r.reason})`);
+  const res = modelResolutionCheck({ env, home, config: bad });
+  ok(res?.ok === false && /has no usable API key/.test(res.detail),
+    `doctor agrees the untrimmed-key entry is unseedable (${res?.detail})`);
+  rmSync(home, { recursive: true, force: true });
+  const good = withRawId('zai ', KEY);
+  const ghome = tempHome(good);
+  const gr = provisionPersonalProviderConfig({ home: ghome, env: {} });
+  ok(gr.provisioned && modelResolutionCheck({ env: {}, home: ghome, config: good })?.ok === true,
+    'an untrimmed map key with a usable key still seeds (one normalised id everywhere)');
+  rmSync(ghome, { recursive: true, force: true });
+}
+
+// --- the public plan never throws, even when the injected IO does ---
+{
+  const boom = () => { throw new Error('probe: exists exploded'); };
+  let threw = false, plan = null, r = null, res = null;
+  try { plan = planPersonalProviderConfig({ home: tempHome(), env: {}, exists: boom }); }
+  catch { threw = true; }
+  ok(!threw && plan?.write === false && /plan failed: probe/.test(plan?.reason ?? ''),
+    `a throwing exists degrades to a conservative refusal (${plan?.reason})`);
+  const home = tempHome();
+  try { r = provisionPersonalProviderConfig({ home, env: {}, exists: boom }); } catch { threw = true; }
+  ok(!threw && r?.provisioned === false && /plan failed/.test(r?.reason ?? ''),
+    `provisioning never propagates the throw (${r?.reason})`);
+  try { res = modelResolutionCheck({ env: {}, home, config: CLI_FIXTURE, exists: boom }); } catch { threw = true; }
+  ok(!threw && res === null, 'doctor wrapper never throws on failing IO (null verdict)');
+  rmSync(home, { recursive: true, force: true });
+}
+
+// --- family-rule selections verify the model id against the builtin template ---
+// A family rule (builtin:zai -> zai-api) has no personalModelIds; whether it
+// resolves a model is the builtin template's builtinModelIds, so the verdict
+// checks the id there when the template list is available and refuses (no
+// write) when it is not — a create-if-missing seed must not guess.
+const BUILTIN_FIXTURE = {
+  schemaVersion: 1,
+  config: { providerConfigRules: { providerRules: [], templateRules: [
+    { templateId: 'zai-api', config: { builtinModelIds: ['glm-5.3', 'glm-5.3-flash'] } },
+  ] } },
+};
+{
+  const famCli = { provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main: 'zai-api/not-a-real-model' } };
+  const home = tempHome(famCli);
+  const env = {};
+  const r = provisionPersonalProviderConfig({ home, env, builtin: BUILTIN_FIXTURE });
+  ok(!r.provisioned && !existsSync(personalProviderConfigPath({ home, env })),
+    `family selection with an unknown model id refuses to seed (${r.reason})`);
+  const res = modelResolutionCheck({ env, home, config: famCli, builtin: BUILTIN_FIXTURE });
+  ok(res?.ok === false && /not in the builtin template's model list/.test(res.detail),
+    `doctor names the missing template model (${res?.detail})`);
+  rmSync(home, { recursive: true, force: true });
+
+  const okCli = { provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main: 'zai-api/glm-5.3' } };
+  const ohome = tempHome(okCli);
+  const or = provisionPersonalProviderConfig({ home: ohome, env: {}, builtin: BUILTIN_FIXTURE });
+  ok(or.provisioned && modelResolutionCheck({ env: {}, home: ohome, config: okCli, builtin: BUILTIN_FIXTURE })?.ok === true,
+    'a family model the template carries seeds and resolves');
+  rmSync(ohome, { recursive: true, force: true });
+
+  // Template list unavailable (no builtin config named in the env): the seed
+  // is refused conservatively and doctor says why.
+  const uhome = tempHome(okCli);
+  const ur = provisionPersonalProviderConfig({ home: uhome, env: {} });
+  const ures = modelResolutionCheck({ env: {}, home: uhome, config: okCli });
+  ok(!ur.provisioned && !existsSync(personalProviderConfigPath({ home: uhome, env: {} })),
+    `family selection without the builtin template list refuses to seed (${ur.reason})`);
+  ok(ures?.ok === false && /builtin template model list is unavailable/.test(ures.detail),
+    `doctor says the verdict could not be verified (${ures?.detail})`);
+  rmSync(uhome, { recursive: true, force: true });
+
+  // The env-named builtin config is read when no document is injected.
+  const bfile = path.join(tmpdir(), `zagent-pp-builtin-${process.pid}.json`);
+  writeFileSync(bfile, JSON.stringify(BUILTIN_FIXTURE));
+  const ehome = tempHome(okCli);
+  const er = provisionPersonalProviderConfig({ home: ehome, env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bfile } });
+  ok(er.provisioned, 'family selection seeds from the env-named builtin config');
+  rmSync(ehome, { recursive: true, force: true });
+  rmSync(bfile, { force: true });
+}
+
+// --- commit-msg and models test seed before opening their app-server client ---
+// The runtime stub dies on contact, so both commands must FAIL — but only
+// after the seeding line ran: the personal config exists afterwards. These
+// assertions fail if either seed call is removed from the command files.
+{
+  const bin = new URL('../../bin/zagent', import.meta.url).pathname;
+  const stubHome = () => {
+    const h = tempHome();
+    writeFileSync(path.join(h, 'runtime.cjs'), 'process.exit(3); // stub: never speaks JSON-RPC\n');
+    return h;
+  };
+  const stubEnv = h => ({ PATH: process.env.PATH, HOME: h, USERPROFILE: h,
+    ZAGENT_TEST_SANDBOX: h, ZCODE_RUNTIME: path.join(h, 'runtime.cjs') });
+
+  const ch = stubHome();
+  const repo = mkdtempSync(path.join(tmpdir(), 'zagent-pp-repo-'));
+  const git = (args, extra = {}) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', env: { ...process.env, ...extra } });
+  git(['init', '-q']);
+  git(['config', 'user.email', 't@t']);
+  git(['config', 'user.name', 't']);
+  writeFileSync(path.join(repo, 'hello.txt'), 'change');
+  git(['add', 'hello.txt']);
+  const cm = spawnSync(process.execPath, [bin, 'commit-msg'], {
+    encoding: 'utf8', timeout: 60000, env: stubEnv(ch), cwd: repo });
+  ok(cm.status !== 0, `commit-msg fails against the dead stub (status ${cm.status})`);
+  ok(existsSync(personalProviderConfigPath({ home: ch, env: {} })),
+    'commit-msg seeded the personal provider config before opening its client');
+  rmSync(ch, { recursive: true, force: true });
+  rmSync(repo, { recursive: true, force: true });
+
+  const mh = stubHome();
+  // models test consults the v2 config mirror (~/.zcode/v2/config.json) for
+  // configured carriers and exits before the client without one; give the
+  // fixture both stores so the command reaches its seeding line.
+  mkdirSync(path.join(mh, '.zcode', 'v2'), { recursive: true });
+  writeFileSync(path.join(mh, '.zcode', 'v2', 'config.json'),
+    JSON.stringify({ provider: { zai: { options: { apiKey: KEY },
+      models: { 'glm-5.3': {}, 'glm-5.3-flash': {} } } } }), { mode: 0o600 });
+  const mt = spawnSync(process.execPath, [bin, 'models', 'test', 'zai/glm-5.3'], {
+    encoding: 'utf8', timeout: 60000, env: stubEnv(mh), cwd: mh });
+  ok(mt.status !== 0, `models test fails against the dead stub (status ${mt.status})`);
+  ok(existsSync(personalProviderConfigPath({ home: mh, env: {} })),
+    'models test seeded the personal provider config before opening its client');
+  rmSync(mh, { recursive: true, force: true });
 }
 
 if (fails) { console.error(`${fails} FAILURE(S)`); process.exit(1); }

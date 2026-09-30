@@ -46,7 +46,7 @@ const runtime = path.join(home, 'runtime.cjs');
 writeFileSync(runtime, 'throw new Error("tests must not start the runtime");');
 mkdirSync(path.join(home, '.zcode/cli'), { recursive: true });
 writeFileSync(path.join(home, '.zcode/cli/config.json'),
-  JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture' } } } }));
+  JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture' }, models: { model: {} } } } }));
 
 const env = (extra = {}) => ({
   PATH: `${fakebin}${path.delimiter}${process.env.PATH}`,
@@ -150,6 +150,7 @@ try {
 
   // --- doctor prints the outdated hint off the same registry answer ---
   r = run(['doctor'], { FAKE_NPM_VIEW_VERSION: '9.9.9' });
+  assert.equal(r.status, 0, `healthy fixture doctor must exit 0: ${r.stdout}${r.stderr}`);
   assert.match(r.stdout, /warn:.*9\.9\.9.*zagent update|warn:.*outdated/s);
 
   // --- the hint survives a dead registry through the TTL cache ---

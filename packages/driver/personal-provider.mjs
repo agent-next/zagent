@@ -202,14 +202,52 @@ function selectedModel(cli) {
   return { providerId, modelId: main.slice(main.indexOf('/') + 1) };
 }
 
+// The cli provider entry for an id, matched the way the importer normalises:
+// raw map keys are trimmed on import ('zai ' -> rule id 'zai'), so gates must
+// look the entry up by its TRIMMED id too — an untrimmed lookup would miss
+// the entry and skip the key gate entirely.
+function cliProviderEntry(cli, id) {
+  const providers = cli?.provider;
+  if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined;
+  if (Object.hasOwn(providers, id)) return providers[id];
+  for (const [raw, value] of Object.entries(providers)) if (raw.trim() === id) return value;
+  return undefined;
+}
+
+// Builtin template index for family-rule verdicts: templateId -> model id
+// list (null when the template exists but carries no list). Returns null when
+// the builtin provider config is absent/unreadable — the verdict then refuses
+// conservatively instead of guessing.
+function builtinTemplateIndex(builtin) {
+  const rules = builtin?.config?.providerConfigRules?.templateRules;
+  if (!Array.isArray(rules)) return null;
+  const map = new Map();
+  for (const r of rules) {
+    if (typeof r?.templateId !== 'string') continue;
+    const ids = r.config?.builtinModelIds;
+    map.set(r.templateId, Array.isArray(ids) ? ids.filter(id => typeof id === 'string') : null);
+  }
+  return map;
+}
+
 // Judge a selection against personal provider rules: the provider must be
-// configured and carry the model in personalModelIds. A family rule
-// (templateId set) resolves through the builtin template's model list, which
-// the document does not carry — it counts as resolvable.
-function selectionVerdict(rules, { providerId, modelId }) {
+// configured and carry the model. A family rule (templateId set) has no model
+// list of its own — its models are the builtin template's builtinModelIds, so
+// the verdict checks the id there when the template list is available and
+// refuses (no write) when it is not.
+function selectionVerdict(rules, { providerId, modelId }, templates) {
   const rule = rules.find(p => p?.providerId === providerId);
   if (!rule) return { ok: false, detail: `provider '${providerId}' is not configured` };
-  if (rule.templateId) return { ok: true, detail: `${providerId}/${modelId}` };
+  if (rule.templateId) {
+    if (!templates) return { ok: false,
+      detail: `model ${providerId}/${modelId} cannot be verified — the builtin template model list is unavailable (set ZCODE_BUILTIN_PROVIDER_CONFIG_FILE)` };
+    const ids = templates.get(rule.templateId);
+    if (ids === undefined) return { ok: false,
+      detail: `model ${providerId}/${modelId} cannot be verified — builtin template '${rule.templateId}' is not in the builtin provider config` };
+    if (!Array.isArray(ids) || !ids.includes(modelId)) return { ok: false,
+      detail: `model ${providerId}/${modelId} is not in the builtin template's model list` };
+    return { ok: true, detail: `${providerId}/${modelId}` };
+  }
   const ids = Array.isArray(rule.config?.personalModelIds) ? rule.config.personalModelIds : [];
   if (!ids.includes(modelId))
     return { ok: false, detail: `model ${providerId}/${modelId} is not in the provider's model list` };
@@ -225,30 +263,49 @@ const FILE_SOURCE = 'personal provider config';
  * Doctor can therefore never report ok for a state the provisioning refuses
  * to seed. Refusals (write:false) always pair `reason` (the provisioning
  * wording) with the matching `resolves` verdict (the doctor wording) when a
- * selection is judgeable at all.
+ * selection is judgeable at all. Never throws — even a throwing `exists`/
+ * `read` degrades to a conservative refusal.
  * @returns {{write:boolean, doc:Object|null, reason:string|null,
  *            source:string, resolves:{ok:boolean, detail:string}|null}}
  */
-export function planPersonalProviderConfig({
+export function planPersonalProviderConfig(opts = {}) {
+  try { return buildPersonalProviderPlan(opts); }
+  catch (e) {
+    return { write: false, doc: null, reason: `personal provider plan failed: ${e?.message ?? e}`,
+      source: DERIVED_SOURCE, resolves: null };
+  }
+}
+
+function buildPersonalProviderPlan({
   env = process.env, home = os.homedir(),
-  read = p => readFileSync(p, 'utf8'), exists = existsSync, config = null,
+  read = p => readFileSync(p, 'utf8'), exists = existsSync, config = null, builtin = undefined,
 } = {}) {
-  const path = personalProviderConfigPath({ env, home });
+  const target = personalProviderConfigPath({ env, home });
   // U7 parity: the legacy source is always the real home's cli config — even
   // when ZCODE_DATA_BASE_DIR relocates the target (see legacyCliConfigPath).
   // Doctor hands in the config it already parsed; everyone else reads it.
   let cli = config;
-  let cliUnreadable = false;
   if (cli == null) {
     try { cli = JSON.parse(read(legacyCliConfigPath({ home }))); }
-    catch { cli = null; cliUnreadable = true; }
+    catch { cli = null; }
   }
   const sel = selectedModel(cli);
+  // Family-rule verdicts need the builtin template's model list; load it
+  // lazily (only when a family rule is actually judged) from an injected
+  // document or the env-named builtin config. Unreadable/absent -> null,
+  // which the verdict treats as "cannot verify" and refuses conservatively.
+  let templates;
+  const loadTemplates = () => templates ??= builtinTemplateIndex(
+    builtin !== undefined ? builtin : (() => {
+      const p = env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim() || env.ZCODE_BUILTIN_PROVIDER_BUNDLED_CONFIG_FILE?.trim();
+      if (!p) return undefined;
+      try { return JSON.parse(read(p)); } catch { return undefined; }
+    })());
 
-  if (exists(path)) {
+  if (exists(target)) {
     // An existing file is authoritative: never overwritten, judged as-is.
     let parsed;
-    try { parsed = JSON.parse(read(path)); }
+    try { parsed = JSON.parse(read(target)); }
     catch { return { write: false, doc: null, reason: 'personal provider config already present',
       source: FILE_SOURCE, resolves: sel ? { ok: false, detail: 'the personal provider config is unreadable' } : null }; }
     // The kernel's strict parser (yAe) rejects a structurally wrong file and
@@ -265,7 +322,7 @@ export function planPersonalProviderConfig({
       else if (r?.config?.personalModelIds !== undefined && !Array.isArray(r.config.personalModelIds))
         return malformed('the personal provider config is malformed (personalModelIds)');
     return { write: false, doc: null, reason: 'personal provider config already present',
-      source: FILE_SOURCE, resolves: sel ? selectionVerdict(providerRules, sel) : null };
+      source: FILE_SOURCE, resolves: sel ? selectionVerdict(providerRules, sel, sel && providerRules.some(r => r?.templateId) ? loadTemplates() : undefined) : null };
   }
 
   const refuse = (reason, resolves) => ({ write: false, doc: null, reason, source: DERIVED_SOURCE, resolves: sel ? resolves : null });
@@ -290,15 +347,20 @@ export function planPersonalProviderConfig({
   // create-if-missing, so an empty-key write could never be repaired
   // afterwards (neither the kernel's import — the file exists — nor the OAuth
   // backfill — it reads this very file). An OAuth-window config (apiKey:'')
-  // must abstain, not brick.
-  if (cli.provider?.[sel.providerId] !== undefined && !usableKey(cli.provider[sel.providerId]))
+  // must abstain, not brick. The lookup normalises the id the same way the
+  // importer does, so an entry keyed 'zai ' is still the selected provider.
+  const entry = cliProviderEntry(cli, sel.providerId);
+  if (entry !== undefined && !usableKey(entry))
     return refuse(`selected provider '${sel.providerId}' has no usable API key — refusing to seed an empty-key personal config`,
       { ok: false, detail: `provider '${sel.providerId}' has no usable API key` });
   // Gate 2 — the document we are about to leave behind forever must resolve
   // the selection: a create-if-missing seed whose rules lack the selected
   // model turns a wait-for-the-config-to-grow state into a permanent miss
-  // (nothing rewrites an existing personal file).
-  const verdict = selectionVerdict(imported.providers, sel);
+  // (nothing rewrites an existing personal file). Family rules verify the
+  // model id against the builtin template's list; without the list the seed
+  // is refused rather than guessed at.
+  const verdict = selectionVerdict(imported.providers, sel,
+    imported.providers.some(r => r?.templateId === sel.providerId) ? loadTemplates() : undefined);
   if (!verdict.ok)
     return refuse(`selected model ${sel.providerId}/${sel.modelId} would not resolve in the seeded config — refusing to create a permanent miss (${verdict.detail})`,
       verdict);
@@ -316,10 +378,10 @@ export function planPersonalProviderConfig({
 export function provisionPersonalProviderConfig({
   env = process.env, home = os.homedir(),
   read = p => readFileSync(p, 'utf8'), exists = existsSync,
-  write = atomicWriteFileSync, lock = withFileLockSync, lockOptions = {},
+  write = atomicWriteFileSync, lock = withFileLockSync, lockOptions = {}, builtin = undefined,
 } = {}) {
   const result = { provisioned: false, path: personalProviderConfigPath({ env, home }), reason: null };
-  const plan = planPersonalProviderConfig({ env, home, read, exists });
+  const plan = planPersonalProviderConfig({ env, home, read, exists, builtin });
   if (!plan.write) { result.reason = plan.reason; return result; }
   try {
     return lock(result.path, () => {
