@@ -48,6 +48,11 @@ No personal paths are baked in. Defaults and overrides:
 - `--claude-code-sha256 <hex>` (paired-release): optionally hash-lock a reviewed wrapper.
 - `TASKS`, `LANES`, `REPEATS`, `GAP`, `MATRIX_RUN_ID` tune `offpeak-matrix.sh`.
 
+## Recorded results
+
+Write-ups and raw cells of earlier runs: [`docs/benchmarks/`](../docs/benchmarks/README.md).
+`node bench/recorded-results.test.mjs` re-derives the recorded run's `summary.json` from its cells.
+
 ## Probes (live, credentialed, spend quota unless noted)
 
 - `quota-probe.mjs --live RECEIPT.json`: four small paid calls comparing account quota deltas.
@@ -69,4 +74,5 @@ node bench/paired-stats.test.mjs
 node bench/paired-release.test.mjs
 node bench/client-perf.test.mjs
 node bench/test-offpeak-probe.mjs
+node bench/recorded-results.test.mjs
 ```
