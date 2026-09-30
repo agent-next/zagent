@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { findRuntime, DEFAULT_RUNTIME } from './runtime.mjs';
+import { findRuntime, DEFAULT_RUNTIME, desktopRuntimeEntries } from './runtime.mjs';
 import { ZCodeProtocolClient } from './zcode-protocol.mjs';
 import { acceptRequest, currentAnswer, isolatedTurn, serializeWorkspaces, DAEMON_TURN_TIMEOUT_MS, DAEMON_RESPONSE_TIMEOUT_MS } from '../cli/daemon-request.mjs';
 import { installPlugin } from './plugins.mjs';
@@ -16,18 +16,22 @@ try {
   // The per-user app-cli root differs per OS: ~/.local/opt on POSIX,
   // %APPDATA%\npm on win32 — feed the matching env so the probe path is real.
   const roaming = path.join(home, 'app-roaming');
-  const appEnv = process.platform === 'win32' ? { APPDATA: roaming } : {};
+  const appLocal = path.join(home, 'app-local');
+  const appEnv = process.platform === 'win32' ? { APPDATA: roaming, LOCALAPPDATA: appLocal } : {};
   const userRoot = process.platform === 'win32'
     ? path.join(roaming, 'npm')
     : `${home}/.local/opt/zcode-app-cli`;
   const local = path.join(userRoot, 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js');
   const cwdEntry = path.join(home, 'workspace', 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js');
   const choose = available => findRuntime({ env: appEnv, home, cwd: path.join(home, 'workspace'), exists: p => available.includes(p) });
-  // the official desktop bundle is probed from the per-OS table — the win32
-  // table never contains the linux deb literal, so name the matching root
-  const desktopEntry = process.platform === 'win32'
-    ? 'C:\\Program Files\\ZCode\\resources\\glm\\zcode.cjs' : DEFAULT_RUNTIME;
-  assert.equal(choose([local, cwdEntry, desktopEntry]).entry, desktopEntry); // official desktop first
+  // The "official desktop" fixture is the bundle table's first entry for THIS
+  // platform — findRuntime probes the per-OS roots (/Applications/ZCode.app on
+  // macOS, %LOCALAPPDATA%\Programs on win32), so the linux deb literal
+  // (DEFAULT_RUNTIME) is never probed there and the preference order cannot
+  // be asserted with it.
+  const desktopEntries = desktopRuntimeEntries({ env: appEnv, home });
+  const desktopEntry = desktopEntries[0];
+  assert.equal(choose([local, cwdEntry, ...desktopEntries]).entry, desktopEntry); // official desktop first
   assert.equal(choose([local, cwdEntry]).entry, local); // app-cli install root before cwd
   assert.equal(choose([cwdEntry, desktopEntry]).entry, desktopEntry);
   assert.equal(choose([desktopEntry]).entry, desktopEntry);
