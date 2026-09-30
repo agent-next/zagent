@@ -57,15 +57,18 @@ try {
   assert.match(r2.stdout, /^mcp: 2 configured$/m);
   // a keyless config + a fallback key file: that key is only a bootstrap
   // source (ensureConfig never reads it once config.json exists) so doctor must
-  // NOT claim it — and a present-but-credential-less config keeps exit 0 with a
-  // warn line (the exit contract is unchanged: config presence means set up ran).
+  // NOT claim it — and since the -p path cannot seed a registry for a
+  // keyless selection either, the model line flags it and the diagnosis is
+  // unhealthy (exit 1), consistent with what provisioning would refuse.
   mkdirSync(path.join(home, '.config', 'ccz'), { recursive: true });
   writeFileSync(path.join(home, '.config', 'ccz', '.api_key'), 'fallback-key');
   writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: {}, models: { model: {} } } } }));
   const r3 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
-  assert.equal(r3.status, 0, r3.stderr);
+  assert.equal(r3.status, 1, r3.stderr);
   assert.match(r3.stdout, /^credential: NONE$/m, 'doctor reports no credential honestly');
   assert.match(r3.stdout, /^warn: no Coding Plan credential/m, 'a credential-less config is warned, not silent');
+  assert.match(r3.stdout, /^model: provider 'zai' has no usable API key — NOT RESOLVABLE$/m,
+    'the keyless selection is reported unresolvable, matching the provisioning refusal');
   // with no config file at all the fallback file IS the bootstrap source
   rmSync(config);
   const r4 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });

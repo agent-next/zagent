@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import {
   importLegacyCliConfig, personalProviderConfigDocument, personalProviderConfigPath, legacyCliConfigPath,
-  provisionPersonalProviderConfig, modelResolutionCheck, UnsupportedLegacyCliProviderConfigError,
+  provisionPersonalProviderConfig, planPersonalProviderConfig, modelResolutionCheck, UnsupportedLegacyCliProviderConfigError,
 } from '../driver/personal-provider.mjs';
 import { runPrintOnce } from './zagent-print.mjs';
 
@@ -244,7 +244,7 @@ const tempHome = (cli = CLI_FIXTURE) => {
     else c.provider.zai.options.apiKey = apiKey;
     return c;
   };
-  for (const bad of ['', '   ', undefined]) {
+  for (const bad of ['', '   ', undefined, 5, {}]) {
     const home = tempHome(withKey(bad));
     const r = provisionPersonalProviderConfig({ home, env: {} });
     ok(!r.provisioned && !existsSync(personalProviderConfigPath({ home, env: {} })),
@@ -263,6 +263,95 @@ const tempHome = (cli = CLI_FIXTURE) => {
   ok(r.provisioned && other?.config?.access?.apiKey === '',
     "NHa parity: a non-selected provider's empty key is stored verbatim; the gate scopes to the selection");
   rmSync(home, { recursive: true, force: true });
+}
+
+// --- doctor and provisioning share ONE predicate ---
+// modelResolutionCheck may never claim ok for a state the -p path refuses to
+// seed (the OAuth/ZAI_API_KEY empty-key states): both consume
+// planPersonalProviderConfig, so their answers move together.
+{
+  const withKey = apiKey => {
+    const c = JSON.parse(JSON.stringify(CLI_FIXTURE));
+    if (apiKey === undefined) delete c.provider.zai.options.apiKey;
+    else c.provider.zai.options.apiKey = apiKey;
+    return c;
+  };
+  for (const bad of ['', undefined]) {
+    const home = tempHome(withKey(bad));
+    const env = {};
+    const res = modelResolutionCheck({ env, home, config: withKey(bad) });
+    ok(res?.ok === false && /has no usable API key/.test(res.detail),
+      `empty-key state: doctor says NOT resolvable, not ok (${res?.detail})`);
+    const r = provisionPersonalProviderConfig({ home, env });
+    const plan = planPersonalProviderConfig({ env, home, config: withKey(bad) });
+    ok(!r.provisioned && plan.write === false && plan.resolves?.ok === false,
+      'provisioner and plan agree the empty-key state is unseedable');
+    rmSync(home, { recursive: true, force: true });
+  }
+  // The agreement invariant on a healthy state too: plan.write, the seeded
+  // file, and the doctor verdict all line up.
+  const home = tempHome();
+  const env = {};
+  const plan = planPersonalProviderConfig({ env, home, config: CLI_FIXTURE });
+  const r = provisionPersonalProviderConfig({ home, env });
+  ok(plan.write === true && plan.resolves?.ok === true && r.provisioned
+    && modelResolutionCheck({ env, home, config: CLI_FIXTURE })?.ok === true,
+    'healthy state: plan.write, provisioning, and the doctor verdict agree');
+  rmSync(home, { recursive: true, force: true });
+}
+{
+  // End-to-end: the OAuth-window config (apiKey:'') with a signed-in OAuth
+  // store and even ZAI_API_KEY in the env — the credential lines look fine,
+  // yet -p --model cannot seed the registry, so doctor must not exit 0.
+  const cliEmptyKey = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  cliEmptyKey.provider.zai.options.apiKey = '';
+  const home = tempHome(cliEmptyKey);
+  mkdirSync(path.join(home, '.zcode', 'v2'), { recursive: true });
+  writeFileSync(path.join(home, '.zcode', 'v2', 'credentials.json'),
+    JSON.stringify({ 'oauth:zai:access_token': 'fixture-token' }), { mode: 0o600 });
+  const runtime = path.join(home, 'runtime.cjs');
+  writeFileSync(runtime, 'throw new Error("doctor must not start runtime");');
+  const r = spawnSync(process.execPath, [new URL('./zagent.mjs', import.meta.url).pathname, 'doctor'], {
+    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home,
+      ZCODE_RUNTIME: runtime, ZAI_API_KEY: 'fixture-env-key' },
+    encoding: 'utf8', cwd: home, timeout: 30000,
+  });
+  ok(r.status === 1 && /^model: .+has no usable API key — NOT RESOLVABLE$/m.test(r.stdout),
+    `doctor flags the unseedable OAuth-window config instead of exiting 0 (status ${r.status})`);
+  ok(!existsSync(personalProviderConfigPath({ home, env: {} })), 'doctor seeded nothing (read-only)');
+  rmSync(home, { recursive: true, force: true });
+}
+
+// --- the seeded document must resolve the selection (no permanent miss) ---
+{
+  // Usable key but no models map: the derived rule would carry no
+  // personalModelIds, so the selection could never resolve — seeding that
+  // would be a permanent miss (nothing rewrites an existing personal file).
+  const noModels = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  delete noModels.provider.zai.models;
+  const home = tempHome(noModels);
+  const env = {};
+  const r = provisionPersonalProviderConfig({ home, env });
+  ok(!r.provisioned && !existsSync(personalProviderConfigPath({ home, env })),
+    `models-less selection refuses to seed (${r.reason})`);
+  const res = modelResolutionCheck({ env, home, config: noModels });
+  ok(res?.ok === false && /not in the provider's model list/.test(res.detail),
+    `doctor agrees the models-less selection will not resolve (${res?.detail})`);
+  // Recovery: once the config grows the model list, the same host seeds fine —
+  // the refusal kept the state repairable instead of bricking it.
+  writeFileSync(path.join(home, '.zcode', 'cli', 'config.json'), JSON.stringify(CLI_FIXTURE));
+  const r2 = provisionPersonalProviderConfig({ home, env });
+  ok(r2.provisioned && existsSync(personalProviderConfigPath({ home, env })),
+    'after the config grows its model list, seeding succeeds (state was not bricked)');
+  rmSync(home, { recursive: true, force: true });
+  // A selection naming a provider the config does not carry is the same class.
+  const dangling = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  dangling.model.main = 'ghost/glm-5.3';
+  const ghome = tempHome(dangling);
+  const gr = provisionPersonalProviderConfig({ home: ghome, env: {} });
+  ok(!gr.provisioned && !existsSync(personalProviderConfigPath({ home: ghome, env: {} })),
+    `dangling selection refuses to seed (${gr.reason})`);
+  rmSync(ghome, { recursive: true, force: true });
 }
 
 // --- source/target root rule is the kernel's measured asymmetry ---
@@ -292,20 +381,64 @@ const tempHome = (cli = CLI_FIXTURE) => {
   rmSync(data, { recursive: true, force: true });
 }
 
-// --- garbage model entries are skipped, not fatal ---
+// --- garbage entries degrade per provider, never abort the import ---
+// Wrong-typed fields (name:{}, apiKey:5) make THAT field unusable; the other
+// providers keep their migration. The kernel's zod layer (QAn -> RHa) is
+// strict — one bad field rejects the whole config — but it has a desktop to
+// repair the file; zagent's create-if-missing seed does not.
 {
   const cli = JSON.parse(JSON.stringify(CLI_FIXTURE));
-  cli.provider.zai.models['glm-5.3'] = null; // hand-edited config debris
+  cli.provider.zai.name = {};                       // wrong-typed name on the SELECTED provider
   const conv = importLegacyCliConfig(cli);
-  ok(JSON.stringify(conv?.providers[0]?.config?.personalModelIds) === JSON.stringify(['glm-5.3-flash']),
+  ok(conv && !('providerName' in conv.providers[0]) && conv.providers[0].providerId === 'zai',
+    'a non-string name degrades to no providerName (no throw)');
+  const home = tempHome(cli);
+  const r = provisionPersonalProviderConfig({ home, env: {} });
+  ok(r.provisioned, 'a wrong-typed name does not abort provisioning of the selection');
+  rmSync(home, { recursive: true, force: true });
+
+  const fam = { provider: { 'builtin:zai': { options: { apiKey: 5 } }, zai: CLI_FIXTURE.provider.zai },
+    model: { main: 'zai/glm-5.3' } };
+  const fconv = importLegacyCliConfig(fam);
+  ok(fconv && !fconv.providers.some(p => p.templateId === 'zai-api'),
+    'a wrong-typed family key skips that family rule (no throw)');
+  ok(fconv.providers.some(p => p.providerId === 'zai'), 'the healthy sibling provider still migrates');
+
+  const mixed = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  mixed.provider.junk = { kind: 'anthropic', name: { bad: 1 }, options: { apiKey: { bad: 1 }, baseURL: 7 }, models: { m: {} } };
+  const home2 = tempHome(mixed);
+  const r2 = provisionPersonalProviderConfig({ home: home2, env: {} });
+  const doc = r2.provisioned ? JSON.parse(readFileSync(personalProviderConfigPath({ home: home2, env: {} }), 'utf8')) : null;
+  const junk = doc?.config.providerConfigRules.providerRules.find(p => p.providerId === 'junk');
+  ok(r2.provisioned && junk && !('providerName' in junk) && !('apiKey' in junk.config.access) && !('baseUrl' in junk.config.api),
+    'one garbage provider degrades field-by-field; the import and the selection survive');
+  rmSync(home2, { recursive: true, force: true });
+}
+
+// --- null model entries are skipped, not fatal ---
+{
+  const cli = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  cli.provider.zai.models['glm-5.3-flash'] = null; // debris on a NON-selected model
+  const conv = importLegacyCliConfig(cli);
+  ok(JSON.stringify(conv?.providers[0]?.config?.personalModelIds) === JSON.stringify(['glm-5.3']),
     'null model entries are skipped like deleted ones (no throw)');
   const home = tempHome(cli);
   const r = provisionPersonalProviderConfig({ home, env: {} });
-  ok(r.provisioned, 'a null model entry does not abort provisioning');
-  const res = modelResolutionCheck({ env: {}, home, config: cli });
-  ok(res?.ok === false && /not in the provider's model list/.test(res.detail),
-    `resolution verdict stays honest for the dropped model (${res?.detail}) — not "not expressible"`);
+  ok(r.provisioned, 'a null model entry on an unselected model does not abort provisioning');
   rmSync(home, { recursive: true, force: true });
+
+  // The selected model itself nullled: the derivation would drop it, so the
+  // seed is refused (same permanent-miss class) and the verdict says so.
+  const dropped = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  dropped.provider.zai.models['glm-5.3'] = null;
+  const dhome = tempHome(dropped);
+  const dr = provisionPersonalProviderConfig({ home: dhome, env: {} });
+  const dres = modelResolutionCheck({ env: {}, home: dhome, config: dropped });
+  ok(!dr.provisioned && !existsSync(personalProviderConfigPath({ home: dhome, env: {} })),
+    `a nullned selected model refuses to seed (${dr.reason})`);
+  ok(dres?.ok === false && /not in the provider's model list/.test(dres.detail),
+    `resolution verdict stays honest for the dropped model (${dres?.detail}) — not "not expressible"`);
+  rmSync(dhome, { recursive: true, force: true });
 }
 
 // --- a malformed existing file is a verdict, never a crash ---

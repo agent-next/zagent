@@ -70,6 +70,16 @@ export class UnsupportedLegacyCliProviderConfigError extends Error {
 
 const positiveInt = v => typeof v === 'number' && Number.isInteger(v) && v > 0;
 
+// Wrong-typed fields degrade to absent instead of throwing: hand-edited
+// configs carry garbage ("name": {}, "apiKey": 5) and one bad provider must
+// not cost the others their migration. The kernel is strict here — its zod
+// layer (QAn -> RHa: name m.string(), options.apiKey m.string()) rejects the
+// whole config — but it also has a desktop to repair the file; zagent's
+// create-if-missing seed has no such repair path, so leniency is the safer
+// failure mode for the converter.
+const strField = v => (typeof v === 'string' ? v : undefined);
+const strRecord = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+
 // A credential the provider could actually authenticate with. The kernel's
 // family entries require one (NHa trims and skips when empty, ~14109800); a
 // custom provider's key is stored VERBATIM by NHa (xz ApiKeyAccessConfig,
@@ -118,8 +128,12 @@ export function importLegacyCliConfig(cli) {
     const family = LEGACY_BUILTIN_FAMILY[id];
     if (family) {
       // NHa: builtin:zai/builtin:bigmodel become api-key rules on the builtin
-      // family — and only when they carry a key.
-      const key = p?.options?.apiKey?.trim();
+      // family — and only when they carry a (string) key. A wrong-typed key
+      // degrades to "no key" for this entry alone; the kernel's zod layer
+      // (QAn -> RHa, options.apiKey m.string().optional()) instead rejects
+      // the WHOLE config on a type violation — zagent's converter has no
+      // schema layer, so one garbage provider must not cost the others.
+      const key = strField(p?.options?.apiKey)?.trim();
       if (key) providers.push({ providerId: family, templateId: family,
         config: { group: 'standard-personal', access: { apiKey: key } } });
       continue;
@@ -128,20 +142,23 @@ export function importLegacyCliConfig(cli) {
     if (p?.options?.apiKeyRequired === false) throw new UnsupportedLegacyCliProviderConfigError(id);
     const members = modelMembers(p);
     const ids = members.map(m => m.modelId);
-    const name = p?.name?.trim();
-    const headers = { ...p?.headers, ...p?.options?.headers };
+    const name = strField(p?.name)?.trim();
+    const headers = { ...strRecord(p?.headers), ...strRecord(p?.options?.headers) };
+    const apiKey = strField(p?.options?.apiKey);
+    const baseURL = strField(p?.options?.baseURL);
     // NHa stores a custom provider's apiKey verbatim ("" and whitespace
     // included — see usableKey); the safety net is the provisioner's
-    // selected-provider gate, not a divergence here.
+    // selected-provider gate, not a divergence here. Wrong-typed values
+    // degrade to absent (per-entry, kernel-zod-strict but converter-lenient).
     providers.push({
       providerId: id,
       ...(name && name !== id ? { providerName: name } : {}),
       config: {
         group: 'standard-personal',
-        access: { type: 'api-key', ...(p?.options?.apiKey !== undefined ? { apiKey: p.options.apiKey } : {}) },
+        access: { type: 'api-key', ...(apiKey !== undefined ? { apiKey } : {}) },
         api: {
           type: apiType(p?.kind),
-          ...(p?.options?.baseURL !== undefined ? { baseUrl: p.options.baseURL } : {}),
+          ...(baseURL !== undefined ? { baseUrl: baseURL } : {}),
           ...(Object.keys(headers).length ? { headers } : {}),
         },
         ...(ids.length ? { personalModelIds: ids, modelOrder: ids } : {}),
@@ -173,10 +190,127 @@ export function personalProviderConfigDocument({ providers, models, defaultModel
   };
 }
 
+// The selection a cli config asks for (model.main), or null when it names
+// none. Selections under builtin:/account: ids resolve through builtin
+// entitlements the personal config knows nothing about -> not judgeable.
+function selectedModel(cli) {
+  const main = typeof cli?.model?.main === 'string' && /^[^/]+\/.+$/.test(cli.model.main)
+    ? cli.model.main : null;
+  if (!main) return null;
+  const providerId = main.split('/')[0];
+  if (providerId.startsWith('builtin:') || providerId.startsWith('account:')) return null;
+  return { providerId, modelId: main.slice(main.indexOf('/') + 1) };
+}
+
+// Judge a selection against personal provider rules: the provider must be
+// configured and carry the model in personalModelIds. A family rule
+// (templateId set) resolves through the builtin template's model list, which
+// the document does not carry — it counts as resolvable.
+function selectionVerdict(rules, { providerId, modelId }) {
+  const rule = rules.find(p => p?.providerId === providerId);
+  if (!rule) return { ok: false, detail: `provider '${providerId}' is not configured` };
+  if (rule.templateId) return { ok: true, detail: `${providerId}/${modelId}` };
+  const ids = Array.isArray(rule.config?.personalModelIds) ? rule.config.personalModelIds : [];
+  if (!ids.includes(modelId))
+    return { ok: false, detail: `model ${providerId}/${modelId} is not in the provider's model list` };
+  return { ok: true, detail: `${providerId}/${modelId}` };
+}
+
+const DERIVED_SOURCE = 'cli config (provisioned on first -p run)';
+const FILE_SOURCE = 'personal provider config';
+
+/**
+ * THE predicate both provisioning and doctor use — one answer to "would the
+ * -p path make this host's selection resolvable, and what would it write".
+ * Doctor can therefore never report ok for a state the provisioning refuses
+ * to seed. Refusals (write:false) always pair `reason` (the provisioning
+ * wording) with the matching `resolves` verdict (the doctor wording) when a
+ * selection is judgeable at all.
+ * @returns {{write:boolean, doc:Object|null, reason:string|null,
+ *            source:string, resolves:{ok:boolean, detail:string}|null}}
+ */
+export function planPersonalProviderConfig({
+  env = process.env, home = os.homedir(),
+  read = p => readFileSync(p, 'utf8'), exists = existsSync, config = null,
+} = {}) {
+  const path = personalProviderConfigPath({ env, home });
+  // U7 parity: the legacy source is always the real home's cli config — even
+  // when ZCODE_DATA_BASE_DIR relocates the target (see legacyCliConfigPath).
+  // Doctor hands in the config it already parsed; everyone else reads it.
+  let cli = config;
+  let cliUnreadable = false;
+  if (cli == null) {
+    try { cli = JSON.parse(read(legacyCliConfigPath({ home }))); }
+    catch { cli = null; cliUnreadable = true; }
+  }
+  const sel = selectedModel(cli);
+
+  if (exists(path)) {
+    // An existing file is authoritative: never overwritten, judged as-is.
+    let parsed;
+    try { parsed = JSON.parse(read(path)); }
+    catch { return { write: false, doc: null, reason: 'personal provider config already present',
+      source: FILE_SOURCE, resolves: sel ? { ok: false, detail: 'the personal provider config is unreadable' } : null }; }
+    // The kernel's strict parser (yAe) rejects a structurally wrong file and
+    // the registry falls back to no personal providers — so a wrong shape is
+    // a NOT-RESOLVABLE verdict, never a crash in doctor.
+    const providerRules = parsed?.config?.providerConfigRules?.providerRules;
+    const malformed = detail => ({ write: false, doc: null,
+      reason: 'personal provider config already present', source: FILE_SOURCE,
+      resolves: sel ? { ok: false, detail } : null });
+    if (!Array.isArray(providerRules)) return malformed('the personal provider config is malformed (providerRules)');
+    for (const r of providerRules)
+      if (r?.config !== undefined && (typeof r.config !== 'object' || Array.isArray(r.config)))
+        return malformed('the personal provider config is malformed (provider rule)');
+      else if (r?.config?.personalModelIds !== undefined && !Array.isArray(r.config.personalModelIds))
+        return malformed('the personal provider config is malformed (personalModelIds)');
+    return { write: false, doc: null, reason: 'personal provider config already present',
+      source: FILE_SOURCE, resolves: sel ? selectionVerdict(providerRules, sel) : null };
+  }
+
+  const refuse = (reason, resolves) => ({ write: false, doc: null, reason, source: DERIVED_SOURCE, resolves: sel ? resolves : null });
+  if (cli == null)
+    return refuse('no readable cli config to migrate', { ok: false, detail: 'the cli config is unreadable' });
+  let imported = null;
+  try { imported = importLegacyCliConfig(cli); }
+  catch (e) {
+    const detail = e?.name === 'UnsupportedLegacyCliProviderConfigError'
+      ? `provider '${e.providerId}' is not expressible in the personal config`
+      : `the cli config is malformed (${e?.message ?? e})`;
+    return refuse(e?.name === 'UnsupportedLegacyCliProviderConfigError'
+      ? `cli provider '${e.providerId}' cannot be expressed in the personal config`
+      : `legacy import failed: ${e?.message ?? e}`, { ok: false, detail });
+  }
+  if (!imported)
+    return refuse('cli config has no importable providers',
+      sel ? { ok: false, detail: `provider '${sel.providerId}' is not configured` } : null);
+  if (!sel)
+    return { write: true, doc: personalProviderConfigDocument(imported), reason: null, source: DERIVED_SOURCE, resolves: null };
+  // Gate 1 — never seed a permanent unusable selection: the file is
+  // create-if-missing, so an empty-key write could never be repaired
+  // afterwards (neither the kernel's import — the file exists — nor the OAuth
+  // backfill — it reads this very file). An OAuth-window config (apiKey:'')
+  // must abstain, not brick.
+  if (cli.provider?.[sel.providerId] !== undefined && !usableKey(cli.provider[sel.providerId]))
+    return refuse(`selected provider '${sel.providerId}' has no usable API key — refusing to seed an empty-key personal config`,
+      { ok: false, detail: `provider '${sel.providerId}' has no usable API key` });
+  // Gate 2 — the document we are about to leave behind forever must resolve
+  // the selection: a create-if-missing seed whose rules lack the selected
+  // model turns a wait-for-the-config-to-grow state into a permanent miss
+  // (nothing rewrites an existing personal file).
+  const verdict = selectionVerdict(imported.providers, sel);
+  if (!verdict.ok)
+    return refuse(`selected model ${sel.providerId}/${sel.modelId} would not resolve in the seeded config — refusing to create a permanent miss (${verdict.detail})`,
+      verdict);
+  return { write: true, doc: personalProviderConfigDocument(imported), reason: null, source: DERIVED_SOURCE, resolves: verdict };
+}
+
 /**
  * Best-effort provisioning of the personal provider config from the legacy
  * CLI config. Never throws. An existing target file is authoritative (the
- * desktop or a prior kernel run owns it — provisioning must never overwrite).
+ * desktop or a prior kernel run owns it — provisioning must never overwrite);
+ * every other refusal comes from planPersonalProviderConfig, so what doctor
+ * reports and what the -p path seeds cannot diverge.
  * @returns {{provisioned:boolean, path:string, reason:string|null}}
  */
 export function provisionPersonalProviderConfig({
@@ -185,34 +319,13 @@ export function provisionPersonalProviderConfig({
   write = atomicWriteFileSync, lock = withFileLockSync, lockOptions = {},
 } = {}) {
   const result = { provisioned: false, path: personalProviderConfigPath({ env, home }), reason: null };
-  if (exists(result.path)) { result.reason = 'personal provider config already present'; return result; }
-  // U7 parity: the legacy source is always the real home's cli config — even
-  // when ZCODE_DATA_BASE_DIR relocates the target (see legacyCliConfigPath).
-  let cli;
-  try { cli = JSON.parse(read(legacyCliConfigPath({ home }))); }
-  catch { result.reason = 'no readable cli config to migrate'; return result; }
-  let imported;
-  try { imported = importLegacyCliConfig(cli); }
-  catch (e) {
-    result.reason = e?.name === 'UnsupportedLegacyCliProviderConfigError'
-      ? `cli provider '${e.providerId}' cannot be expressed in the personal config` : `legacy import failed: ${e?.message ?? e}`;
-    return result;
-  }
-  if (!imported) { result.reason = 'cli config has no importable providers'; return result; }
-  // Never seed a permanent unusable selection: the file is create-if-missing,
-  // so an empty-key write could never be repaired afterwards (neither the
-  // kernel's import — the file exists — nor the OAuth backfill — it reads this
-  // very file). An OAuth-window config (apiKey:'') must abstain, not brick.
-  const selected = imported.defaultModelSelection?.providerId;
-  if (selected !== undefined && cli.provider?.[selected] !== undefined && !usableKey(cli.provider[selected])) {
-    result.reason = `selected provider '${selected}' has no usable API key — refusing to seed an empty-key personal config`;
-    return result;
-  }
+  const plan = planPersonalProviderConfig({ env, home, read, exists });
+  if (!plan.write) { result.reason = plan.reason; return result; }
   try {
     return lock(result.path, () => {
       // Re-check under the lock: a concurrent kernel/GUI writer wins silently.
       if (exists(result.path)) { result.reason = 'personal provider config already present'; return result; }
-      write(result.path, JSON.stringify(personalProviderConfigDocument(imported), null, 2));
+      write(result.path, JSON.stringify(plan.doc, null, 2));
       result.provisioned = true;
       return result;
     }, lockOptions);
@@ -225,55 +338,14 @@ export function provisionPersonalProviderConfig({
 }
 
 /**
- * Read-only resolution check for doctor: can the app-server registry resolve
- * the cli config's model.main? The effective personal source is an existing
- * provider_config.json (file wins) or what provisioning would derive from the
- * cli config. Provider ids whose resolution depends on builtin entitlements
- * or the runtime's bundled catalog cannot be judged statically -> null.
+ * Read-only resolution check for doctor: can the -p path make the app-server
+ * registry resolve the cli config's model.main? Thin wrapper over
+ * planPersonalProviderConfig — the same predicate provisioning obeys — so the
+ * verdict can never claim ok for a state provisioning refuses to seed.
  * @returns {{ok:boolean, source:string, detail:string}|null}
  */
-export function modelResolutionCheck({ env = process.env, home = os.homedir(),
-  config = null, read = p => readFileSync(p, 'utf8'), exists = existsSync } = {}) {
-  const main = typeof config?.model?.main === 'string' && /^[^/]+\/.+$/.test(config.model.main)
-    ? config.model.main : null;
-  if (!main) return null;
-  const providerId = main.split('/')[0], modelId = main.slice(main.indexOf('/') + 1);
-  if (providerId.startsWith('builtin:') || providerId.startsWith('account:')) return null;
-  const file = personalProviderConfigPath({ env, home });
-  let rules = null, source;
-  if (exists(file)) {
-    source = 'personal provider config';
-    let parsed;
-    try { parsed = JSON.parse(read(file)); }
-    catch { return { ok: false, source, detail: 'the personal provider config is unreadable' }; }
-    // The kernel's strict parser (yAe) rejects a structurally wrong file and
-    // the registry falls back to no personal providers — so a wrong shape is
-    // a NOT-RESOLVABLE verdict, never a crash in doctor.
-    const providerRules = parsed?.config?.providerConfigRules?.providerRules;
-    if (!Array.isArray(providerRules))
-      return { ok: false, source, detail: 'the personal provider config is malformed (providerRules)' };
-    for (const r of providerRules)
-      if (r?.config !== undefined && (typeof r.config !== 'object' || Array.isArray(r.config)))
-        return { ok: false, source, detail: 'the personal provider config is malformed (provider rule)' };
-      else if (r?.config?.personalModelIds !== undefined && !Array.isArray(r.config.personalModelIds))
-        return { ok: false, source, detail: 'the personal provider config is malformed (personalModelIds)' };
-    rules = { providers: providerRules };
-  } else {
-    source = 'cli config (provisioned on first -p run)';
-    let imported = null;
-    try { imported = importLegacyCliConfig(config); }
-    catch (e) {
-      return { ok: false, source, detail: e?.name === 'UnsupportedLegacyCliProviderConfigError'
-        ? `provider '${e.providerId}' is not expressible in the personal config`
-        : `the cli config is malformed (${e?.message ?? e})` };
-    }
-    if (imported) rules = imported;
-  }
-  if (!rules) return { ok: false, source, detail: `provider '${providerId}' is not configured` };
-  const rule = rules.providers.find(p => p?.providerId === providerId);
-  if (!rule) return { ok: false, source, detail: `provider '${providerId}' is not configured` };
-  const ids = Array.isArray(rule.config?.personalModelIds) ? rule.config.personalModelIds : [];
-  if (!ids.includes(modelId))
-    return { ok: false, source, detail: `model ${providerId}/${modelId} is not in the provider's model list` };
-  return { ok: true, source, detail: `${providerId}/${modelId}` };
+export function modelResolutionCheck(opts = {}) {
+  if (opts.config == null) return null; // doctor judges a parsed config; none -> nothing to check
+  const plan = planPersonalProviderConfig(opts);
+  return plan.resolves ? { ok: plan.resolves.ok, source: plan.source, detail: plan.resolves.detail } : null;
 }
