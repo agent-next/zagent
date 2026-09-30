@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -87,9 +87,14 @@ try {
     path.resolve(`${home}-sibling`, 'f').split(path.sep).join('/'),
     'a prefix-sibling path is not under home');
   // there is no '/' root-home on win32 ('/' resolves to the cwd drive root),
-  // so the root-home edge is only meaningful on POSIX
-  if (process.platform !== 'win32')
-    assert.equal(displayPath('/etc/hosts', '/'), '/etc/hosts', 'home=/ keeps absolute paths');
+  // so the root-home edge is only meaningful on POSIX. displayPath retries on
+  // real paths when the lexical probe misses — on macOS /etc is a symlink to
+  // /private/etc — so derive the expectation from the real path it yields.
+  if (process.platform !== 'win32') {
+    let absolute = '/etc/hosts';
+    try { absolute = realpathSync('/etc/hosts'); } catch { /* lexical stands */ }
+    assert.equal(displayPath('/etc/hosts', '/'), absolute, 'home=/ keeps absolute paths');
+  }
   assert.equal(displayPath(path.join(home, 'f'), `${home}/`), '~/f', 'trailing-slash home still matches');
   assert.equal(displayPath(undefined, home), '', 'non-string input never throws');
   // displayText edges: embedded home paths relativize at a boundary, a
