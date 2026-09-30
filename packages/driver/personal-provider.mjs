@@ -134,7 +134,7 @@ export function importLegacyCliConfig(cli) {
       // carries `type: 'api-key'` like every xz serialization (toJSON always
       // emits it); without it the kernel's strict parser rejects the file.
       // A wrong-typed key degrades to "no key" for this entry alone; the
-      // kernel's zod layer (QAn -> RHA, options.apiKey m.string().optional())
+      // kernel's zod layer (QAn -> RHa, options.apiKey m.string().optional())
       // instead rejects the WHOLE config on a type violation — zagent's
       // converter has no schema layer, so one garbage provider must not cost
       // the others.
@@ -238,25 +238,23 @@ function builtinTemplateIndex(builtin) {
 // Resolve the builtin provider config the way the runtime spawn sees it —
 // reuse zagent's own resolvers, do not invent a path:
 //   1. an injected document (tests)
-//   2. ZCODE_BUILTIN_PROVIDER_CONFIG_FILE preset in the env (kernelEnv's
-//      passthrough — what a spawned kernel reads when zagent sets it)
-//   3. the bundled copy beside the discovered runtime (builtinConfigPath —
-//      exactly what kernelEnv() injects for our own spawns, runtime.mjs)
-//   4. the kernel's managed active cache (kernelActiveBuiltinPath —
-//      <dataBaseDir>/.zcode/v2/runtime/provider/<platform>/…, what a bare
-//      kernel spawn provisions from the bundled copy on first read)
+//   2. the kernel's effective builtin file (kernelActiveBuiltinPath): a normal
+//      spawn rewrites the builtin path to the managed active cache under
+//      <dataBaseDir>/.zcode/v2/runtime/provider/<platform>/…, and the
+//      registry rebuilds from THAT file — same order as
+//      buildAccountConfigParams ([effective, preset||bundled])
+//   3. ZCODE_BUILTIN_PROVIDER_CONFIG_FILE preset in the env (what kernelEnv
+//      passes through), else the bundled copy beside the discovered runtime
+//      (builtinConfigPath — what kernelEnv() injects, runtime.mjs)
 // Returns the parsed document, or undefined when none is readable.
 function resolveBuiltinConfig({ env, home, read, builtin, runtimeEntry }) {
   if (builtin !== undefined) return builtin;
-  const candidates = [];
-  const preset = env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim();
-  if (preset) candidates.push(preset);
   const entry = runtimeEntry ?? findRuntime({ env })?.entry;
   const bundled = entry ? builtinConfigPath(entry) : null;
-  if (bundled) candidates.push(bundled);
-  const active = kernelActiveBuiltinPath({ env, home, bundledPath: bundled });
-  if (active) candidates.push(active);
+  const candidates = [kernelActiveBuiltinPath({ env, home, bundledPath: bundled }),
+    env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim(), bundled];
   for (const p of candidates) {
+    if (!p) continue;
     try { return JSON.parse(read(p)); } catch { /* try the next candidate */ }
   }
   return undefined;
@@ -357,6 +355,8 @@ function buildPersonalProviderPlan({
     for (const r of providerRules)
       if (r?.config !== undefined && (typeof r.config !== 'object' || Array.isArray(r.config)))
         return malformed('the personal provider config is malformed (provider rule)');
+      else if (r?.config?.access !== undefined && typeof r.config.access?.type !== 'string')
+        return malformed('the personal provider config is malformed (access.type)');
       else if (r?.config?.personalModelIds !== undefined && !Array.isArray(r.config.personalModelIds))
         return malformed('the personal provider config is malformed (personalModelIds)');
     return planVerdict(sel, providerRules, loadTemplates,
@@ -431,10 +431,10 @@ function planVerdict(sel, rules, loadTemplates, base, verdict = undefined) {
 export function provisionPersonalProviderConfig({
   env = process.env, home = os.homedir(),
   read = p => readFileSync(p, 'utf8'), exists = existsSync,
-  write = atomicWriteFileSync, lock = withFileLockSync, lockOptions = {}, builtin = undefined,
+  write = atomicWriteFileSync, lock = withFileLockSync, lockOptions = {}, builtin = undefined, runtimeEntry = undefined,
 } = {}) {
   const result = { provisioned: false, path: personalProviderConfigPath({ env, home }), reason: null };
-  const plan = planPersonalProviderConfig({ env, home, read, exists, builtin });
+  const plan = planPersonalProviderConfig({ env, home, read, exists, builtin, runtimeEntry });
   if (!plan.write) { result.reason = plan.reason; return result; }
   try {
     return lock(result.path, () => {

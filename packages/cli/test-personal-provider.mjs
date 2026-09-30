@@ -669,6 +669,78 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
   rmSync(mhome, { recursive: true, force: true });
 }
 
+// --- the kernel's effective builtin file wins over the bundled copy ---
+// A normal spawn (no personal-config env pair) reads the managed active cache
+// (buildAccountConfigParams orders [effective, preset||bundled]); the verdict
+// must read the same file first, and fall back to the bundled/preset one.
+{
+  const famCli = main => ({ provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main } });
+  const { kernelActiveBuiltinPath } = await import('../driver/account-config.mjs');
+  const tmpl = ids => ({ schemaVersion: 1, config: { providerConfigRules: { providerRules: [], templateRules: [
+    { templateId: 'zai-api', config: { builtinModelIds: ids } }] } } });
+  const rt = mkdtempSync(path.join(tmpdir(), 'zagent-pp-rt2-'));
+  mkdirSync(path.join(rt, 'resources', 'glm'), { recursive: true });
+  mkdirSync(path.join(rt, 'resources', 'config', 'provider'), { recursive: true });
+  const entry = path.join(rt, 'resources', 'glm', 'zcode.cjs');
+  writeFileSync(entry, '// stub entry\n');
+  const bundled = path.join(rt, 'resources', 'config', 'provider', 'zcode-builtin.json');
+  writeFileSync(bundled, JSON.stringify(tmpl(['BUNDLED-ONLY'])));
+  const home = tempHome(famCli('zai-api/ACTIVE-ONLY'));
+  const active = kernelActiveBuiltinPath({ env: {}, home, bundledPath: bundled });
+  mkdirSync(path.dirname(active), { recursive: true });
+  writeFileSync(active, JSON.stringify(tmpl(['ACTIVE-ONLY'])));
+  const both = modelResolutionCheck({ env: {}, home, config: famCli('zai-api/ACTIVE-ONLY'), runtimeEntry: entry });
+  ok(both?.ok === true && !both.unverified, `active cache wins over the bundled copy (${both?.detail})`);
+  const stale = modelResolutionCheck({ env: {}, home, config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(stale?.ok === false, `a bundled-only id is not resolvable when the active cache lacks it (${stale?.detail})`);
+  rmSync(active);
+  const fb = modelResolutionCheck({ env: {}, home, config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(fb?.ok === true && !fb.unverified, `bundled copy is the fallback when no active cache exists (${fb?.detail})`);
+  // Same ordering with a preset: the preset only stands in for the bundled copy.
+  const pfile = path.join(tmpdir(), `zagent-pp-preset-${process.pid}.json`);
+  writeFileSync(pfile, JSON.stringify(tmpl(['PRESET-ONLY'])));
+  const pres = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: pfile }, home,
+    config: famCli('zai-api/PRESET-ONLY'), runtimeEntry: entry });
+  ok(pres?.ok === true && !pres.unverified, `preset builtin file is read when no active cache exists (${pres?.detail})`);
+  rmSync(pfile, { force: true });
+
+  // provisionPersonalProviderConfig honours runtimeEntry like the plan does.
+  const reads = [];
+  const phome = tempHome(famCli('zai-api/BUNDLED-ONLY'));
+  const pr = provisionPersonalProviderConfig({ home: phome, env: {}, runtimeEntry: entry,
+    read: p => { reads.push(p); return readFileSync(p, 'utf8'); } });
+  ok(pr.provisioned && reads.includes(bundled), 'provisioning resolves the template list via the given runtimeEntry');
+  rmSync(phome, { recursive: true, force: true });
+  rmSync(home, { recursive: true, force: true });
+  rmSync(rt, { recursive: true, force: true });
+}
+
+// --- an already-seeded family rule without access.type is not resolvable ---
+// The kernel's strict parser rejects a rule whose access block lacks `type`
+// (and falls back to no personal providers); doctor must not call that ok.
+{
+  const mk = access => ({ schemaVersion: 1, config: {
+    providerConfigRules: { providerRules: [{ providerId: 'zai-api', templateId: 'zai-api',
+      config: { group: 'standard-personal', access } }] },
+    modelConfigRules: { providerModelRules: [], manualProviderModelRules: [] },
+    defaultModelSelection: { providerId: 'zai-api', modelId: 'GLM-5.3' } } });
+  const cfg = { provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main: 'zai-api/GLM-5.3' } };
+  const check = doc => {
+    const h = tempHome(cfg);
+    mkdirSync(path.dirname(personalProviderConfigPath({ home: h, env: {} })), { recursive: true });
+    writeFileSync(personalProviderConfigPath({ home: h, env: {} }), JSON.stringify(doc));
+    const res = modelResolutionCheck({ env: {}, home: h, config: cfg, builtin: BUILTIN_FIXTURE });
+    rmSync(h, { recursive: true, force: true });
+    return res;
+  };
+  const typeless = check(mk({ apiKey: KEY }));
+  ok(typeless?.ok === false && /access/.test(typeless.detail), `typeless access block is flagged (${typeless?.detail})`);
+  const nonObject = check(mk('sk'));
+  ok(nonObject?.ok === false && /access/.test(nonObject.detail), `non-object access block is flagged (${nonObject?.detail})`);
+  const typed = check(mk({ type: 'api-key', apiKey: KEY }));
+  ok(typed?.ok === true, `typed access block stays ok (${typed?.detail})`);
+}
+
 // --- custom lists are kernel-exact too: casing must match the config's own ---
 // Same registry semantics as family lists: a selection whose id differs in
 // case from the configured models map is rejected by the kernel's explicit
