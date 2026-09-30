@@ -7,7 +7,7 @@
 // a recycled pid. The socket accepts agent prompts unauthenticated, so the
 // directory holding it must be private — the filename being unguessable is not
 // what protects it.
-import { mkdirSync, statSync, chmodSync, readFileSync } from 'node:fs';
+import { mkdirSync, openSync, fstatSync, fchmodSync, closeSync, constants, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,11 +50,17 @@ export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home
     if (!fits(dir)) continue; // would truncate the bind — never use this dir
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (typeof process.getuid !== 'function') return dir; // no uid concept to verify
-    const st = statSync(dir);
-    if (st.isDirectory() && st.uid === process.getuid()) chmodSync(dir, 0o700); // tighten a dir we own
-    const final = statSync(dir);
-    if (!final.isDirectory() || final.uid !== process.getuid() || (final.mode & 0o077) !== 0)
-      throw new Error(`unsafe daemon runtime dir ${dir}: must be a directory owned by uid ${process.getuid()} with mode 0700`);
+    // Open the leaf itself, never through a symlink: stat/chmod by path would
+    // follow a planted link and tighten (and bind inside) someone else's dir.
+    const unsafe = () => new Error(`unsafe daemon runtime dir ${dir}: must be a directory (not a symlink) owned by uid ${process.getuid()} with mode 0700`);
+    let fd;
+    try { fd = openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW); }
+    catch { throw unsafe(); }
+    try {
+      if (fstatSync(fd).uid === process.getuid()) fchmodSync(fd, 0o700); // tighten a dir we own
+      const final = fstatSync(fd);
+      if (final.uid !== process.getuid() || (final.mode & 0o077) !== 0) throw unsafe();
+    } finally { closeSync(fd); }
     return dir;
   }
   throw new Error(`no private runtime dir keeps zagentd.sock within the AF_UNIX sun_path room (${SOCKET_PATH_ROOM} bytes); tried: ${tried.join(', ')}`);
@@ -75,6 +81,6 @@ export function pidIsZagentd(pid) {
   try {
     return daemonArgv(readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0'));
   } catch { /* pid gone, or no /proc (macOS/BSD) — fall back to ps */ }
-  const r = spawnSync('ps', ['-o', 'args=', '-p', String(pid)], { encoding: 'utf8' });
+  const r = spawnSync('ps', ['-ww', '-o', 'args=', '-p', String(pid)], { encoding: 'utf8' });
   return r.status === 0 && daemonArgv(r.stdout.trim().split(/\s+/));
 }
