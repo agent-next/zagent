@@ -213,8 +213,8 @@ const tempHome = (cli = CLI_FIXTURE) => {
   writeFileSync(target, JSON.stringify({
     schemaVersion: 1,
     config: { providerConfigRules: { providerRules: [
-      { providerId: 'other', config: { personalModelIds: ['x'] } },
-      { providerId: 'zai', config: { personalModelIds: ['glm-5.3-flash'] } },
+      { providerId: 'other', config: { access: { type: 'api-key', apiKey: KEY }, personalModelIds: ['x'] } },
+      { providerId: 'zai', config: { access: { type: 'api-key', apiKey: KEY }, personalModelIds: ['glm-5.3-flash'] } },
     ] } },
   }), { mode: 0o600 });
   const miss = modelResolutionCheck({ env, home, config: CLI_FIXTURE });
@@ -461,7 +461,7 @@ const tempHome = (cli = CLI_FIXTURE) => {
     `non-array providerRules -> malformed verdict, not a crash (${res?.detail})`);
   threw = false;
   write({ schemaVersion: 1, config: { providerConfigRules: { providerRules: [
-    { providerId: 'zai', config: { personalModelIds: { 'glm-5.3': 1 } } } ] } } });
+    { providerId: 'zai', config: { access: { type: 'api-key', apiKey: KEY }, personalModelIds: { 'glm-5.3': 1 } } } ] } } });
   try { res = modelResolutionCheck({ env, home, config: CLI_FIXTURE }); } catch { threw = true; }
   ok(!threw && res?.ok === false && /malformed \(personalModelIds\)/.test(res.detail),
     `non-array personalModelIds -> malformed verdict, not a crash (${res?.detail})`);
@@ -733,12 +733,33 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
     rmSync(h, { recursive: true, force: true });
     return res;
   };
-  const typeless = check(mk({ apiKey: KEY }));
-  ok(typeless?.ok === false && /access/.test(typeless.detail), `typeless access block is flagged (${typeless?.detail})`);
-  const nonObject = check(mk('sk'));
-  ok(nonObject?.ok === false && /access/.test(nonObject.detail), `non-object access block is flagged (${nonObject?.detail})`);
+  for (const [label, doc] of [['non-object access', mk('sk')], ['missing access', mk(undefined)],
+    ['empty access.type', mk({ type: '', apiKey: KEY })], ['typeless access without a key', mk({})],
+    ['null rule config', (() => { const d = mk({}); d.config.providerConfigRules.providerRules[0].config = null; return d; })()]]) {
+    const r = check(doc);
+    ok(r?.ok === false && /malformed/.test(r.detail), `${label} is flagged (${r?.detail})`);
+  }
   const typed = check(mk({ type: 'api-key', apiKey: KEY }));
   ok(typed?.ok === true, `typed access block stays ok (${typed?.detail})`);
+
+  // A typeless block WITH a key is what the first seeder wrote: the -p path
+  // repairs it in place (adding only the type tag), doctor judges the repaired
+  // state, and a typed file is never rewritten.
+  const rhome = tempHome(cfg);
+  const rpath = personalProviderConfigPath({ home: rhome, env: {} });
+  mkdirSync(path.dirname(rpath), { recursive: true });
+  writeFileSync(rpath, JSON.stringify(mk({ apiKey: KEY }), null, 2));
+  const rcheck = modelResolutionCheck({ env: {}, home: rhome, config: cfg, builtin: BUILTIN_FIXTURE });
+  ok(rcheck?.ok === true, `typeless block with a key is judged as the repair would leave it (${rcheck?.detail})`);
+  ok(JSON.parse(readFileSync(rpath, 'utf8')).config.providerConfigRules.providerRules[0].config.access.type === undefined,
+    'doctor (read-only) leaves the typeless file untouched');
+  const rr = provisionPersonalProviderConfig({ env: {}, home: rhome, builtin: BUILTIN_FIXTURE });
+  ok(rr.repaired === true && !rr.provisioned, 'provisioning repairs the typeless file in place');
+  ok(readFileSync(rpath, 'utf8') === JSON.stringify(mk({ type: 'api-key', apiKey: KEY }), null, 2),
+    'the repaired file is exactly the typed document (only type added)');
+  const again = provisionPersonalProviderConfig({ env: {}, home: rhome, builtin: BUILTIN_FIXTURE });
+  ok(!again.repaired && !again.provisioned, 'a typed file is not rewritten');
+  rmSync(rhome, { recursive: true, force: true });
 }
 
 // --- custom lists are kernel-exact too: casing must match the config's own ---

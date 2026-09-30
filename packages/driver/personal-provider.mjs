@@ -305,7 +305,8 @@ const FILE_SOURCE = 'personal provider config';
  * selection is judgeable at all. Never throws — even a throwing `exists`/
  * `read` degrades to a conservative refusal.
  * @returns {{write:boolean, doc:Object|null, reason:string|null,
- *            source:string, resolves:{ok:boolean, detail:string}|null}}
+ *            source:string, resolves:{ok:boolean, detail:string}|null,
+ *            unverified:string|null, repair?:Object}}
  */
 export function planPersonalProviderConfig(opts = {}) {
   try { return buildPersonalProviderPlan(opts); }
@@ -352,15 +353,30 @@ function buildPersonalProviderPlan({
       reason: 'personal provider config already present', source: FILE_SOURCE,
       resolves: sel ? { ok: false, detail } : null, unverified: null });
     if (!Array.isArray(providerRules)) return malformed('the personal provider config is malformed (providerRules)');
-    for (const r of providerRules)
-      if (r?.config !== undefined && (typeof r.config !== 'object' || Array.isArray(r.config)))
+    // A typeless access block is what the first seeder wrote; the kernel's
+    // strict parser rejects it. When it carries a string key the only missing
+    // piece is the tag every xz serialization emits, so the plan carries a
+    // repaired document and the -p path rewrites the file once.
+    let repaired = false;
+    const rules = providerRules.map(r => {
+      const a = r?.config?.access;
+      if (!a || typeof a !== 'object' || Array.isArray(a) || a.type !== undefined || typeof a.apiKey !== 'string') return r;
+      repaired = true;
+      return { ...r, config: { ...r.config, access: { type: 'api-key', ...a } } };
+    });
+    for (const r of rules) {
+      const c = r?.config;
+      if (!c || typeof c !== 'object' || Array.isArray(c))
         return malformed('the personal provider config is malformed (provider rule)');
-      else if (r?.config?.access !== undefined && typeof r.config.access?.type !== 'string')
+      if (!c.access || typeof c.access !== 'object' || typeof c.access.type !== 'string' || !c.access.type)
         return malformed('the personal provider config is malformed (access.type)');
-      else if (r?.config?.personalModelIds !== undefined && !Array.isArray(r.config.personalModelIds))
+      if (c.personalModelIds !== undefined && !Array.isArray(c.personalModelIds))
         return malformed('the personal provider config is malformed (personalModelIds)');
-    return planVerdict(sel, providerRules, loadTemplates,
-      { write: false, doc: null, reason: 'personal provider config already present', source: FILE_SOURCE });
+    }
+    const base = { write: false, doc: null, reason: 'personal provider config already present', source: FILE_SOURCE };
+    if (repaired) base.repair = { ...parsed, config: { ...parsed.config,
+      providerConfigRules: { ...parsed.config.providerConfigRules, providerRules: rules } } };
+    return planVerdict(sel, rules, loadTemplates, base);
   }
 
   const refuse = (reason, resolves) => ({ write: false, doc: null, reason, source: DERIVED_SOURCE, resolves: sel ? resolves : null, unverified: null });
@@ -426,7 +442,7 @@ function planVerdict(sel, rules, loadTemplates, base, verdict = undefined) {
  * desktop or a prior kernel run owns it — provisioning must never overwrite);
  * every other refusal comes from planPersonalProviderConfig, so what doctor
  * reports and what the -p path seeds cannot diverge.
- * @returns {{provisioned:boolean, path:string, reason:string|null}}
+ * @returns {{provisioned:boolean, path:string, reason:string|null, repaired?:boolean}}
  */
 export function provisionPersonalProviderConfig({
   env = process.env, home = os.homedir(),
@@ -435,11 +451,21 @@ export function provisionPersonalProviderConfig({
 } = {}) {
   const result = { provisioned: false, path: personalProviderConfigPath({ env, home }), reason: null };
   const plan = planPersonalProviderConfig({ env, home, read, exists, builtin, runtimeEntry });
-  if (!plan.write) { result.reason = plan.reason; return result; }
+  if (!plan.write && !plan.repair) { result.reason = plan.reason; return result; }
   try {
     return lock(result.path, () => {
       // Re-check under the lock: a concurrent kernel/GUI writer wins silently.
-      if (exists(result.path)) { result.reason = 'personal provider config already present'; return result; }
+      if (exists(result.path)) {
+        result.reason = 'personal provider config already present';
+        // Under the lock the plan is re-read, so a concurrent writer's file is judged, never clobbered.
+        const fresh = planPersonalProviderConfig({ env, home, read, exists, builtin, runtimeEntry });
+        if (fresh.repair) {
+          write(result.path, JSON.stringify(fresh.repair, null, 2));
+          result.repaired = true;
+        }
+        return result;
+      }
+      if (!plan.write) { result.reason = 'personal provider config vanished before repair'; return result; }
       write(result.path, JSON.stringify(plan.doc, null, 2));
       result.provisioned = true;
       return result;
