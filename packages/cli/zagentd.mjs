@@ -8,7 +8,7 @@
 //        node packages/cli/zagentd.mjs stop
 import { createServer, connect } from 'node:net';
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync, readFileSync, openSync, closeSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync, openSync, closeSync, fstatSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acceptRequest, isolatedTurn, serializeWorkspaces, DAEMON_RESPONSE_TIMEOUT_MS } from './daemon-request.mjs';
@@ -114,12 +114,13 @@ if (cmd === 'start') {
   // The serve child's output lands in the private runtime dir, not /dev/null:
   // a daemon that dies at boot must be diagnosable from `start` itself.
   const LOG = path.join(RUN_DIR, 'zagentd.log');
-  let logFd;
+  let logFd, logStart = 0;
   let child;
   try {
     if (liveDaemonPid()) { release(); alreadyRunning(); }
     rmSync(PID_FILE, { force: true }); // stale or foreign record — never trust it
     logFd = openSync(LOG, 'a');
+    logStart = fstatSync(logFd).size; // only lines this spawn writes count as its proof of life
     // Daemon mode: fork ourselves detached
     child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve'],
       { detached: true, stdio: ['ignore', logFd, logFd], env: process.env });
@@ -156,7 +157,7 @@ if (cmd === 'start') {
   // exists before the child has removed it, and a connect can reach a DIFFERENT
   // live daemon that owns the path. Success needs both the serve child's own
   // "listening (pid <child>)" line in the log and a connect, with the child alive.
-  const childListening = () => { try { return readFileSync(LOG, 'utf8').includes(`listening on ${SOCK} (pid ${child.pid})`); } catch { return false; } };
+  const childListening = () => { try { return readFileSync(LOG).subarray(logStart).toString('utf8').includes(`listening on ${SOCK} (pid ${child.pid})`); } catch { return false; } };
   const accepting = () => new Promise(res => {
     const probe = connect(SOCK);
     probe.setTimeout(1000, () => { probe.destroy(); res(false); }); // a wedged listener must not outlast the deadline

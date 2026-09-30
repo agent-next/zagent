@@ -48,7 +48,9 @@ export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home
   for (const dir of candidates) {
     tried.push(dir);
     if (!fits(dir)) continue; // would truncate the bind — never use this dir
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // A base we cannot even create (unwritable XDG, a file in the way) falls
+    // through to the next candidate; one that exists but is unsafe still throws.
+    try { mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch (e) { if (e?.code !== 'EEXIST') continue; }
     if (typeof process.getuid !== 'function') return dir; // no uid concept to verify
     // Open the leaf itself, never through a symlink: stat/chmod by path would
     // follow a planted link and tighten (and bind inside) someone else's dir.

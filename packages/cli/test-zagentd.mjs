@@ -71,6 +71,10 @@ try {
   mkdirSync(blockedBase);
   writeFileSync(path.join(blockedBase, `zagent-${process.getuid()}`), 'squatter');
   assert.throws(() => daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: blockedBase } }), 'a file squatting the dir path refuses');
+  // A base that cannot be created (here: a file in the way) falls through to the next candidate.
+  const fileBase = path.join(XDG, 'not-a-dir');
+  writeFileSync(fileBase, 'x');
+  assert.equal(daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: path.join(fileBase, 'sub') }, tmpdir: SHORT }), path.join(SHORT, `zagent-${process.getuid()}`), 'an uncreatable base falls through to tmpdir');
   // A planted symlink at the runtime path must be refused, and its target left
   // alone: following it would chmod and bind inside a directory we merely own.
   const linkBase = path.join(XDG, 'linked');
