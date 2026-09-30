@@ -2,7 +2,7 @@
 // First-run sign-in card under a real PTY: EOF/decline must exit quietly —
 // never an uncaught TypeError stack on screen. Reproduces the installed
 // 0.0.215 defect: rl.question resolves undefined on early close and a bare
-// .trim() crashed the card. POSIX-only (script(1) pty), like the TUI journeys.
+// .trim() crashed the card. POSIX-only (no pty on win32), like the TUI journeys.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,36 +26,50 @@ async function cardRun({ keys = [], env = {} } = {}) {
   writeFileSync(stubRuntime, '// test stub: existence is all the gate checks\n');
   const quote = (v) => `'${v.replaceAll("'", "'\\''")}'`;
   const cmd = `${quote(process.execPath)} ${quote(BIN)}`;
-  // util-linux script(1): `-qfec` propagates the child's exit status. BSD
-  // script(1) on macOS knows neither flag — it execvp's the command words and
-  // always exits 0, so the child reports its own status over the pty instead.
-  const darwin = process.platform === 'darwin';
-  const child = spawn('script',
-    darwin ? ['-q', '/dev/null', '/bin/sh', '-c', `${cmd}; printf '\\nSGNEXIT:%d\\n' "$?"`]
-           : ['-qfec', cmd, '/dev/null'], {
-    env: { ...process.env, ...env, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home,
-           ZCODE_RUNTIME: stubRuntime, TERM: 'xterm-256color', NO_COLOR: '1' },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  const runEnv = { ...process.env, ...env, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home,
+    ZCODE_RUNTIME: stubRuntime, TERM: 'xterm-256color', NO_COLOR: '1' };
+  // Two pty drivers:
+  //  - Linux: util-linux script(1) `-qfec` — flushes live and propagates the
+  //    child's exit status directly.
+  //  - macOS: BSD script(1) has neither `-e` nor `-c`, exits 0 regardless, and
+  //    on the CI runners captured no session output at all through the
+  //    positional-command form — so drive the pty with expect(1) instead
+  //    (ships with macOS). expect sends the keys on the same cadence and
+  //    propagates the child's real status via `wait`.
+  let child;
+  if (process.platform === 'darwin') {
+    // Tcl-safe by construction: the payload rides in braces (no Tcl metas in a
+    // shell-quoted command), and each key byte goes out as a \xHH escape.
+    const bytes = (s) => [...Buffer.from(s, 'utf8')].map((b) => `\\x${b.toString(16).padStart(2, '0')}`).join('');
+    const tcl = [
+      'set timeout -1', // the outer race below owns the deadline
+      `spawn /bin/sh -c {${cmd}}`,
+      'after 2500',
+      ...keys.flatMap((k) => [`catch {send -- "${bytes(k)}"}`, 'after 700']),
+      'expect eof',
+      'exit [lindex [wait] 3]',
+    ].join('\n');
+    child = spawn('/usr/bin/expect', ['-c', tcl], { env: runEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+  } else {
+    child = spawn('script', ['-qfec', cmd, '/dev/null'], { env: runEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+  }
   let raw = '';
   child.stdout.on('data', (d) => { raw += d; });
   child.stderr.on('data', (d) => { raw += d; });
   // A leg that exits early (Esc-cancel) leaves later keys writing to a dead
   // pty — EPIPE is expected there, not a test fault.
-  child.stdin.on('error', () => {});
+  child.stdin?.on('error', () => {});
   const exit = new Promise((r) => child.on('exit', (code) => r(code)));
-  await sleep(2500);                       // let the card paint + the question bind
-  for (const k of keys) {
-    if (child.exitCode !== null) break;    // already exited — don't poke a corpse
-    child.stdin.write(k);
-    await sleep(700);
+  if (process.platform !== 'darwin') {
+    await sleep(2500);                     // let the card paint + the question bind
+    for (const k of keys) {
+      if (child.exitCode !== null) break;  // already exited — don't poke a corpse
+      child.stdin.write(k);
+      await sleep(700);
+    }
   }
   let code = await Promise.race([exit, sleep(8000).then(() => 'timeout')]);
   if (code === 'timeout') child.kill('SIGKILL');
-  // BSD script exits 0 regardless — the real status is the marker the
-  // command printed; a missing marker means the leg died before exiting.
-  if (darwin && code !== 'timeout')
-    code = Number(/SGNEXIT:(\d+)/.exec(raw)?.[1] ?? NaN);
   rmSync(home, { recursive: true, force: true });
   return { raw, code, home };
 }
