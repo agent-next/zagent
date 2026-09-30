@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, statSy
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { daemonRuntimeDir, daemonPaths, pidIsZagentd } from './zagentd-paths.mjs';
+import { daemonRuntimeDir, daemonPaths, pidIsZagentd, SOCKET_PATH_ROOM } from './zagentd-paths.mjs';
 
 if (process.platform === 'win32' || typeof process.getuid !== 'function') {
   console.log('SKIP zagentd (POSIX daemon surface)');
@@ -59,6 +59,31 @@ try {
   mkdirSync(blockedBase);
   writeFileSync(path.join(blockedBase, `zagent-${process.getuid()}`), 'squatter');
   assert.throws(() => daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: blockedBase } }), 'a file squatting the dir path refuses');
+
+  // AF_UNIX sun_path is a fixed field (104 darwin / 108 linux) and the kernel
+  // SILENTLY TRUNCATES a longer bind instead of failing it — verified on
+  // Linux: listen() at a 130-char path reported success with the socket
+  // created at 108 chars, i.e. a daemon no client can compute the name of.
+  // A base whose socket path would not fit must be skipped for the next
+  // shorter private base, keep the 0700/owner guarantees, and actually serve.
+  const deep = path.join(temp, 'd'.repeat(100)); // deep enough to overflow the room on every POSIX CI host
+  mkdirSync(deep, { recursive: true });
+  const deepEnv = { ...baseEnv(), XDG_RUNTIME_DIR: deep };
+  const relocated = daemonRuntimeDir({ env: deepEnv, tmpdir: temp });
+  assert.notEqual(relocated, path.join(deep, `zagent-${process.getuid()}`), 'an over-long XDG base is not used');
+  assert.equal(relocated, path.join(temp, `zagent-${process.getuid()}`), 'relocation lands on the tmpdir base');
+  assert.ok(daemonPaths({ env: deepEnv, tmpdir: temp }).sock.length + 1 <= SOCKET_PATH_ROOM, 'relocated socket path fits sun_path');
+  assert.equal(statSync(relocated).mode & 0o777, 0o700, 'relocated dir keeps 0700');
+  assert.equal(existsSync(path.join(deep, `zagent-${process.getuid()}`)), false, 'the length-skipped base is left untouched');
+  const deepRun = spawnSync(process.execPath, [zagentd, 'start'], { cwd: root, env: deepEnv, encoding: 'utf8', timeout: 15000 });
+  assert.equal(deepRun.status, 0, `daemon starts from a deep XDG: ${deepRun.stderr}`);
+  const deepPaths = daemonPaths({ env: deepEnv, tmpdir: temp });
+  assert(waitFor(() => existsSync(deepPaths.sock) && deepPaths.sock), 'daemon binds at the relocated socket path');
+  daemonPid = Number(readFileSync(deepPaths.pid, 'utf8').trim());
+  assert(pidIsZagentd(daemonPid), 'relocated pid file names the daemon');
+  assert.equal(spawnSync(process.execPath, [zagentd, 'stop'], { cwd: root, env: deepEnv, encoding: 'utf8' }).status, 0, 'stop reaches the relocated daemon');
+  daemonPid = null;
+  rmSync(deep, { recursive: true, force: true });
 
   // pid identity: our own process is not a daemon; a dead pid is not a daemon
   assert.equal(pidIsZagentd(process.pid), false, 'test process is not zagentd');
