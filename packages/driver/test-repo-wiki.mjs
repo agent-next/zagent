@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Hermetic repo-wiki discovery. Temp HOME only; never writes into the real
 // ~/.zcode tree and never dumps wiki page bodies.
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,9 +18,11 @@ const SECRET = 'test-dummy-secret';
 
 const makeHome = (tag) => {
   const home = mkdtempSync(path.join(tmp, tag));
-  const cwd = path.join(home, 'ws');
-  mkdirSync(cwd);
-  return { home, cwd };
+  mkdirSync(path.join(home, 'ws'));
+  // The spawned inspect CLI hashes process.cwd(), and getcwd(3) yields the
+  // canonical spelling (macOS /var -> /private/var) — plant and probe through
+  // that form or the hashed wiki dir and the child's key disagree.
+  return { home, cwd: realpathSync(path.join(home, 'ws')) };
 };
 
 const writeWiki = (home, cwd, body) => {
