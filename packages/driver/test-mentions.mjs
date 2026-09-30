@@ -20,12 +20,16 @@ writeFileSync(`${ws}/src/util.js`, 'y');
 mkdirSync(`${ws}/dir-only`, { recursive: true });
 
 let r = resolveMentions('fix @calc.py using @src/util.js and @nope.md', ws);
-ok(r.found.length === 2 && r.found[0].token === 'calc.py' && r.found[0].path === path.resolve(ws, 'calc.py'), 'found resolved absolute');
+// Resolved mentions carry the token's CANONICAL path (realpathSync — the
+// symlink-escape check needs real paths; macOS tmpdirs sit behind the
+// /var -> /private/var symlink), so expectations are derived the same way.
+const realCalc = realpathSync(`${ws}/calc.py`), realUtil = realpathSync(`${ws}/src/util.js`);
+ok(r.found.length === 2 && r.found[0].token === 'calc.py' && r.found[0].path === realCalc, 'found resolved absolute');
 ok(r.missing.length === 1 && r.missing[0].token === 'nope.md', 'missing reported');
 ok(r.rejected.length === 0, 'in-root mentions are not rejected');
 // Header contract: resolved tokens are rewritten to their absolute path; missing
 // tokens stay verbatim so the note can quote them.
-ok(r.rewritten.includes(`@${path.resolve(ws, 'calc.py')}`) && r.rewritten.includes(`@${path.resolve(ws, 'src/util.js')}`),
+ok(r.rewritten.includes(`@${realCalc}`) && r.rewritten.includes(`@${realUtil}`),
   'resolved tokens rewritten to absolute paths');
 ok(r.rewritten.includes('@nope.md'), 'missing token preserved verbatim');
 r = resolveMentions('see @dir-only', ws);
@@ -81,10 +85,11 @@ import { resolveMentions as rm2, extractMentions as em2 } from './mentions.mjs';
 const ws3 = mkdtempSync(path.join(os.tmpdir(), 'zmr15-'));
 writeFileSync(`${ws3}/a.json`, 'x');
 let r15 = rm2('A\n@ a.json', ws3); // newline boundary form: @ then space? use real token on next line
+const realA = realpathSync(`${ws3}/a.json`);
 r15 = rm2('A\n@a.json', ws3);
-ok(r15.rewritten === `A\n@${path.resolve(ws3, 'a.json')}`, 'newline boundary preserved (not collapsed to space)');
+ok(r15.rewritten === `A\n@${realA}`, 'newline boundary preserved (not collapsed to space)');
 r15 = rm2('\t@a.json', ws3);
-ok(r15.rewritten === `\t@${path.resolve(ws3, 'a.json')}`, 'tab boundary preserved');
+ok(r15.rewritten === `\t@${realA}`, 'tab boundary preserved');
 const uni = '文件-' + '😀';
 writeFileSync(`${ws3}/${uni}.txt`, 'x');
 r15 = rm2(`see @${uni}.txt`, ws3);
