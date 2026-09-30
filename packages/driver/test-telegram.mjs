@@ -60,20 +60,22 @@ const sent = fBot; // replies went through sendMessage
 ok(true, 'loop ran');
 
 // handler error reported to chat, bot survives
-let polls2 = 0; let reported = null;
+let polls2 = 0; let reported = null; const replies2 = [];
 const fErr = async (url, init) => {
   if (url.includes('getUpdates')) { polls2++;
     if (polls2 === 1) return { ok: true, status: 200, json: async () => ({ ok: true, result: [ { update_id: 5, message: { chat: { id: 3 }, text: 'boom' } } ] }) };
+    if (polls2 === 2) return { ok: true, status: 200, json: async () => ({ ok: true, result: [ { update_id: 6, message: { chat: { id: 3 }, text: 'after' } } ] }) };
     return { ok: true, status: 200, json: async () => new Promise(() => {}) }; }
-  reported = JSON.parse(init.body);
+  replies2.push(JSON.parse(init.body));
   return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
 };
 const bot2 = await runBot({ token: 'T', fetchImpl: fErr, pollTimeout: 0,
-  handler: async () => { throw new Error('turn failed'); }, onEvent: () => {} });
-await new Promise(r => setTimeout(r, 150));
+  handler: async (chatId, text) => { if (text === 'boom') throw new Error('turn failed'); return 'still here'; }, onEvent: () => {} });
+await new Promise(r => setTimeout(r, 300));
 bot2.stop();
+reported = replies2[0];
 ok(reported && /^error: turn failed/.test(reported.text), 'handler error reported to chat');
-ok(events !== null, 'bot survived handler error');
+ok(replies2.some(r => r.text === 'still here'), 'bot survived handler error: the next update is still answered');
 
 // missing token/handler guards
 let g = false; try { await runBot({}); } catch { g = true; }

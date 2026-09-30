@@ -20,9 +20,8 @@ const root = process.env.AGENT_GATE_ROOT;
 // Mirrors test-all.mjs: live-runtime tests skip loudly offline, never pass silently.
 const NEEDS_RUNTIME = new Set(['test.mjs', 'test-a2.mjs', 'test-permission-live.mjs', 'test-journeys-live.mjs']);
 // pty journeys: real script(1) terminal drives, ~107s+25s wall even in parallel —
-// they cannot fit the hook's ~100s budget, and no CI lane runs them either (the
-// workflow deliberately excludes non-hermetic suites). The commit gate runs
-// everything else; run `node scripts/test-all.mjs` locally for the full gate.
+// they cannot fit the hook's ~100s budget. CI's test-all run does execute them
+// on Linux (util-linux script(1)); the commit gate runs everything else; run `node scripts/test-all.mjs` locally for the full gate.
 const PTY_JOURNEYS = new Set(['test-journeys.mjs', 'test-journeys-commands.mjs']);
 const files = discoverTests(root);
 if (files.length === 0) { console.error('FAIL: no test files discovered'); process.exit(1); }
