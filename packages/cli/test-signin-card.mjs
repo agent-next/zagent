@@ -40,17 +40,16 @@ async function cardRun({ keys = [], waits = [], env = {} } = {}) {
   if (process.platform === 'darwin') {
     // Tcl-safe by construction: the payload rides in braces (no Tcl metas in a
     // shell-quoted command), and each key byte goes out as a \xHH escape.
-    // Sends are OUTPUT-GATED: the first key waits for the card to paint, and
-    // a key with a `waits[i]` pattern waits for that prompt. On a slow runner
-    // the card paints seconds after spawn; a fixed-delay send lands in the
-    // cooked line discipline, which echoes it — leaking a pasted secret and
-    // leaving typed fragments on screen. Once the prompt renders, readline
-    // holds the tty in raw mode and nothing echoes.
+    // Sends are OUTPUT-GATED on the QUESTION PROMPT, not the card banner: the
+    // banner paints before readline binds the question, and a key sent in that
+    // gap lands in the cooked line discipline, which echoes it — a pasted
+    // secret leaks and typed fragments stay on screen. Once the prompt
+    // renders, readline holds the tty in raw mode and nothing echoes.
     const bytes = (s) => [...Buffer.from(s, 'utf8')].map((b) => `\\x${b.toString(16).padStart(2, '0')}`).join('');
     const tcl = [
       'set timeout 10',
       `spawn /bin/sh -c {${cmd}}`,
-      'expect -re {choose a sign-in path}',
+      'expect -re {sign in \\[1/2/3\\]: }',
       'after 400',
       ...keys.flatMap((k, i) => [
         ...(waits[i] ? [`expect -re {${waits[i]}}`, 'after 200'] : []),
@@ -159,10 +158,15 @@ async function cardRun({ keys = [], waits = [], env = {} } = {}) {
 // Esc+char struck inside node:readline's escape window arrives
 // as ONE meta+char keypress — the 'w' never lands (pre-fix a fast 'world'
 // after Esc left 'orld' on screen, answered as an unrecognized pick). The
-// chooser treats the meta keypress as the same Esc-cancel: the process is
-// already gone when the rest of the burst arrives, so 'orld' never echoes.
+// chooser treats the meta keypress as the same Esc-cancel, so the rest of the
+// burst is consumed by a closed interface and never echoes. The burst is ONE
+// send ('Esc world Enter' in a single read) — the faithful model of "fast
+// input". A second send 700ms later would strike a tty whose line discipline
+// the (correct) cancel has already restored to cooked+echo: expect keeps the
+// pty master open after the child exits, so the driver itself would echo
+// that send back — a leak by the harness, not the card, on any correct app.
 {
-  const r = await cardRun({ keys: ['\x1bw', 'orld\r'] });
+  const r = await cardRun({ keys: ['\x1bworld\r'] });
   ok(!/TypeError|Cannot read prop/.test(r.raw), 'Esc then fast input prints no stack');
   ok(!r.raw.includes('orld'), `Esc eats the burst — no 'orld' left on screen (raw has: ${r.raw.includes('orld')})`);
   ok(r.code === 2, `Esc+char exits 2 — the answer can never become 'orld' (got ${r.code})`);
