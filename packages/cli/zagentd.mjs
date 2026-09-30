@@ -136,7 +136,6 @@ if (cmd === 'start') {
   // Giving up also reaps the child: a daemon that never bound is not left
   // running behind a failed start.
   const pidAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
-  const nap = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   const deadline = Date.now() + 10000;
   const giveUp = (why) => {
     try { closeSync(logFd); } catch {}
@@ -148,11 +147,20 @@ if (cmd === 'start') {
     catch { console.error('(no log)'); }
     process.exit(1);
   };
-  while (!existsSync(SOCK)) {
-    const died = child.exitCode !== null || child.signalCode !== null || !pidAlive(child.pid);
-    if (died) giveUp('start');
+  // A socket FILE is not proof of a daemon: a stale one from a crashed run
+  // exists before the child has removed it. Only a successful connect, while
+  // the spawned child is still alive, means the daemon we started is serving.
+  const accepting = () => new Promise(res => {
+    const probe = connect(SOCK);
+    probe.once('connect', () => { probe.destroy(); res(true); });
+    probe.once('error', () => res(false));
+  });
+  const childDied = () => child.exitCode !== null || child.signalCode !== null || !pidAlive(child.pid);
+  for (;;) {
+    if (childDied()) giveUp('start');
+    if (existsSync(SOCK) && await accepting() && !childDied()) break;
     if (Date.now() >= deadline) giveUp('bind its socket within 10s');
-    nap(100);
+    await new Promise(r => setTimeout(r, 100));
   }
   try { closeSync(logFd); } catch {}
   console.log(`daemon started (pid ${child.pid})`);

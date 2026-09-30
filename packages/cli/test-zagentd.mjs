@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, statSync, rmSync } from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -96,6 +97,15 @@ try {
   daemonPid = null;
   rmSync(deep, { recursive: true, force: true });
 
+  // The sun_path room is BYTES: a base of multi-byte chars can fit by UTF-16
+  // length yet overflow the field, so it must be skipped like any long base.
+  const cjk = `/tmp/${'\u706b'.repeat(30)}`; // 30 chars, 90 bytes
+  const cjkEnv = { ...baseEnv(), XDG_RUNTIME_DIR: cjk, TMPDIR: SHORT, TMP: SHORT, TEMP: SHORT };
+  assert.ok(Buffer.byteLength(path.join(cjk, `zagent-${process.getuid()}`, 'zagentd.sock')) + 1 > SOCKET_PATH_ROOM, 'fixture overflows in bytes');
+  assert.ok(path.join(cjk, `zagent-${process.getuid()}`, 'zagentd.sock').length + 1 <= SOCKET_PATH_ROOM, 'fixture fits in UTF-16 units');
+  assert.equal(daemonRuntimeDir({ env: cjkEnv, tmpdir: SHORT }), path.join(SHORT, `zagent-${process.getuid()}`), 'byte-overflowing base is skipped');
+  assert.equal(existsSync(cjk), false, 'the byte-skipped base is left untouched');
+
   // pid identity: our own process is not a daemon; a dead pid is not a daemon
   assert.equal(pidIsZagentd(process.pid), false, 'test process is not zagentd');
   assert.equal(pidIsZagentd(foreign.pid), false, 'foreign node process is not zagentd');
@@ -147,6 +157,24 @@ try {
   assert.equal(cli(['stop']).status, 0);
   daemonPid = null;
 
+  // A stale socket FILE (crashed daemon) must not pass for a started daemon:
+  // when start exits 0 the socket has to accept connections already.
+  const staleHolder = spawn(process.execPath, ['-e',
+    `require('net').createServer().listen(${JSON.stringify(paths.sock)}, () => console.log('up'))`], { stdio: ['ignore', 'pipe', 'ignore'] });
+  await new Promise(res => staleHolder.stdout.once('data', res));
+  staleHolder.kill('SIGKILL');
+  await new Promise(res => staleHolder.once('exit', res));
+  assert.equal(existsSync(paths.sock), true, 'stale socket file left behind');
+  assert.equal(cli(['start']).status, 0, 'start over a stale socket');
+  // A separate process: the offline harness blocks net.connect in this one.
+  const reachable = spawnSync(process.execPath, ['-e',
+    `require('net').connect(${JSON.stringify(paths.sock)}).on('connect', () => process.exit(0)).on('error', () => process.exit(1))`],
+  { env: { PATH: process.env.PATH }, timeout: 10000 }).status === 0;
+  assert.equal(reachable, true, 'start exits 0 only once the daemon accepts connections');
+  daemonPid = Number(readFileSync(paths.pid, 'utf8').trim());
+  assert.equal(cli(['stop']).status, 0);
+  daemonPid = null;
+
   // single-instance: two concurrent `start`s must produce exactly ONE daemon.
   // Without the pre-spawn lock both find no pid file and each fork a server
   // that unlinks the other's socket path. (spawnSync serializes the callers,
@@ -186,6 +214,24 @@ try {
   }
   assert.equal(cli(['stop']).status, 0);
   daemonPid = null;
+  // zagent compact decodes a reply whose multi-byte char is split across writes.
+  const cpaths = daemonPaths({ env: baseEnv() });
+  const fake = net.createServer(c => {
+    c.once('data', () => {
+      const b = Buffer.from(JSON.stringify({ compacted: '\u4f60\u597d' }) + '\n');
+      c.write(b.subarray(0, 16));
+      setTimeout(() => c.end(b.subarray(16)), 150);
+    });
+  });
+  await new Promise(res => fake.listen(cpaths.sock, res));
+  const compact = await new Promise(res => {
+    const c = spawn(process.execPath, [path.join(root, 'packages/cli/zagent-compact.mjs')], { cwd: root, env: baseEnv() });
+    let out = '';
+    c.stdout.on('data', d => { out += d; });
+    c.on('exit', () => res(out));
+  });
+  fake.close();
+  assert.equal(JSON.parse(compact).compacted, '\u4f60\u597d', `compact reply survives a mid-char split: ${compact}`);
   console.log('PASS zagentd');
 } finally {
   try { foreign.kill('SIGKILL'); } catch {}

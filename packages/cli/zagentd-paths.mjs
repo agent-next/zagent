@@ -43,7 +43,7 @@ export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home
   const preferred = env.XDG_RUNTIME_DIR?.trim();
   if (preferred) candidates.push(path.join(preferred, leaf));
   candidates.push(path.join(tmpdir, leaf), path.join(home, '.zagentd', leaf), path.join('/tmp', `zagentd-${uid}`));
-  const fits = (dir) => path.join(dir, 'zagentd.sock').length + 1 <= SOCKET_PATH_ROOM; // + NUL terminator
+  const fits = (dir) => Buffer.byteLength(path.join(dir, 'zagentd.sock')) + 1 <= SOCKET_PATH_ROOM; // + NUL terminator
   const tried = [];
   for (const dir of candidates) {
     tried.push(dir);
