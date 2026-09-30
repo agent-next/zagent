@@ -137,29 +137,37 @@ if (cmd === 'start') {
   // running behind a failed start.
   const pidAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
   const deadline = Date.now() + 10000;
-  const giveUp = (why) => {
+  const giveUp = async (why) => {
     try { closeSync(logFd); } catch {}
     try { child.kill('SIGKILL'); } catch {} // boot-failed daemon: no state worth a graceful ask
     rmSync(PID_FILE, { force: true });
-    rmSync(SOCK, { force: true });
-    console.error(`daemon failed to ${why} (pid ${child.pid}, socket ${SOCK.length + 1} bytes); ${LOG} tail:`);
+    if (child.exitCode === null && child.signalCode === null)
+      await Promise.race([new Promise(r => child.once('exit', r)), new Promise(r => setTimeout(r, 2000))]);
+    // The socket is ours to remove only if nothing serves it: a child that
+    // refused to start because a live daemon already owns the path must not
+    // take that daemon's socket away.
+    if (!(await accepting())) rmSync(SOCK, { force: true });
+    console.error(`daemon failed to ${why} (pid ${child.pid}, socket ${Buffer.byteLength(SOCK) + 1} bytes); ${LOG} tail:`);
     try { console.error(readFileSync(LOG, 'utf8').trimEnd().split('\n').slice(-20).join('\n') || '(empty)'); }
     catch { console.error('(no log)'); }
     process.exit(1);
   };
   // A socket FILE is not proof of a daemon: a stale one from a crashed run
-  // exists before the child has removed it. Only a successful connect, while
-  // the spawned child is still alive, means the daemon we started is serving.
+  // exists before the child has removed it, and a connect can reach a DIFFERENT
+  // live daemon that owns the path. Success needs both the serve child's own
+  // "listening (pid <child>)" line in the log and a connect, with the child alive.
+  const childListening = () => { try { return readFileSync(LOG, 'utf8').includes(`listening on ${SOCK} (pid ${child.pid})`); } catch { return false; } };
   const accepting = () => new Promise(res => {
     const probe = connect(SOCK);
+    probe.setTimeout(1000, () => { probe.destroy(); res(false); }); // a wedged listener must not outlast the deadline
     probe.once('connect', () => { probe.destroy(); res(true); });
     probe.once('error', () => res(false));
   });
   const childDied = () => child.exitCode !== null || child.signalCode !== null || !pidAlive(child.pid);
   for (;;) {
-    if (childDied()) giveUp('start');
-    if (existsSync(SOCK) && await accepting() && !childDied()) break;
-    if (Date.now() >= deadline) giveUp('bind its socket within 10s');
+    if (childDied()) await giveUp('start');
+    if (childListening() && await accepting() && !childDied()) break;
+    if (Date.now() >= deadline) await giveUp('bind its socket within 10s');
     await new Promise(r => setTimeout(r, 100));
   }
   try { closeSync(logFd); } catch {}

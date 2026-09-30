@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, statSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, chmodSync, symlinkSync, writeFileSync, readFileSync, existsSync, statSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -71,6 +71,15 @@ try {
   mkdirSync(blockedBase);
   writeFileSync(path.join(blockedBase, `zagent-${process.getuid()}`), 'squatter');
   assert.throws(() => daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: blockedBase } }), 'a file squatting the dir path refuses');
+  // A planted symlink at the runtime path must be refused, and its target left
+  // alone: following it would chmod and bind inside a directory we merely own.
+  const linkBase = path.join(XDG, 'linked');
+  const linkTarget = path.join(XDG, 'link-target');
+  mkdirSync(linkBase); mkdirSync(linkTarget, { mode: 0o755 });
+  chmodSync(linkTarget, 0o755);
+  symlinkSync(linkTarget, path.join(linkBase, `zagent-${process.getuid()}`));
+  assert.throws(() => daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: linkBase } }), /unsafe daemon runtime dir/, 'a symlink at the dir path refuses');
+  assert.equal(statSync(linkTarget).mode & 0o777, 0o755, 'the symlink target is not chmodded');
 
   // AF_UNIX sun_path is a fixed field (104 darwin / 108 linux) and the kernel
   // SILENTLY TRUNCATES a longer bind instead of failing it — verified on
@@ -173,6 +182,21 @@ try {
   assert.equal(reachable, true, 'start exits 0 only once the daemon accepts connections');
   daemonPid = Number(readFileSync(paths.pid, 'utf8').trim());
   assert.equal(cli(['stop']).status, 0);
+  daemonPid = null;
+
+  // A failed start (the serve child refuses: a live daemon owns the socket, and
+  // the pid file that would have said so is gone) must not remove that daemon's
+  // socket.
+  assert.equal(cli(['start']).status, 0);
+  daemonPid = Number(readFileSync(paths.pid, 'utf8').trim());
+  rmSync(paths.pid, { force: true });
+  const refused = cli(['start']);
+  assert.equal(refused.status, 1, `start fails when the serve child refuses: ${refused.stdout}`);
+  assert.equal(spawnSync(process.execPath, ['-e',
+    `require('net').connect(${JSON.stringify(paths.sock)}).on('connect', () => process.exit(0)).on('error', () => process.exit(1))`],
+  { env: { PATH: process.env.PATH }, timeout: 10000 }).status, 0, 'the live daemon keeps its socket after a failed start');
+  process.kill(daemonPid, 'SIGTERM');
+  assert(waitFor(() => { try { process.kill(daemonPid, 0); return null; } catch { return true; } }), 'daemon gone after SIGTERM');
   daemonPid = null;
 
   // single-instance: two concurrent `start`s must produce exactly ONE daemon.
