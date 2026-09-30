@@ -43,7 +43,8 @@ writeFileSync(path.join(catalogDir, 'models_catalog_1.json'), JSON.stringify({
 mkdirSync(path.join(home, '.zcode', 'cli'), { recursive: true });
 writeFileSync(path.join(home, '.zcode', 'cli', 'config.json'), JSON.stringify({
   model: { main: 'zai/glm-5.3', lite: 'zai/glm-5.3-flash' },
-  provider: { zai: { kind: 'anthropic', options: { baseURL: 'https://api.z.ai/api/anthropic/', apiKey: 'fixture' } } },
+  provider: { zai: { kind: 'anthropic', options: { baseURL: 'https://api.z.ai/api/anthropic/', apiKey: 'fixture' },
+    models: { 'glm-5.3': {}, 'glm-5.3-flash': {} } } },
 }));
 
 const env = {

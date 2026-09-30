@@ -73,6 +73,7 @@
     "packages/driver/memory.mjs",
     "packages/driver/offpeak.mjs",
     "packages/driver/permissions.mjs",
+    "packages/driver/personal-provider.mjs",
     "packages/driver/plugins.mjs",
     "packages/driver/provider-errors.mjs",
     "packages/driver/providers.mjs",

@@ -22,7 +22,7 @@ try {
       assert.equal(readFileSync(config, 'utf8'), value, 'doctor must preserve corrupt user config');
     }
   }
-  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } } }));
+  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' }, models: { model: {} } } } }));
   const r = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env, encoding: 'utf8', cwd: home });
   assert.equal(r.status, 0, 'valid object remains accepted with an environment key');
   // doctor reports environment depth — node build, credential source, config
@@ -44,7 +44,7 @@ try {
   writeFileSync(path.join(home, '.zcode/cli/plugins/data/seeded/.zcode-plugin/plugin.json'),
     JSON.stringify({ name: 'seeded', version: '1.0.0' }));
   writeFileSync(config, JSON.stringify({
-    model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } },
+    model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' }, models: { model: {} } } },
     hooks: { enabled: true, events: { UserPromptSubmit: [{ type: 'command', command: 'echo hi' }] } },
     mcp: { servers: { fs: { command: 'mcp-fs' }, db: { command: 'mcp-db' } } },
   }));
@@ -57,20 +57,23 @@ try {
   assert.match(r2.stdout, /^mcp: 2 configured$/m);
   // a keyless config + a fallback key file: that key is only a bootstrap
   // source (ensureConfig never reads it once config.json exists) so doctor must
-  // NOT claim it — and a present-but-credential-less config keeps exit 0 with a
-  // warn line (the exit contract is unchanged: config presence means set up ran).
+  // NOT claim it — and since the -p path cannot seed a registry for a
+  // keyless selection either, the model line flags it and the diagnosis is
+  // unhealthy (exit 1), consistent with what provisioning would refuse.
   mkdirSync(path.join(home, '.config', 'ccz'), { recursive: true });
   writeFileSync(path.join(home, '.config', 'ccz', '.api_key'), 'fallback-key');
-  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: {} } } }));
+  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: {}, models: { model: {} } } } }));
   const r3 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
-  assert.equal(r3.status, 0, r3.stderr);
+  assert.equal(r3.status, 1, r3.stderr);
   assert.match(r3.stdout, /^credential: NONE$/m, 'doctor reports no credential honestly');
   assert.match(r3.stdout, /^warn: no Coding Plan credential/m, 'a credential-less config is warned, not silent');
+  assert.match(r3.stdout, /^model: provider 'zai' has no usable API key — NOT RESOLVABLE$/m,
+    'the keyless selection is reported unresolvable, matching the provisioning refusal');
   // with no config file at all the fallback file IS the bootstrap source
   rmSync(config);
   const r4 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
   assert.match(r4.stdout, /^credential: ccz fallback/m, 'fallback file is claimed only when no cli config exists');
-  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } } }));
+  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' }, models: { model: {} } } } }));
   // a staged desktop update is reported read-only and never blocks a healthy verdict
   const pendingDir = path.join(home, '.cache', '@zcodedesktop-updater', 'pending');
   mkdirSync(pendingDir, { recursive: true });

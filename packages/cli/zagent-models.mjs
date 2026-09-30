@@ -139,8 +139,10 @@ if (process.argv[2] === 'test') {
     [[providerId, modelId]] = hits;
   }
   const { ZCodeProtocolClient } = await import('../driver/zcode-protocol.mjs');
+  const { provisionPersonalProviderConfig } = await import('../driver/personal-provider.mjs');
   let client, code = 0;
   try {
+    try { provisionPersonalProviderConfig(); } catch {} // fresh-host registry seed (see personal-provider.mjs)
     client = new ZCodeProtocolClient({ cwd: process.cwd() });
     await client.ready;
     // The registry is GUI-pushed (provider/updateAccountConfig); a headless
