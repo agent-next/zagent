@@ -22,7 +22,7 @@ try {
       assert.equal(readFileSync(config, 'utf8'), value, 'doctor must preserve corrupt user config');
     }
   }
-  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } } }));
+  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' }, models: { model: {} } } } }));
   const r = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env, encoding: 'utf8', cwd: home });
   assert.equal(r.status, 0, 'valid object remains accepted with an environment key');
   // doctor reports environment depth — node build, credential source, config
@@ -44,7 +44,7 @@ try {
   writeFileSync(path.join(home, '.zcode/cli/plugins/data/seeded/.zcode-plugin/plugin.json'),
     JSON.stringify({ name: 'seeded', version: '1.0.0' }));
   writeFileSync(config, JSON.stringify({
-    model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } },
+    model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' }, models: { model: {} } } },
     hooks: { enabled: true, events: { UserPromptSubmit: [{ type: 'command', command: 'echo hi' }] } },
     mcp: { servers: { fs: { command: 'mcp-fs' }, db: { command: 'mcp-db' } } },
   }));
@@ -61,7 +61,7 @@ try {
   // warn line (the exit contract is unchanged: config presence means set up ran).
   mkdirSync(path.join(home, '.config', 'ccz'), { recursive: true });
   writeFileSync(path.join(home, '.config', 'ccz', '.api_key'), 'fallback-key');
-  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: {} } } }));
+  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: {}, models: { model: {} } } } }));
   const r3 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
   assert.equal(r3.status, 0, r3.stderr);
   assert.match(r3.stdout, /^credential: NONE$/m, 'doctor reports no credential honestly');
@@ -70,7 +70,7 @@ try {
   rmSync(config);
   const r4 = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, 'doctor'], { env: envNoKey, encoding: 'utf8', cwd: home });
   assert.match(r4.stdout, /^credential: ccz fallback/m, 'fallback file is claimed only when no cli config exists');
-  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' } } } }));
+  writeFileSync(config, JSON.stringify({ model: { main: 'zai/model' }, provider: { zai: { options: { apiKey: 'fixture-key' }, models: { model: {} } } } }));
   // a staged desktop update is reported read-only and never blocks a healthy verdict
   const pendingDir = path.join(home, '.cache', '@zcodedesktop-updater', 'pending');
   mkdirSync(pendingDir, { recursive: true });

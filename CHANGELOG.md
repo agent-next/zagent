@@ -12,6 +12,13 @@ This file is the public-facing release log for the npm package `zagent`.
 
 ## Unreleased
 
+- fix(cli): seed the kernel's personal provider config from the cli config before
+  app-server backed runs (`-p --model/--effort`, `commit-msg`, `models test`) —
+  the 3.14.x app-server registry never imports the legacy cli config itself, so
+  a fresh host answered every model-bearing `session/create` with
+  model-not-found until the kernel's own `-p` path happened to migrate it.
+  `doctor` now flags a configured model the runtime registry cannot resolve.
+
 ## 0.0.238 — 2026-09-21
 
 - Live-user-testing fixes: `quota reset use` checks credentials before its

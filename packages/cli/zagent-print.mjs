@@ -17,6 +17,7 @@ import { ZCodeProtocolClient, runTurn, sessionSid, currentAnswer, extractUsage }
 import { setMode, MODES } from '../driver/session-control.mjs';
 import { autoAllow } from '../driver/permissions.mjs';
 import { modelReasoningLevels } from '../driver/providers.mjs';
+import { provisionPersonalProviderConfig } from '../driver/personal-provider.mjs';
 import { KERNEL_VALUE_FLAGS, KERNEL_LIST_FLAGS } from './commands.mjs';
 
 const VALUE_FLAGS = new Set(['--model', '--effort', '--mode', '--cwd', '--output-format', '--locale']);
@@ -151,7 +152,11 @@ async function openPrintClient(cwd) {
 // --prompt" and zagentd does the same. A user-chosen --mode still applies via
 // session/setMode (kernel-side enforcement); plan approval prompts hit the
 // client's default decline handler, so headless plan mode produces the plan.
-export async function runPrintOnce(sel, { client, createClient = openPrintClient, timeoutMs = 600_000, catalog, providerConfig } = {}) {
+// `provision` seeds the kernel's personal provider config from the legacy cli
+// config before the app-server spawn — the app-server registry never runs the
+// kernel's own legacy import (see personal-provider.mjs), so without this a
+// fresh host answers every model-bearing session/create with model-not-found.
+export async function runPrintOnce(sel, { client, createClient = openPrintClient, timeoutMs = 600_000, catalog, providerConfig, provision = provisionPersonalProviderConfig } = {}) {
   const t0 = Date.now();
   const cwd = path.resolve(sel.cwd ?? process.cwd());
   const key = path.normalize(cwd);
@@ -185,7 +190,10 @@ export async function runPrintOnce(sel, { client, createClient = openPrintClient
     params.thoughtLevel = sel.effort;
   }
   const own = !client;
-  if (own) client = await createClient(cwd);
+  if (own) {
+    try { provision(); } catch {} // best-effort registry seed; a failure must not block the run
+    client = await createClient(cwd);
+  }
   let sid = null;
   try {
     const created = await client.call('session/create', params);
