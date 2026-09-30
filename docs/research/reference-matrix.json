@@ -1,0 +1,780 @@
+{
+ "references": [
+  {
+   "agent": "opencode (sst/opencode \u2014 repo now redirects to github.com/anomalyco/opencode, 164k stars, MIT; docs opencode.ai/docs). All claims below were verified by fetching the cited official doc pages on 2026-09-03 via TinyFish. No local files were modified.",
+   "features": [
+    {
+     "area": "architecture",
+     "feature": "Client/server core with published OpenAPI 3.1 contract",
+     "how": "Running `opencode` starts a TUI plus a local server; the TUI is just a client. `opencode serve` runs the headless server (default 127.0.0.1:4096) that exposes the full API over HTTP with a browsable OpenAPI 3.1 spec at /doc, and the spec is used to generate the SDKs. Basic auth via OPENCODE_SERVER_PASSWORD, mDNS discovery and CORS flags for remote clients.",
+     "source_url": "https://opencode.ai/docs/server/"
+    },
+    {
+     "area": "architecture",
+     "feature": "One server, many first-party clients: TUI attach, web UI, ACP, IDE plugins, headless run",
+     "how": "`opencode attach <url>` points a TUI at a remote backend; `opencode web` serves a browser UI; `opencode acp` speaks Agent Client Protocol over nd-JSON stdio; IDE plugins drive the TUI through POST /tui/* endpoints (append-prompt, submit-prompt, open-models, show-toast); `opencode run --attach http://localhost:4096` reuses a warm server to skip MCP cold-boot on scripted runs. `opencode run --format json` emits raw JSON events for automation.",
+     "source_url": "https://opencode.ai/docs/cli/"
+    },
+    {
+     "area": "architecture",
+     "feature": "Type-safe SDK generated from the server spec",
+     "how": "`npm install @opencode-ai/sdk` gives `createOpencode()` which can spawn-and-connect or attach; a Go SDK (sst/opencode-sdk-go) is generated from the same spec. Plugins and integrations receive this same `client` object in their context.",
+     "source_url": "https://opencode.ai/docs/sdk/"
+    },
+    {
+     "area": "architecture/safety",
+     "feature": "Permission engine instead of an OS sandbox",
+     "how": "Official docs describe no OS-level sandbox; safety is `permission` config: allow/ask/deny per tool, object syntax with glob patterns (e.g. bash {\"*\":\"ask\",\"git *\":\"allow\",\"rm *\":\"deny\"}, last matching rule wins), per-agent overrides merged on top, `external_directory` boundary for paths outside the worktree, `.env` reads denied by default, and `doom_loop` which fires when the same tool call repeats 3x with identical input. `opencode --auto` auto-approves everything not explicitly denied \u2014 deny rules still hold. Docker image (ghcr.io) is offered for container isolation.",
+     "source_url": "https://opencode.ai/docs/permissions/"
+    },
+    {
+     "area": "context intelligence",
+     "feature": "/init repo analysis -> AGENTS.md, with CLAUDE.md compatibility and remote rule URLs",
+     "how": "`/init` scans key files, asks targeted questions when needed, and creates/updates AGENTS.md (build/lint/test commands, architecture, gotchas) improving it in place on re-run. Falls back to project CLAUDE.md and ~/.claude/CLAUDE.md and loads ~/.claude/skills (disable via OPENCODE_DISABLE_CLAUDE_CODE*). `instructions` config accepts globs (e.g. .cursor/rules/*.md) and remote URLs fetched with a 5s timeout.",
+     "source_url": "https://opencode.ai/docs/rules/"
+    },
+    {
+     "area": "context intelligence",
+     "feature": "LSP integration with 35+ auto-provisioned servers plus an agent-facing LSP tool",
+     "how": "Built-in table of LSP servers (gopls, rust-analyzer, pyright, jdtls, clangd, typescript, etc.) with auto-install for many; servers spin up when matching file extensions are opened and feed diagnostics back to the agent as feedback. An experimental `lsp` tool exposes goToDefinition, findReferences, hover, documentSymbol, workspaceSymbol, goToImplementation, prepareCallHierarchy, incoming/outgoingCalls. Custom servers configurable via `lsp` config (command/extensions/env/initialization). Notably honest docs: LSP is disabled by default because servers drift and eat memory \u2014 'in many projects it is better to have the agent run lint/typecheck CLI tools directly'.",
+     "source_url": "https://opencode.ai/docs/lsp/"
+    },
+    {
+     "area": "context intelligence",
+     "feature": "References: external dirs and git repos materialized into a managed cache as @-aliases",
+     "how": "`references` config maps an alias to a local path or a git repository (owner/repo shorthand, optional branch); OpenCode clones the repo into its local cache and exposes it via @-autocomplete. Descriptions are injected into agent system context so the model can pull a dependency's source when relevant; hidden flag omits from autocomplete; reference dirs are auto-allowed through the external_directory permission boundary while tool permissions still apply. Pairs with the read-only `scout` subagent for dependency research.",
+     "source_url": "https://opencode.ai/docs/references/"
+    },
+    {
+     "area": "context intelligence",
+     "feature": "Configurable context compaction with plugin-level prompt override",
+     "how": "`compaction` config: auto (compact when context full), prune (drop old tool outputs), reserved token buffer. Hidden `compaction`/`title`/`summary` system agents run automatically. Plugins hook `experimental.session.compacting` to inject extra context into the continuation summary or replace the entire compaction prompt (e.g. multi-agent swarm resume format). OPENCODE_DISABLE_AUTOCOMPACT env also supported.",
+     "source_url": "https://opencode.ai/docs/plugins/"
+    },
+    {
+     "area": "edit/diff UX",
+     "feature": "Precise edit toolset over ripgrep-backed search, with ignore-control",
+     "how": "Built-in tools: edit (exact string replacement), write, read (line ranges), apply_patch (marker-line patch text: Add/Update/Move/Delete File), grep + glob (both use ripgrep, respect .gitignore, overridable via project `.ignore` file with `!node_modules/` style entries), bash, todowrite, webfetch, websearch (hosted backend, no key), question (structured multiple-choice prompts to the user), skill.",
+     "source_url": "https://opencode.ai/docs/tools/"
+    },
+    {
+     "area": "edit/diff UX",
+     "feature": "Message-level undo/redo and revert backed by an internal git snapshot repo",
+     "how": "/undo removes the last user message, its responses, and the file changes; /redo restores; both use an internal git repository so the project must be git. Server API adds session-level fork-at-message, revert, unrevert and GET /session/:id/diff returning FileDiff[]. `snapshot: false` disables snapshots for huge repos (at the cost of losing UI rollback). TUI diff rendering has `diff_style: auto|stacked` (auto adapts to terminal width) plus a keybind to toggle diff wrapping.",
+     "source_url": "https://opencode.ai/docs/tui/"
+    },
+    {
+     "area": "sessions/subagents/parallelism",
+     "feature": "Two-tier agent system with child-session navigation and depth limits",
+     "how": "Primary agents (build = full access, plan = edits/bash forced to ask, switched with Tab) and subagents (general for parallel multi-step work, explore = fast read-only codebase search, scout = dependency research). Subagents spawn child sessions; keybinds session_child_first (<leader>down), session_child_cycle (right/left), session_parent (up) navigate between parent and children. `subagent_depth` caps nested subagent spawning (default 1); `permission.task` glob-gates which subagents an agent may spawn (denied ones are removed from the Task tool description); OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS enables background subagent tasks; failed subagent calls surface a resumable task_id.",
+     "source_url": "https://opencode.ai/docs/agents/"
+    },
+    {
+     "area": "sessions/subagents/parallelism",
+     "feature": "Session lifecycle as API surface: fork, resume, share, export/import",
+     "how": "Sessions support fork-at-message (`--fork` with --continue/--session, POST /session/:id/fork), list/resume, rename, abort, summarize; `opencode export` dumps a session as JSON (--sanitize to redact) and `opencode import` restores from a file or a share URL \u2014 share links are a portable session format. `opencode stats` reports token/cost/tool usage across sessions and projects.",
+     "source_url": "https://opencode.ai/docs/cli/"
+    },
+    {
+     "area": "sessions/share",
+     "feature": "First-class session sharing with three modes and enterprise controls",
+     "how": "/share creates a public link (opncd.ai/s/<id>) and copies it; config `share: manual|auto|disabled` (default manual); /unshare deletes the shared data; project-checked-in config can force-disable sharing for a team; enterprise can disable, restrict to SSO, or self-host.",
+     "source_url": "https://opencode.ai/docs/share/"
+    },
+    {
+     "area": "extensibility",
+     "feature": "Plugin system with before/after tool hooks, custom tools, and npm distribution",
+     "how": "JS/TS files in .opencode/plugins/ or ~/.config/opencode/plugins/ auto-load; npm plugins listed in config are bun-installed at startup into a shared cache. Hooks: tool.execute.before can mutate args or throw to block (canonical example: .env read protection), tool.execute.after, ~30 event types (session.*, message.*, lsp.client.diagnostics, permission.asked, tui.prompt.append, shell.env for env injection into every shell). Plugins can register custom tools via a `tool()` helper with Zod schemas, get an SDK `client` and Bun's `$` shell, and log via client.app.log.",
+     "source_url": "https://opencode.ai/docs/plugins/"
+    },
+    {
+     "area": "extensibility",
+     "feature": "MCP with local/remote servers, automatic OAuth, and per-agent scoping",
+     "how": "`mcp` config supports local (command + env + cwd + timeout) and remote (url + headers) servers; remote OAuth is automatic \u2014 detects 401, uses RFC 7591 dynamic client registration, stores tokens in ~/.local/share/opencode/mcp-auth.json \u2014 with `opencode mcp auth/list/logout/debug` for management and POST /mcp to add servers at runtime. MCP tools are disable-able globally via glob (`\"my-mcp*\": false`) and re-enabled per agent, addressing context bloat from tool-heavy servers.",
+     "source_url": "https://opencode.ai/docs/mcp-servers/"
+    },
+    {
+     "area": "extensibility",
+     "feature": "Markdown custom commands with templating, shell injection, and subtask forcing",
+     "how": "Commands are .md files (or JSON config) with frontmatter (description, agent, model); body is the prompt template supporting $ARGUMENTS and positional $1/$2, `!`\\`command\\`` shell-output injection, and @file references. `subtask: true` forces the command to run as a subagent so it doesn't pollute primary context. Custom commands override built-ins of the same name.",
+     "source_url": "https://opencode.ai/docs/commands/"
+    },
+    {
+     "area": "config quality",
+     "feature": "Eight-tier layered config with org remote defaults and admin/MDM override",
+     "how": "Precedence: remote org config from .well-known/opencode -> global ~/.config/opencode/opencode.json -> OPENCODE_CONFIG -> project opencode.json -> .opencode dirs -> OPENCODE_CONFIG_CONTENT inline -> admin-managed files (/etc/opencode, /Library/Application Support/opencode) -> macOS MDM .mobileconfig (ai.opencode.managed domain, cannot be user-overridden). JSON+JSONC, published JSON schemas (opencode.ai/config.json, tui.json) for editor autocompletion, {env:VAR} and {file:path} substitution for secrets, configs merge rather than replace, plus `opencode debug config` to inspect the resolved result.",
+     "source_url": "https://opencode.ai/docs/config/"
+    },
+    {
+     "area": "model routing",
+     "feature": "75+ providers via AI SDK + models.dev, with small-model offloading and runtime model switching",
+     "how": "Providers/models metadata comes from models.dev; `model` sets the main model (provider/model-id format), `small_model` routes cheap background tasks (title generation) to a cheaper model with automatic fallback; per-agent, per-command and per-CLI-invocation model overrides; enabled_providers/disabled_providers allowlists; provider options timeout/chunkTimeout/setCacheKey; custom providers via any @ai-sdk/* package including @ai-sdk/openai-compatible for OpenAI-compatible endpoints; `--variant` and variant_cycle keybind switch provider-specific reasoning effort at runtime; model favorites + recent cycling in TUI; OpenCode Zen is their own optional curated/benchmarked model gateway (opencode.ai/zen/v1) for verified model+provider combos.",
+     "source_url": "https://opencode.ai/docs/providers/"
+    },
+    {
+     "area": "TUI polish",
+     "feature": "Leader-key keybind system, which-key overlay, themes, and attention sounds",
+     "how": "~150 named keybinds in tui.json, all remappable, comma-separated chords, \"none\" to disable; ctrl+x leader with configurable leader_timeout and a which-key overlay (which_key_toggle) showing pending completions; command palette ctrl+p with persisted view settings; system theme regenerates a grayscale from the terminal background and uses ANSI 0-15 so it matches any palette, custom JSON themes with dark/light variants and color refs; attention config plays event-specific sounds (question, permission, error, done, subagent_done) and desktop notifications only when the terminal is blurred, with custom sound packs; mouse toggle, scroll_speed + macOS-style scroll acceleration, thinking-block visibility toggle, /details tool-output toggle, /editor ($EDITOR) and /export (markdown).",
+     "source_url": "https://opencode.ai/docs/keybinds/"
+    }
+   ],
+   "tui_ux_highlights": [
+    "Leader-key architecture: nearly every action is <leader>+key (ctrl+x default) with a which-key overlay that shows pending key completions \u2014 makes a huge keymap discoverable instead of memorized; every one of ~150 bindings is individually remappable or disable-able with \"none\" (https://opencode.ai/docs/keybinds/)",
+    "Subagent child sessions are first-class navigation: <leader>down enters the first child session, left/right cycles between children, up returns to the parent \u2014 parallel agent work stays one keypress away (https://opencode.ai/docs/agents/)",
+    "`system` theme generates a grayscale from the terminal's background color and uses ANSI colors 0-15, so the TUI always matches the user's terminal palette; custom themes are JSON with defs, color references, and dark/light variants (https://opencode.ai/docs/themes/)",
+    "Attention system: distinct sounds for question, permission, error, done, and subagent_done events plus desktop notifications that fire only when the terminal is blurred; custom sound packs and volume (https://opencode.ai/docs/tui/)",
+    "Command palette (ctrl+p) exposes view toggles (hide username, timestamps, conceal, diff wrap, tool details) that persist across restarts; /details toggles tool execution detail inline (https://opencode.ai/docs/tui/)",
+    "Tab cycles primary agents (build/plan) with a visible mode indicator in the lower-right \u2014 mode switching is one key, not a menu (https://opencode.ai/docs/)",
+    "diff_style \"auto\" adapts diff rendering to terminal width (stacked single-column on narrow terminals) (https://opencode.ai/docs/tui/)",
+    "Input model: `@` fuzzy file references, `!` prefix runs bash and injects output as a tool result, /editor composes in $EDITOR, full readline/emacs editing with input undo/redo and prompt stash/pop (https://opencode.ai/docs/tui/)",
+    "macOS-style scroll acceleration (speed ramps with fast gestures, precise when slow) plus configurable scroll_speed and mouse-capture toggle (https://opencode.ai/docs/tui/)"
+   ],
+   "would_steal_for_zcode": [
+    "Server-first core for a GLM-native agent: one daemon that owns sessions/providers/tools, with the TUI, headless run, web UI and IDE all as thin clients over a published OpenAPI spec + generated SDK; `attach` semantics (TUI or run --attach to a warm remote server) is the same shape we need for zcode across lab machines",
+    "Permission engine, not a sandbox pretense: allow/ask/deny with glob object rules, last-match-wins, per-agent merge on top of global, `--auto` that still enforces explicit denies, external_directory worktree boundary, .env denied by default \u2014 plus copy the `doom_loop` guard (identical tool call 3x -> recovery prompt) as a cheap anti-loop backstop",
+    "Agents as markdown files with frontmatter (description required, mode primary/subagent, model, temperature, permission block, hidden, color) + `permission.task` globs to gate which subagents an agent may spawn + subagent_depth cap \u2014 this is a complete, simple multi-agent governance model",
+    "Plugin hook surface: tool.execute.before/after that can mutate args or throw (the .env-protection example is the killer demo), shell.env injection, and especially the experimental.session.compacting hook to inject or fully replace the compaction prompt \u2014 critical for long GLM sessions with domain state",
+    "Config layering with an organizational tier: remote .well-known defaults -> global -> project -> admin-managed/MDM unoverridable tier, JSONC with published $schema for autocomplete, {env:}/{file:} substitution so API keys never live in config",
+    "small_model routing: send title generation/summaries/compaction to a cheap model (for zcode: glm-5.3-flash style) while the main loop uses the strong model, with automatic fallback",
+    "Runtime model routing UX: provider/model-id everywhere, per-agent and per-command overrides, --variant for reasoning-effort switching, model favorites + recent cycling \u2014 and the 'Zen' idea of a curated, benchmark-verified model list so users don't guess which GLM endpoint config actually works",
+    "References + scout pattern: declare dependency repos in config, materialize them into a managed cache, expose via @-aliases with descriptions injected into agent context \u2014 the best-designed 'read upstream source without polluting my repo' flow of any agent surveyed",
+    "Undo/redo at message granularity backed by an internal git snapshot repo, with fork-at-message on the server API \u2014 makes aggressive iteration safe and is nearly free to build on git",
+    "Share modes (manual/auto/disabled) with unshare-and-delete, plus session export/import as JSON including from a share URL \u2014 sessions become a portable artifact for team review",
+    "Honest LSP posture: ship the integration but default it off and document that CLI linters fed into the loop are often better \u2014 for zcode (Python/CUDA-heavy user) the lsp tool ops (incoming/outgoing calls, hover) are worth porting as opt-in",
+    "Attention events with distinct sounds for done/subagent_done/question/error, firing only when blurred \u2014 tiny implementation cost, large perceived-quality payoff for long agent runs"
+   ]
+  },
+  {
+   "agent": "Claude Code",
+   "features": [
+    {
+     "area": "extensibility (hooks)",
+     "feature": "Deterministic lifecycle hooks with matcher routing",
+     "how": "Hooks are user-defined shell commands in settings.json that fire at lifecycle events (PreToolUse/PostToolUse, UserPromptSubmit, Stop/StopFailure, SessionStart/SessionEnd, SubagentStart/Stop, PreCompact/PostCompact, TaskCreated/TaskCompleted, TeammateIdle, PreModelSwitch/PostModelSwitch, PermissionRequest, Setup). Regex matchers select tools (e.g. \"matcher\": \"Edit|Write\"); hooks receive event JSON on stdin and reply via exit codes (exit 2 = block with stderr feedback to the model) or structured stdout JSON; $CLAUDE_PROJECT_DIR makes hook scripts repo-relative. Deterministic control: 'certain actions always happen rather than relying on the LLM'.",
+     "source_url": "https://code.claude.com/docs/en/hooks-guide"
+    },
+    {
+     "area": "extensibility (hooks)",
+     "feature": "Five hook handler types incl. LLM-in-the-loop hooks",
+     "how": "Beyond 'command', hooks can be 'http' (POST event JSON to a URL), 'mcp_tool' (call a tool on a connected MCP server), 'prompt' (single-turn LLM evaluation returning ok/reason, 30s default timeout), or 'agent' (experimental multi-turn verification with tool access, up to 50 tool-use turns, 60s timeout). Async hooks (async: true) run in the background; multiple matching hooks all run and results are merged.",
+     "source_url": "https://code.claude.com/docs/en/hooks"
+    },
+    {
+     "area": "extensibility (hooks)",
+     "feature": "Context re-injection after compaction via SessionStart(compact) hook",
+     "how": "When the context window fills, compaction summarizes the conversation; a SessionStart hook with matcher 'compact' re-injects critical project context after every compaction by writing plain text to stdout. PreCompact/PostCompact hook events give programmatic control around compaction.",
+     "source_url": "https://code.claude.com/docs/en/hooks-guide"
+    },
+    {
+     "area": "sessions, subagents, parallelism",
+     "feature": "File-defined subagents with per-agent model, tools, and worktree isolation",
+     "how": "Subagents are Markdown files with YAML frontmatter in .claude/agents/ or ~/.claude/agents/. Frontmatter controls system prompt, tools/disallowedTools, an independent 'model:' field (e.g. model: haiku keeps exploration cheap), and 'isolation: worktree' which runs the subagent's Bash inside an isolated git worktree copy of the repo. Built-ins: Explore and Plan skip CLAUDE.md and parent git status to keep research fast/cheap; Claude passes a thoroughness level (quick/medium/very thorough) when invoking Explore.",
+     "source_url": "https://code.claude.com/docs/en/sub-agents"
+    },
+    {
+     "area": "sessions, subagents, parallelism",
+     "feature": "Conversation fork subagent (/subtask, /fork)",
+     "how": "/subtask (v2.1.212+) spawns a subagent that inherits the entire conversation so far, running it as a forked background subagent; /fork copies the whole session into a new background session. Lets long detours (deep research, verification) run off the main context budget without losing conversation state.",
+     "source_url": "https://code.claude.com/docs/en/sub-agents"
+    },
+    {
+     "area": "sessions, subagents, parallelism",
+     "feature": "Agent teams: lead + teammate sessions with shared task list and messaging",
+     "how": "Multiple Claude Code instances coordinate: one session is the team lead assigning tasks and synthesizing results; teammates get SendMessage, TaskCreate/TaskGet/TaskList/TaskUpdate tools, and per-teammate agent-definition model routing. Teammates can run in plan mode and send plan-approval requests to the lead; since v2.1.178 with CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS set, spawning needs no setup step and cleanup is automatic on session exit (TeamCreate/TeamDelete tools removed in favor of implicit teams).",
+     "source_url": "https://code.claude.com/docs/en/agent-teams"
+    },
+    {
+     "area": "sessions, subagents, parallelism",
+     "feature": "Agent view: one-screen fleet manager for background sessions",
+     "how": "'claude agents' opens a single screen listing every background session as a row \u2014 running / needs-input / done \u2014 dispatch new sessions from it, peek and reply inline, or attach for the full conversation. Each background session is a full conversation that keeps running without a terminal attached (research preview). Turn can also be backgrounded mid-flight (Ctrl+B / left-arrow).",
+     "source_url": "https://code.claude.com/docs/en/agent-view"
+    },
+    {
+     "area": "skills / slash ecosystem",
+     "feature": "SKILL.md skills on the Agent Skills open standard, with invocation and execution controls",
+     "how": "A SKILL.md file with YAML frontmatter becomes a /slash command and/or auto-invoked capability; Claude Code extends the cross-tool Agent Skills open standard with: allowed-tools permission grants, disable-model-invocation (human-only), argument-hint and named $arguments substitution, 'context: fork' to run the skill in its own subagent context, and plugin namespacing (/plugin-name:skill). Bundled skills include /doctor, /code-review, /batch, /debug, /loop, /claude-api. Name conflicts resolve enterprise > personal > project; descriptions are sanitized (control chars stripped, angle brackets escaped) before reaching the model.",
+     "source_url": "https://code.claude.com/docs/en/skills"
+    },
+    {
+     "area": "MCP",
+     "feature": "Full MCP client: 3 scopes, env-var expansion, OAuth/transports, tool search, resources, elicitation, and server mode",
+     "how": "claude mcp add supports stdio/SSE/streamable-http/ws transports with local/project (.mcp.json, shareable + env-var expansion like ${VAR}) /user scopes; remote servers get OAuth; '@' mentions reference MCP resources alongside files in autocomplete; MCP tool search defers tool loading when catalogs are huge; plugin-bundled MCP servers; managed managedMcpServers for orgs (changelog 2.1.259). Claude Code can also expose itself as an MCP server: 'claude mcp serve' (stdio).",
+     "source_url": "https://code.claude.com/docs/en/mcp"
+    },
+    {
+     "area": "checkpointing / rewind",
+     "feature": "Automatic checkpointing with a /rewind menu that restores code, conversation, or both \u2014 plus guided summarization",
+     "how": "Every user prompt snapshots edited files (100 most recent checkpoints kept; snapshots persist with the session so /rewind works after resume). Esc-Esc or /rewind opens a menu per prompt: Restore code and conversation / Restore conversation only / Restore code only / Summarize from here / Summarize up to here, with an optional free-text 'add context' field to guide the summary. Can even resume the pre-/clear session from the menu. Cleanup after 30 days via cleanupPeriodDays.",
+     "source_url": "https://code.claude.com/docs/en/checkpointing"
+    },
+    {
+     "area": "architecture / sandbox",
+     "feature": "OS-enforced sandboxed Bash with filesystem + network policy and auto-allow",
+     "how": "Sandboxed Bash uses macOS Seatbelt and Linux bubblewrap (WSL2 = bubblewrap; WSL1 unsupported) plus a socat proxy for network filtering, enforcing per-command file paths and network domain allowlists/denylists for the command and all children. 'Auto-allow' mode runs sandboxed commands without permission prompts (regular-prompts mode available); explicit security notes on allowUnixSockets (e.g. never /var/run/docker.sock), and hardened handling so sandboxed commands cannot redirect/replace their own output files.",
+     "source_url": "https://code.claude.com/docs/en/sandboxing"
+    },
+    {
+     "area": "permissions",
+     "feature": "Layered permission modes incl. plan mode and an auto-mode classifier",
+     "how": "Modes: default (prompt per action), acceptEdits (auto-accept edits + common fs commands in cwd/additionalDirectories), plan (read-only exploration, no source edits, plan approval before execution), bypassPermissions (skip prompts, isolated envs only) \u2014 plus 'auto mode' where a classifier reviews actions instead of the user. Rules are allow/ask/deny entries in settings files (checked into VCS for teams), editable live via /permissions which applies from the next tool call in the same turn; permission prompts accept a Tab-opened comment field so a deny can carry a note back to the model.",
+     "source_url": "https://code.claude.com/docs/en/permissions"
+    },
+    {
+     "area": "config quality",
+     "feature": "Four-tier settings files with documented precedence and managed enterprise settings",
+     "how": "Settings stack (highest wins): managed-settings.json (org, delivered from claude.ai console) > CLI --settings flag > .claude/settings.local.json (gitignored by default) > .claude/settings.json (project, committed) > ~/.claude/settings.json (user) > global config. 'claude doctor' reports dropped keys. Covers model, hooks, plugins, permissions, env vars per scope.",
+     "source_url": "https://code.claude.com/docs/en/settings"
+    },
+    {
+     "area": "context intelligence",
+     "feature": "Dual memory system: CLAUDE.md hierarchy + auto memory, plus scoped rules directory",
+     "how": "CLAUDE.md files at enterprise/user (~/.claude/CLAUDE.md)/project levels load at every conversation start, support imports, and .claude/rules/ scopes instructions to matching file types. Complementary 'auto memory' has Claude write its own notes from user corrections/preferences, also loaded at session start. Subagents (Explore/Plan) deliberately skip these to keep research context cheap.",
+     "source_url": "https://code.claude.com/docs/en/memory"
+    },
+    {
+     "area": "model routing",
+     "feature": "First-class model routing: aliases, opusplan split-mode, per-subagent models, fallback, allowlists",
+     "how": "Model selectable via /model (persisted to settings), --model flag, ANTHROPIC_MODEL, or settings 'model'; aliases 'opus'/'sonnet'/'haiku' resolve per provider. Special 'opusplan' mode runs the big model during plan mode and switches to a cheaper model for execution. Subagent/teammate definitions carry their own model with automatic fallback to another model instead of failing; org managed availableModels allowlists gate models and fast mode per surface.",
+     "source_url": "https://code.claude.com/docs/en/model-config"
+    },
+    {
+     "area": "architecture (client/server, headless)",
+     "feature": "Headless CLI mode + Agent SDK (Python/TypeScript) for programmatic embedding",
+     "how": "claude -p runs one-shot with --output-format text|json|stream-json (NDJSON), --allowedTools, --resume/--continue, structured --json-schema output, exit codes for CI branching, and a --bare mode that never touches OAuth/keychain. The same agent loop ships as Python and TypeScript SDK packages with tool-approval callbacks (canUseTool), native message objects, hooks, subagents, MCP, sessions, and permissions; other languages drive the CLI subprocess. Claude Code can also be consumed as an MCP server ('claude mcp serve').",
+     "source_url": "https://code.claude.com/docs/en/headless"
+    },
+    {
+     "area": "extensibility (plugins)",
+     "feature": "Plugins package skills + agents + hooks + MCP servers, distributable via marketplaces",
+     "how": "A plugin is a .claude-plugin/plugin.json manifest bundling skills, agents, hooks, and MCP servers under one namespaced command prefix (/plugin-name:skill) to prevent collisions; 'claude plugin init' scaffolds, plugins can live in ~/.claude/skills dir for auto-load, and plugin marketplaces handle discovery/distribution/versioned releases. Upgrade path documented: start standalone in .claude/, convert to plugin when sharing.",
+     "source_url": "https://code.claude.com/docs/en/plugins"
+    },
+    {
+     "area": "IDE integration",
+     "feature": "Native VS Code extension with editable plan/diff review and Chrome browser automation",
+     "how": "The extension embeds Claude Code with: plan review and direct editing of proposed content inside the diff view before accepting (Claude is told you modified it), @-mentions with line ranges from your selection, multiple conversations in separate tabs/windows, @browser automation via Claude in Chrome for testing web apps, diagnostic sharing, command palette commands, and session history. Uses a bundled private CLI copy; third-party providers (Bedrock, GCP) supported.",
+     "source_url": "https://code.claude.com/docs/en/ide-integrations"
+    },
+    {
+     "area": "workflows / sessions",
+     "feature": "Worktree-based parallel sessions, resumable sessions, and script piping",
+     "how": "Documented workflows: run parallel sessions on separate git worktrees so concurrent edits don't collide; --continue/--resume restore unexpired conversations across sittings; pipe Claude into scripts/CI ('claude -p ... | ...'); plan-then-edit gate before touching disk; delegate research to subagents to keep main context clean. A 'Run agents in parallel' doc compares subagents vs agent teams vs worktrees vs agent view.",
+     "source_url": "https://code.claude.com/docs/en/common-workflows"
+    },
+    {
+     "area": "workflows",
+     "feature": "Workflow tool for scripted orchestration of many subagents",
+     "how": "The changelog documents a Workflow tool that lets the agent author dynamic workflows orchestrating many subagents at once, with its reference material moved into a bundled 'workflow-authoring' skill (~1k-token prompt footprint, down from 5.7k). Verified via official changelog; dedicated docs page not found (marked as changelog-sourced).",
+     "source_url": "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md"
+    }
+   ],
+   "tui_ux_highlights": [
+    "Rewind menu (Esc-Esc or /rewind): per-prompt restore of code / conversation / both, plus 'Summarize from here' and 'Summarize up to here' with an optional inline 'add context' field to steer the summary \u2014 summarized turns get an inline marker and the original prompt is restored to the input for editing/re-send.",
+    "Checkpoints survive resume and even /clear: the rewind menu offers '/resume <session-id> (previous session)' to recover the pre-clear conversation.",
+    "Agent view ('claude agents'): every background session is a row with live state (running / needs input / done); peek to reply or attach for the full conversation; sessions keep running with no terminal attached; a turn can be backgrounded mid-flight (Ctrl+B or left-arrow).",
+    "Live-editable permission system: /permissions can be opened mid-turn and rule changes apply from the very next tool call; permission prompts have a Tab-opened comment field so approvals/denials carry a note back to the model.",
+    "Interactive wizards are being deprecated in favor of file-based config: as of v2.1.198 /agents no longer opens a creation wizard \u2014 it just reminds you to ask Claude to write the agent file (TUI stays thin, config stays auditable).",
+    "Autocomplete-grade ergonomics: '@' lists files AND MCP resources together; skill argument-hint frontmatter feeds argument hints into autocomplete; fast arrow-key+Enter mis-fires in pickers (/mcp, /skills, /model, background tasks) are explicitly fixed in the changelog.",
+    "Hooks are inspectable in-TUI: /hooks and /debug list every configured hook with matchers, source settings file, and full handler details across all five hook types.",
+    "Prompt-cache-aware UX: /model and /effort avoid cache-busting warnings after rewinding; SessionStart resume hooks even receive session staleness and the estimated re-cache cost.",
+    "Remote Control: sessions hosted in terminal/Desktop/VS Code mirror permission mode, model, and effort level to a phone or claude.ai/code, and picks made there apply back to the hosted session."
+   ],
+   "would_steal_for_zcode": [
+    "Five-type hook architecture (command / http / mcp_tool / prompt / agent) with matcher regex, stdin JSON, exit-code-2 blocking, and async \u2014 but make 'prompt'/'agent' hooks GLM-native by defaulting them to glm-flash for cheap deterministic-guardrail evaluation; add SessionStart(compact) re-injection as a first-class pattern from day one.",
+    "Subagents as plain Markdown + YAML frontmatter with per-agent model: (route mechanical work to a small GLM flash model), tools/disallowedTools, and isolation: worktree for parallel non-colliding edits \u2014 file-based config is diffable, reviewable, and wizard-free.",
+    "Checkpointing + /rewind with the 3-way restore split (code / conversation / both) and guided 'summarize from/up to here' \u2014 for zcode this is the single highest-value safety UX: snapshot before each prompt, cap at ~100 checkpoints, keep snapshots with the session so rewind works after resume.",
+    "Sandboxed Bash with OS primitives (bubblewrap on Linux) + auto-allow mode: this is how Claude Code cuts permission-prompt fatigue without losing safety \u2014 zcode should ship bwrap-based fs/network policy with allow/deny domains and refuse docker.sock-style socket grants.",
+    "Model routing like 'opusplan': plan on the strongest model, execute on the cheap one \u2014 map to GLM: glm-5.x for planning, glm-flash for execution, per-subagent model fields, and managed availableModels allowlists for teams.",
+    "Skills as SKILL.md on the Agent Skills open standard with Claude Code's extensions: context: fork (run skill in subagent context), disable-model-invocation, argument-hint/$arguments, plugin namespacing, and enterprise > personal > project precedence.",
+    "Headless-first CLI contract: -p one-shot with --output-format json/stream-json, structured --json-schema output, meaningful exit codes, and an SDK story (or documented subprocess contract) so zagent is embeddable in CI from release one.",
+    "Permission design trio: acceptEdits / plan / bypassPermissions modes + allow/ask/deny rules committed to VCS + a live /permissions dialog and Tab-comment-on-deny that feeds the note back to the model.",
+    "Agent view fleet screen: one TUI listing all background zcode sessions with running/needs-input/done states, peek-and-reply, and attach \u2014 paired with backgroundable turns (Ctrl+B) and task-notification wake-ups instead of polling.",
+    "MCP client with scopes + env-var expansion in .mcp.json + tool search (defer tool loading when catalogs are large) \u2014 and expose zcode itself as an MCP server so other agents can drive it.",
+    "Settings precedence stack with managed-settings for enterprise + 'doctor' command that reports dropped/ignored config keys.",
+    "Two-tier memory: committed CLAUDE.md-style hierarchy plus auto-written memory notes from user corrections, with scoped rules (.zcode/rules/) gated by file globs."
+   ]
+  },
+  {
+   "agent": "Cursor (cursor-agent CLI + IDE Agent + Cloud Agents)",
+   "features": [
+    {
+     "area": "architecture",
+     "feature": "Client/server via ACP server mode [CLI]",
+     "how": "`agent acp` runs the Cursor CLI as an Agent Client Protocol server over stdio with JSON-RPC messaging, so arbitrary editors/clients can drive the same agent. Same mcp.json, rules, and modes are honored by the CLI.",
+     "source_url": "https://cursor.com/docs/cli/using"
+    },
+    {
+     "area": "architecture",
+     "feature": "Local agent sandbox with declarative sandbox.json policy [CLI + IDE]",
+     "how": "Uniform sandbox API per-OS: macOS Seatbelt (sandbox-exec, policy generated at runtime from workspace+admin settings and .cursorignore), Linux Landlock+seccomp with workspace mapped into overlayfs so ignored files become unreadable/unwritable Landlocked copies, Windows via WSL2. Claimed 40% fewer approval interruptions. sandbox.json supports workspace_readwrite/workspace_readonly modes, networkPolicy (deny-by-default, exact-domain/wildcard/CIDR patterns, private-range and 169.254.169.254 SSRF blocks always on), additionalRead{write,only}Paths, protected paths (.cursor/*.json, .git/hooks, .cursorignore always unwritable), and merge precedence per-user < per-repo < team-admin < hardcoded. CLI toggles with /sandbox or --sandbox.",
+     "source_url": "https://cursor.com/docs/reference/sandbox"
+    },
+    {
+     "area": "architecture",
+     "feature": "TS/Python SDK exposing the same agent programmatically [programmatic]",
+     "how": "@cursor/sdk wraps three runtimes behind one interface: Local (agent loop inline in your Node process, files from disk), Cloud Cursor-hosted VM, Cloud self-hosted pool. Core concepts: Agent (durable conversation container), Run (one prompt with own stream/status/cancel), SDKMessage (same event shape across runtimes). Model routing exposed as model id auto-smart with optimize_for param. Jun-2026 SDK updates added custom stores, custom tools, auto-review, nested subagents; a separate SDK Bridge exposes the same surface over Connect/protobuf.",
+     "source_url": "https://cursor.com/docs/sdk/typescript"
+    },
+    {
+     "area": "context-intelligence",
+     "feature": "Encrypted semantic codebase indexing [IDE-hosted index, serves agent + CLI]",
+     "how": "Code chunked into functions/classes/logical blocks, embedded with a custom model into a vector DB; incremental sync every 5 minutes processing only changed files; semantic search available at 80% index completion; deleted after 6 weeks inactivity. Privacy: file paths encrypted in transit, code never stored plaintext server-side, chunks decrypted client-side at query time, custom path-decryption key via .cursor/keys; .gitignore/.cursorignore excluded. Cursor claims 12.5% higher answer accuracy vs grep alone when combined.",
+     "source_url": "https://cursor.com/docs/agent/tools/search"
+    },
+    {
+     "area": "context-intelligence",
+     "feature": "Agentic search strategy selection: Instant Grep + semantic + Explore subagent [agent-wide]",
+     "how": "Agent picks tool by prompt shape: exact symbol -> Instant Grep (Cursor's custom engine, claimed to outperform ripgrep, full regex); concept -> semantic search then grep; complex exploration -> chained searches/read. For broad search it spawns the built-in Explore subagent: own context window, faster model, many parallel searches, only findings returned so main context is not bloated. Gap note for zcode: Cursor documents NO LSP-based or tree-sitter repo-map context feeding the agent (nothing like Aider's repo map) \u2014 search is grep+embeddings only (UNVERIFIED elsewhere).",
+     "source_url": "https://cursor.com/docs/agent/tools/search"
+    },
+    {
+     "area": "extensibility",
+     "feature": "Four-type rules system with frontmatter application matrix [all surfaces; CLI also reads CLAUDE.md]",
+     "how": "Project rules in .cursor/rules/*.mdc with frontmatter matrix: alwaysApply=true -> always; globs set -> auto-attach when matching file in context; description set -> agent pulls in when relevant; neither -> only via @-mention. Plus User Rules (global), Team Rules (dashboard), and plain AGENTS.md. The CLI explicitly reads AGENTS.md AND CLAUDE.md at project root and applies them as rules alongside .cursor/rules \u2014 deliberate cross-harness compatibility.",
+     "source_url": "https://cursor.com/docs/rules"
+    },
+    {
+     "area": "sessions-parallelism",
+     "feature": "Subagents: built-in trio + markdown-defined custom subagents [editor + CLI + cloud]",
+     "how": "Each subagent has its own context window and returns only a final result; foreground (blocking) or background (async) modes. Built-ins derived from analysis of context-window-exhaustion conversations: Explore (search), Bash (verbose command output), Browser (noisy DOM/screenshots) \u2014 chosen automatically, Explore on a faster/cheaper model. Custom subagents are .md files with YAML frontmatter (name, description, model: inherit, readonly: true, tool access) in .cursor/agents/ (project) or ~/.cursor/agents/ (user), and Cursor ALSO reads .claude/agents/ and .codex/agents/ with .cursor taking precedence \u2014 direct Claude Code compatibility. Cloud subagents can run each on its own VM with an isolated project copy ('swarm' independent fixes).",
+     "source_url": "https://cursor.com/docs/subagents"
+    },
+    {
+     "area": "edit-diff-ux",
+     "feature": "Checkpoints (IDE) and /rewind (CLI) for undo [IDE + CLI]",
+     "how": "IDE: automatic snapshots before significant changes, shown in chat timeline; restoring reverts files only and never deletes messages; stored locally, explicitly separate from git. CLI: `rewind` config field enables a /rewind command to restore an earlier message in the session. Cursor's guidance: use checkpoints only to undo agent edits, git for real version control.",
+     "source_url": "https://cursor.com/docs/agent/overview"
+    },
+    {
+     "area": "edit-diff-ux",
+     "feature": "In-CLI diff review surface [CLI]",
+     "how": "Ctrl+R opens review of agent changes inside the TUI: `i` adds follow-up instructions on the diff, Up/Down scrolls, Left/Right switches files. Terminal command approval is y/n per command before execution; non-interactive -p mode has full write access by design.",
+     "source_url": "https://cursor.com/docs/cli/using"
+    },
+    {
+     "area": "review",
+     "feature": "Agent Review + Bugbot: layered automated review workflows [IDE for Agent Review; cloud/SCM for Bugbot; CLI support coming soon]",
+     "how": "Agent Review (IDE): dedicated code-review pass on local changes, auto-run after every commit, via /agent-review, or from Source Control vs main branch, with Quick vs Deep depth/cost levels; reads BUGBOT.md rule files. Bugbot (cloud): automatic PR review on every update plus manual `cursor review` / `bugbot run` comments, publishes CI check statuses (success/neutral/failure with fail-on-unresolved option), incremental diffs by default, effort levels (Low/Default/High/Smart), rules merged from team -> .cursor/BUGBOT.md per directory -> learned rules (auto-learned or taught via `@cursor remember`) -> manual, per-directory scoped; Autofix spawns a Cloud Agent to fix findings (max 3 attempts per PR); Enterprise API with dryRun. Clever dedupe: /review-bugbot stores the git patch-id so the SCM-side Bugbot recognizes and skips re-reviewing the same diff.",
+     "source_url": "https://cursor.com/docs/bugbot"
+    },
+    {
+     "area": "sessions-parallelism",
+     "feature": "Plan Mode as a first-class mode [IDE + CLI]",
+     "how": "Agent asks clarifying questions, researches the codebase, produces a reviewable implementation plan you edit via chat or markdown, then click-to-build. Plans saved to home dir by default with 'Save to workspace' for team sharing. Cursor's own guidance: for a wrong result, revert and refine the plan rather than patch in-flight work. CLI access: Shift+Tab rotation, /plan, or --plan / --mode=plan flags.",
+     "source_url": "https://cursor.com/docs/agent/plan-mode"
+    },
+    {
+     "area": "sessions-parallelism",
+     "feature": "Queued messages + mid-run steering at safe boundaries [all surfaces incl. CLI]",
+     "how": "Two channels while the agent works: queue a message (Enter) for after the current task, or steer now \u2014 the follow-up is delivered at the agent's NEXT tool call instead of cutting work mid-action, preserving in-flight tool results. CLI semantics: first Enter steers the active run at a safe boundary; second Enter interrupts the turn. IDE adds Cmd+Enter to bypass the queue and drag-to-reorder queued messages.",
+     "source_url": "https://cursor.com/docs/agent/overview"
+    },
+    {
+     "area": "sessions-parallelism",
+     "feature": "/goal rolling objective + /loop recurring check-ins [agent-wide; Ctrl+C pause in CLI]",
+     "how": "/goal sets a long-lived objective the agent works toward until fully complete (vs treating each message as a new job), e.g. `/goal fix all flaky tests and make CI green`; Ctrl+C pauses a goal in the CLI; designed to pair with Custom Modes (skills pinned as modes) and the built-in /loop skill for recurring check-ins while pursuing the objective.",
+     "source_url": "https://cursor.com/docs/agent/overview"
+    },
+    {
+     "area": "sessions-parallelism",
+     "feature": "Git worktrees as a CLI flag + declarative worktree setup + /best-of-n [CLI -w flag; IDE Agents Window UI]",
+     "how": "`agent --worktree [name]` runs the task in a fresh git worktree under ~/.cursor/worktrees/<repo>/<name> (generates a name if omitted), combinable with --workspace <path>; cleanup follows editor retention rules. .cursor/worktrees.json declares setup via per-OS keys (setup-worktree-unix/windows/generic) taking command arrays or script paths with $ROOT_WORKTREE_PATH available; machine-wide cleanup keeps a max (default 25) worktrees. IDE skills: /worktree for one isolated run, /apply-worktree, /delete-worktree, and /best-of-n sonnet,gpt,composer <task> to race the same task across models in isolated worktrees and apply the winner.",
+     "source_url": "https://cursor.com/docs/cli/using"
+    },
+    {
+     "area": "sessions-parallelism",
+     "feature": "Cloud Agents: VM fleet with warm Builds, event subscriptions, multi-repo, and one-char handoff [cloud; CLI hands off via & prefix]",
+     "how": "Agents run in isolated cloud VMs (or your machines via My Machines / Self-Hosted Pools with hibernation); environments declared in .cursor/environment.json (agent-led setup, snapshot, or Dockerfile); 'Builds' pre-prepare environments in the background so agents boot ready (claimed 10x boot, 3x faster first token; broken builds never activate). Parallelism is unbounded and local-machine-independent. Triggers: web/mobile, desktop, Slack/GitHub/Bitbucket/Linear @cursor, API; agents auto-subscribe to PRs they create and drive CI and bot comments to green. CLI-to-cloud handoff: prepend & to any message mid-conversation. Multi-repo workspaces supported. Cloud agents always run in Max Mode (largest context).",
+     "source_url": "https://cursor.com/docs/cloud-agent"
+    },
+    {
+     "area": "extensibility",
+     "feature": "Hooks: scriptable agent-loop lifecycle gates [project/user level; command-based subset in cloud agents; Claude Code hook compat]",
+     "how": "hooks.json (project .cursor/hooks.json or ~/.cursor/hooks.json) spawns processes communicating over stdio JSON both directions, before/after loop stages: sessionStart/End, preToolUse/postToolUse/postToolUseFailure, subagentStart/Stop, beforeShellExecution/afterShellExecution, beforeMCPExecution/afterMCPExecution, beforeReadFile/afterFileEdit, beforeSubmitPrompt, preCompact, stop, afterAgentResponse/afterAgentThought \u2014 enabling formatters, PII/secret scans, gating SQL writes, context injection at session start. Hooks can observe, block, or modify behavior. Explicitly supports loading third-party hooks from Claude Code. Cloud agents run the command-based subset (sessionStart/sessionEnd/MCP hooks excluded because cloud VMs may start read-only); Tab hooks (beforeTabFileRead/afterTabFileEdit) are IDE-only.",
+     "source_url": "https://cursor.com/docs/hooks"
+    },
+    {
+     "area": "extensibility",
+     "feature": "MCP with full capability surface and enterprise governance [all surfaces incl. CLI auto-detection]",
+     "how": "mcp.json at project or global scope; stdio, SSE, and Streamable HTTP transports; supports Tools/Prompts/Resources/Roots/Elicitation and the MCP Apps extension (tools returning interactive UI with progressive enhancement). Config interpolation ${env:}, ${workspaceFolder}, envFile; static OAuth client credentials for servers lacking dynamic registration with per-surface redirect URLs. Enterprise: team marketplace distribution, MCP allowlists by command/URL pattern plus per-tool allowlists, per-server network modes (allow all / allowlist / deny all / no sandbox), user-MCP denylist. The CLI auto-detects and reuses the editor's mcp.json, and MCP tool calls follow the same Run Mode approval policy as terminal commands.",
+     "source_url": "https://cursor.com/docs/mcp"
+    },
+    {
+     "area": "config",
+     "feature": "Versioned cli-config.json with typed permissions, approval modes, and display controls [CLI]",
+     "how": "~/.cursor/cli-config.json (global) + .cursor/cli.json (project, permissions only); versioned schema with self-repair (corrupt file backed up as .bad and recreated). permissions.allow/deny use exact strings like Shell(ls) / Shell(rm); approvalMode = allowlist | auto-review | unrestricted. Display/UX fields: vimMode, notifications on finish/needs-input, hints, rewind, suggestNextPrompt, showLineNumbers, showThinkingBlocks, terminal-title status indicators, elapsed-time in status line. Operational: HTTP/1.1+SSE fallback for enterprise proxies, NODE_EXTRA_CA_CERTS, commit/PR attribution toggles (Made with Cursor trailer, default on), /model picker incl. auto, CURSOR_CONFIG_DIR/XDG override.",
+     "source_url": "https://cursor.com/docs/cli/reference/configuration"
+    },
+    {
+     "area": "config",
+     "feature": "Machine-readable output contract for headless runs [CLI -p/--print]",
+     "how": "--output-format json emits one result object on success (type/subtype/is_error/duration_ms/result/session_id/request_id; non-zero exit + stderr on failure, never malformed JSON); stream-json emits NDJSON events: system init (apiKeySource/cwd/session_id/model/permissionMode), user, assistant (one per message between tool calls), tool_call started/completed with correlatable call_id and typed payloads (readToolCall/writeToolCall with result metadata), terminal result event; --stream-partial-output adds character-level deltas with timestamp_ms/model_call_id so consumers can de-dupe buffered flushes. Backward-compatible field-addition policy documented; text format = final message only.",
+     "source_url": "https://cursor.com/docs/cli/reference/output-format"
+    },
+    {
+     "area": "model-routing",
+     "feature": "Cursor Router: per-request ML classifier model routing [all surfaces; Teams/Enterprise; SDK auto-smart]",
+     "how": "Auto mode runs a classifier on each agent request and routes to the most cost-effective model with comparable quality; optimization modes Cost / Balance / Intelligence steer the router (you cannot pin a specific model \u2014 router is Cursor-managed and pool changes over time). Admin controls: enable per team/org-group, restrict selectable modes (disable up to 2), hide the underlying model name from users by default (judge results on merit), and Impose Auto soft (default) or hard (lock picker). Exposed to SDK/API as model id auto-smart with optimize_for=cost|balanced|intelligence. Request-level model+cost visibility on the usage dashboard; on-demand usage never downgrades quality or speed.",
+     "source_url": "https://cursor.com/docs/cursor-router"
+    }
+   ],
+   "tui_ux_highlights": [
+    "Mid-run steering semantics: first Enter delivers your follow-up at the next safe tool-call boundary (in-flight work preserved), second Enter hard-interrupts the turn \u2014 explicit, documented two-stage interruption contract in the CLI",
+    "One-character cloud handoff: prefix any message with `&` mid-conversation to push it to a cloud agent; pick up on web or mobile at cursor.com/agents",
+    "Ctrl+R in-CLI diff review: `i` to add follow-up instructions directly against the diff, Up/Down scroll, Left/Right switch files; per-command y/n approval before shell execution",
+    "Masked sudo password prompt inside the TUI: password flows to sudo over a secure IPC channel and the model never sees it",
+    "/sandbox interactive menu: toggle sandboxing and network access from inside the session; settings persist across sessions",
+    "Shift+Tab rotates Agent/Plan/Ask modes; tmux-safe newline guidance (Ctrl+J or +Enter) because Shift+Enter only works in iTerm2/Ghostty/Kitty/Warp/Zed \u2014 docs acknowledge real terminal differences",
+    "@-mention files/folders into context and /summarize (alias /compress) to free the context window mid-session without losing the thread",
+    "Session continuity as TUI verbs: `agent ls` opens previous chats to resume, `agent resume` / --continue / --resume=<id> / /resume",
+    "Status surfacing is configurable: terminal-title status indicators, elapsed running time in the status line, terminal notification when the agent finishes or needs input, optional rendered thinking blocks and line numbers in code blocks, optional next-prompt suggestion at turn end",
+    "ArrowUp cycles previous prompts; queued messages can be reordered by dragging in the IDE while the agent works",
+    "Vim keybinding mode (editor.vimMode) in the TUI for modal editing users"
+   ],
+   "would_steal_for_zcode": [
+    "The stream-json NDJSON event contract (system init / user / assistant / tool_call started+completed with correlatable call_id / terminal result, plus --stream-partial-output with model_call_id de-dupe) \u2014 the cleanest headless automation interface of any agent CLI studied; make it zcode's -p output contract from day one",
+    "sandbox.json pattern: declarative filesystem+network policy with documented merge precedence (user < repo < team < hardcoded), deny-default network with domain/wildcard/CIDR rules, always-on SSRF blocks, and write-protected agent-config paths so the agent can never rewrite its own permissions",
+    "Per-platform sandbox implementation notes (macOS Seatbelt generated policy, Linux Landlock+seccomp+overlayfs for .cursorignore-enforcement, WSL2 on Windows) \u2014 directly applicable to a GLM-native CLI that must not break builds while cutting approval prompts",
+    "`agent -w` worktree flag with managed checkout path + .cursor/worktrees.json per-OS setup hooks ($ROOT_WORKTREE_PATH) + machine-wide retention caps \u2014 cheapest possible parallelism for zcode",
+    "Custom subagents as markdown+YAML files (model/readonly/tools fields) auto-discovered from .cursor/agents, PLUS reading .claude/agents and .codex/agents for cross-harness compatibility \u2014 zcode should equally read Claude-style agent files and ship built-in Explore/Bash subagents chosen for context isolation with a cheaper model",
+    "Rules frontmatter matrix (alwaysApply x globs x description giving always/auto-attach/agent-selected/@-mention semantics) and reading AGENTS.md AND CLAUDE.md from project root as fallback rule sources",
+    "Hook event set over stdio JSON with block/modify semantics \u2014 especially beforeShellExecution, beforeReadFile, beforeSubmitPrompt, preCompact, subagentStart/Stop \u2014 plus explicit Claude Code hooks compatibility",
+    "Exact-string permission allowlist (Shell(rm) style) + three approvalModes (allowlist / auto-review / unrestricted) where auto-review routes risky commands through a classifier instead of prompting every time",
+    "Cursor Router as the blueprint for GLM-native routing: per-request classifier with Cost/Balance/Intelligence modes across a glm-fast/glm-reasoning pool, admin-imposable soft/hard Auto, hidden underlying model by default, and an auto-smart-style model id for scripts",
+    "Checkpoints: automatic pre-edit snapshots, file-only restore that never destroys conversation, stored locally and explicitly separate from git",
+    "The `&` cloud-handoff gesture and agent ls/resume session pickers \u2014 conversation portability between local TUI and remote runners as a first-class verb",
+    "Steering-at-next-tool-call semantics (delivered follow-up instead of hard interrupt) to preserve in-flight work",
+    "/goal rolling objective with Ctrl+C pause, paired with custom modes and a /loop skill for recurring check-ins",
+    "Multi-model racing: /best-of-n runs one task across models in isolated worktrees and applies the winner \u2014 natural fit for racing GLM variants against a frontier model",
+    "Bugbot's patch-id dedupe between local pre-push review and remote PR review, and per-directory BUGBOT.md-scoped review rules with learned rules",
+    "Semantic-index privacy design: encrypted paths, client-side chunk decryption, embeddings-only server state, ignore-file-aware, 5-minute incremental sync \u2014 plus the honest gap that Cursor has NO LSP/repo-map layer, so a zcode LSP-enriched context layer would be a differentiator, not parity work"
+   ]
+  },
+  {
+   "agent": "OpenAI Codex CLI (openai/codex)",
+   "features": [
+    {
+     "area": "architecture",
+     "feature": "Client/server split: Codex app-server (open source, codex-rs/app-server) speaks JSON-RPC 2.0 over stdio JSONL, WebSocket, or Unix socket and powers the VS Code extension, the ChatGPT desktop app, and a remote TUI (codex --remote ws://host:port)",
+     "how": "Core primitives are Thread > Turn > Item; clients initialize once, then thread/start, thread/resume, thread/fork, turn/start, turn/steer, turn/interrupt and stream item/started, item/completed, item/agentMessage/delta notifications. `codex app-server generate-ts` and `generate-json-schema` emit version-pinned client bindings. Health probes /readyz /healthz on the ws listener; bounded queues return JSON-RPC -32001 'Server overloaded; retry later' for backpressure. For CI/scripting the docs point to the Codex SDK instead of raw app-server.",
+     "source_url": "https://learn.chatgpt.com/docs/app-server"
+    },
+    {
+     "area": "architecture",
+     "feature": "Single open-source Rust binary, Apache-2.0, static per-platform archives (codex-x86_64-unknown-linux-musl etc.), installed via curl script, npm @openai/codex, or brew cask; ~121k stars / 18.6k forks at time of fetch",
+     "how": "Repo tagline: 'Lightweight coding agent that runs in your terminal'. Auth is ChatGPT OAuth (Sign in with ChatGPT, Plus/Pro/Business/Edu/Enterprise plans) or API key via `codex login --with-api-key` (stdin), plus device-auth flow; `codex login status` exits 0 when credentials exist, which is CI-friendly.",
+     "source_url": "https://github.com/openai/codex"
+    },
+    {
+     "area": "sandbox",
+     "feature": "Platform-native OS sandbox as the autonomy boundary: macOS Seatbelt out of the box; Linux/WSL2 uses bubblewrap (first bwrap on PATH, bundled fallback requiring unprivileged user namespaces, with explicit Ubuntu AppArmor userns-profile remediation); native Windows sandbox using restricted lower-privilege sandbox users, filesystem boundaries, and firewall rules, with a degraded restricted-token mode plus /setup-default-sandbox elevated setup flow",
+     "how": "Sandbox applies to every spawned command (git, package managers, test runners inherit it), not just built-in file ops. `codex sandbox` exposes the same machinery as a standalone helper: macOS Seatbelt (--log-denials captures denial logs), Linux Landlock+seccomp, Windows native. Three modes: read-only / workspace-write / danger-full-access.",
+     "source_url": "https://learn.chatgpt.com/docs/sandboxing"
+    },
+    {
+     "area": "sandbox",
+     "feature": "Sandbox mode and approval policy are orthogonal, independently configurable axes; default low-friction preset is `--sandbox workspace-write --ask-for-approval on-request`",
+     "how": "Approval policies: untrusted / on-request / never plus a granular policy object (approval_policy = { granular = { sandbox_approval, rules, mcp_elicitations, request_permissions, skill_approval } }) to fail-closed specific prompt categories. workspace-write keeps .git/ and .codex/ read-only inside the workspace (so git commit still prompts), supports writable_roots and [sandbox_workspace_write] network_access opt-in, exclude_tmpdir_env_var, exclude_slash_tmp. Guidance: prefer --add-dir over danger-full-access.",
+     "source_url": "https://learn.chatgpt.com/docs/sandboxing"
+    },
+    {
+     "area": "sandbox",
+     "feature": "Auto-review: a reviewer agent can replace the human at the approval boundary (approvals_reviewer = \"auto_review\")",
+     "how": "Eligible approvals (sandbox escalations, blocked network, side-effecting tool calls) go to a reviewer agent configured via [auto_review].policy (local policy text; managed guardian_policy_config takes precedence). /approve in the TUI retries one auto-review denial. Docs stress this changes who reviews, not the sandbox boundary itself.",
+     "source_url": "https://learn.chatgpt.com/docs/sandboxing"
+    },
+    {
+     "area": "exec-and-structured-output",
+     "feature": "First-class non-automation surface: `codex exec` with JSONL event stream, schema-validated final answer, and resumability",
+     "how": "`codex exec --json` emits newline-delimited JSON events (one per state change); `--output-schema <file>` gives a JSON Schema for the final response which Codex validates; `--output-last-message -o <file>` writes the final assistant message for downstream scripting; `--ephemeral` runs without persisting rollout files; prompt can be piped via `-`; docs recommend pairing `--json` with `--output-last-message` in CI.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "sessions",
+     "feature": "Session lifecycle as named first-class objects: resume, fork, archive, delete, rename \u2014 for both interactive and exec sessions",
+     "how": "`codex resume [SESSION_ID|--last]` (cwd-scoped by default, --all to widen, --include-non-interactive), `codex exec resume [SESSION_ID|--last|--all]` for scripted runs; `codex fork` clones a transcript into a new chat id; archive/unarchive preserves transcripts while cleaning the picker; delete --force only accepts UUIDs (names require interactive confirmation to avoid deleting ambiguous names); tui.resume_cwd = \"current\"|\"session\" auto-answers the cwd-mismatch prompt.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "guided-workflows",
+     "feature": "Plan mode and persistent goals as built-in collaboration modes",
+     "how": "/plan switches the active chat into plan mode (accepts inline prompt + images; unavailable mid-turn) to get an execution plan before implementation. /goal sets a persistent objective attached to the chat with /goal edit|pause|resume|clear (max 4000 chars); mirrored in app-server as thread/goal/set|get|clear. Slash-command table also lists /reasoning, /personality, /cloud, /worktree (run the chat in a new git worktree).",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "steering",
+     "feature": "Mid-turn steering at three levels: queue (Tab), inject into the running turn (Enter), or edit-and-fork (Esc Esc)",
+     "how": "Tab queues a follow-up prompt/slash/shell command for the next turn; Enter injects new instructions into the in-flight turn (app-server equivalent: turn/steer appends input to the active turn); Esc-Esc on an empty composer edits the previous user message and forks the chat from that point. turn/interrupt cancels; /side opens an ephemeral side chat fork while the TUI keeps showing the parent chat status.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "review",
+     "feature": "Code review as a first-class, non-mutating command with explicit targets",
+     "how": "`codex review --uncommitted|--base <branch>|--commit <sha>|<custom prompt via stdin>` (targets are mutually exclusive; --title requires --commit); the CLI-overview page states Codex 'reports prioritized findings without modifying your working tree'; /review in the TUI uses review_model from config.toml by default. app-server exposes review/start with enteredReviewMode/exitedReviewMode items.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "diff-ux",
+     "feature": "Diff surface: /diff shows staged + unstaged + untracked files in-TUI; `codex apply` applies a cloud chat diff locally via git apply and exits non-zero on conflict",
+     "how": "/diff covers files Git isn't tracking yet so nothing edited is invisible; /copy (or Ctrl+O) copies the latest completed output; codex cloud exec supports best-of-N (--attempts 1-4) cloud runs whose diffs are then applied with codex apply.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "subagents",
+     "feature": "Parallel subagent workflows with custom per-agent config layers, justified explicitly as a defense against context pollution / context rot",
+     "how": "Subagents run in parallel and return summaries to the main thread ('moving noisy work off the main thread'). Custom agents are standalone TOML files in ~/.codex/agents/ (personal) or .codex/agents/ (project), requiring name, description, developer_instructions and optionally model, model_reasoning_effort, sandbox_mode, mcp_servers, skills.config \u2014 each agent is loaded as a full config layer for its spawned session. Built-ins: default, worker, explorer. Global [agents] knobs: enabled, max_concurrent_threads_per_session, default_subagent_model, default_subagent_reasoning_effort, interrupt_message. Subagents inherit the parent's sandbox/approval; live runtime overrides (/permissions, --yolo) are reapplied at spawn time.",
+     "source_url": "https://learn.chatgpt.com/docs/agent-configuration/subagents"
+    },
+    {
+     "area": "subagents",
+     "feature": "Subagent observability and cross-thread approvals in the TUI: /agent (alias /subagents) switches between active agent threads; approval overlays label the source thread and let you press `o` to open it before approving",
+     "how": "Docs note approval requests can surface from inactive threads while you're viewing the main thread; in non-interactive flows a fresh-approval requirement fails and the error is surfaced to the parent workflow. Read-heavy parallel work (exploration, tests, triage, summarization) is recommended over parallel write-heavy work.",
+     "source_url": "https://learn.chatgpt.com/docs/agent-configuration/subagents"
+    },
+    {
+     "area": "config",
+     "feature": "Layered TOML config with named profile files, trust-gated project layers, and an unknown-key strictness guard",
+     "how": "Layer order: ~/.codex/config.toml -> --profile <name> overlay (~/.codex/<name>.config.toml; legacy [profiles.x] tables dropped in 0.134.0) -> per-repo .codex/config.toml walked root-to-cwd, closest file wins, loaded only when the project is trusted -> CLI `-c key=value` overrides parsed as TOML with dot-notation nested keys. Project layers may not override credential/provider/telemetry keys (openai_base_url, model_providers, notify, profile, otel...) \u2014 Codex ignores them with a startup warning. --strict-config errors on unrecognized keys; /debug-config prints layer order and policy sources.",
+     "source_url": "https://learn.chatgpt.com/docs/config-file/config-advanced"
+    },
+    {
+     "area": "model-routing",
+     "feature": "Pluggable model providers with wire-API choice, command-backed auth, and a remote-refreshable model catalog \u2014 the mechanism that makes model routing data-driven",
+     "how": "[model_providers.<id>] defines name, base_url, env_key, wire_api = \"responses\"|\"chat\" (model_verbosity only applies to Responses API), http_headers/env_http_headers, query_params (Azure example), request/stream retry tuning; auth can be a command that prints a bearer token with proactive refresh_interval_ms. Built-ins: openai (redirect via openai_base_url), ollama, lmstudio (--oss/--local-provider), amazon-bedrock with nested aws profile/region. Model family is catalog-driven: gpt-5.6 (default, high-effort), gpt-5.6-terra (fast/lower-cost), gpt-5.6-luna (fast narrow tasks), reasoning efforts low..xhigh/max/ultra; `codex debug models` prints the raw catalog (bundled vs refreshed from a remote models endpoint); model_catalog_json lets profiles point at custom catalog files; app-server model/list returns supportedReasoningEfforts, defaultReasoningEffort, upgrade (migration prompt), inputModalities, supportsPersonality, isDefault.",
+     "source_url": "https://learn.chatgpt.com/docs/config-file/config-advanced"
+    },
+    {
+     "area": "web-search",
+     "feature": "Web search with cached-by-default and explicit live mode, surfaced in-transcript",
+     "how": "`--search` sets web_search = \"live\" instead of the default \"cached\"; the CLI overview notes 'Search activity stays visible in the transcript'. Custom providers must advertise supports_standalone_web_search = true (and model+runtime must support it) before live search works \u2014 search is a provider capability, not a hardcoded feature.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "extensibility-mcp",
+     "feature": "MCP as a managed subcommand: stdio and streamable-HTTP servers, OAuth login with scopes, bearer-token env vars, and runtime status inspection",
+     "how": "`codex mcp add <name> -- <cmd>` or `--url https://...` with --env KEY=VALUE, --bearer-token-env-var, --oauth-client-id/--oauth-resource; `codex mcp login <name> --scopes a,b` starts OAuth for HTTP servers; /mcp (and /mcp verbose) lists callable tools per session; app-server adds mcpServerStatus/list, mcpServer/tool/call, mcpServer/oauth/login, config/mcpServer/reload, and MCP elicitation requests. Note: running Codex itself as an MCP server (codex mcp-server) is deprecated in favor of app-server.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "extensibility-plugins",
+     "feature": "Plugin + marketplace system: installable bundles of skills, MCP connectors, and config from GitHub shorthand, Git/SSH URLs, or local paths",
+     "how": "`codex plugin add <plugin@marketplace> --json` (returns pluginId, installedPath, authPolicy); `codex plugin marketplace add owner/repo@ref` with --ref pin and repeatable --sparse for sparse checkout; upgrade refreshes Git marketplaces; all subcommands support --json. Plugins are shared with ChatGPT via one universal plugin directory; app-server exposes marketplace/add|remove|upgrade and plugin/list|read|install|uninstall (plugin APIs marked under development).",
+     "source_url": "https://learn.chatgpt.com/docs/skills-and-plugins"
+    },
+    {
+     "area": "extensibility-skills",
+     "feature": "Skills (SKILL.md-style instruction packages) with $ invocation syntax and per-agent enablement",
+     "how": "A skill = name + description + workflow instructions + resources (templates, schemas, scripts); Codex auto-selects on match or you invoke explicitly with $ mentions (ChatGPT uses @); /skills picker inserts the skill context for the next request; $skill-creator bootstraps new skills; Record & Replay can turn a demonstrated workflow into a skill. skills.config paths can be enabled/disabled per custom agent; app-server has skills/list with forceReload and skills/changed file-watch notifications.",
+     "source_url": "https://learn.chatgpt.com/docs/skills-and-plugins"
+    },
+    {
+     "area": "extensibility-hooks",
+     "feature": "Lifecycle hooks with an explicit trust model",
+     "how": "Hooks load from hooks.json files or inline [[hooks.PreToolUse]] tables next to active config layers (user, project), with matcher regex, command, timeout, statusMessage; project-local hooks only load when the project .codex/ layer is trusted. Hooks must be trusted before running; --dangerously-bypass-hook-trust exists for pre-vetted automation; /hooks opens a TUI browser to inspect, trust, or disable non-managed hooks (managed hooks can't be disabled there).",
+     "source_url": "https://learn.chatgpt.com/docs/config-file/config-advanced"
+    },
+    {
+     "area": "context-intelligence",
+     "feature": "Context curation without a repo map/LSP: AGENTS.md instruction discovery, @-file search, /mention, /ide injection, /compact, and memories \u2014 no documented code indexer, repo map, or LSP integration (gap, verified against docs)",
+     "how": "/init generates an AGENTS.md scaffold; `codex debug prompt-input` renders the exact model-visible prompt input as JSON for debugging 'instruction discovery, session context, or prompt construction'; project_root_markers config controls project-root detection (default .git); @ in the composer fuzzy-searches workspace files into the prompt; /mention attaches a file; /ide pulls open files/selection from VS Code; /compact summarizes visible chat to free tokens; /memories toggles memory injection/generation per session. `codex doctor` diagnoses installation/config/auth/runtime/git/terminal/thread inventory.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    },
+    {
+     "area": "security-hygiene",
+     "feature": "Spawned-process environment scrubbing and opt-in observability",
+     "how": "[shell_environment_policy] controls env inheritance for spawned commands: inherit = \"none\"|\"core\", case-insensitive include/exclude glob filters, and default excludes for names containing KEY/SECRET/TOKEN (ignore_default_excludes = false to apply). allow_login_shell = false hardening knob. [otel] exports structured run logs (codex.api_request, codex.tool_decision with config-vs-user provenance, codex.tool_result) plus a documented metric catalog (turn.ttft, tool.call.duration_ms...), all off by default with log_user_prompt = false redaction; [analytics] enabled = false kills anonymous metrics.",
+     "source_url": "https://learn.chatgpt.com/docs/config-file/config-advanced"
+    },
+    {
+     "area": "migration",
+     "feature": "Importer from competing agents: /import migrates Claude Code or Cursor artifacts into Codex",
+     "how": "Supported item types: config, skills, AGENTS.md, plugins, MCP server config, subagents, hooks, commands, and sessions (up to 50 chats from the last 30 days); available only in a local TUI session, blocked while a task runs. app-server exposes externalAgentConfig/detect and externalAgentConfig/import with progress notifications.",
+     "source_url": "https://learn.chatgpt.com/docs/developer-commands"
+    }
+   ],
+   "tui_ux_highlights": [
+    "Persistent footer with a live context meter and discoverable shortcuts: the welcome box shows '100% context left \u00b7 ? for shortcuts', and /status shows model, approval policy, writable roots, and remaining context capacity \u2014 budget transparency is always on screen",
+    "Mid-run interaction grammar: Tab queues a follow-up, Enter injects an instruction into the running turn, Esc-Esc edits the previous user message and forks the chat, ! prefix runs a local shell command under the current sandbox/approval settings",
+    "@ file search inserts workspace file paths into the prompt; Ctrl+R searches prompt history; Up/Down restores draft history; Ctrl+O or /copy grabs the latest completed output",
+    "Personalization persisted via pickers: /statusline and /title let you toggle-and-reorder footer/tab-title items (model, context stats, rate limits, git branch, tokens, session id, task progress) and write them to tui.status_line / tui.terminal_title in config.toml; /theme previews syntax themes; /keymap remaps shortcuts into tui.keymap; /vim toggles composer vim mode (tui.vim_mode_default)",
+    "Raw scrollback mode (/raw, Alt+R, tui.raw_output_mode) makes terminal-native selection/copying work; --no-alt-screen / tui.alternate_screen opts out of the alt screen entirely",
+    "Ephemeral /side (alias /btw) side chat keeps the parent chat's status visible while you detour; /fork clones the current chat for an alternative approach without losing the transcript",
+    "Background terminals under unified_exec surface via /ps (command + up to three recent output lines each) and /stop (alias /clean) stops them all \u2014 long-running work stays visible without leaving the transcript",
+    "Approval overlays from subagent threads are labeled with the source thread and support pressing `o` to open that thread before approving/rejecting",
+    "Catalog-driven commands that hide themselves when unsupported: /fast only appears if the model advertises a Fast tier, /personality hides if the model lacks personality support \u2014 the UI never offers what the model can't do",
+    "Queueing slash commands: typing /cmd then Tab during a run queues it for the next turn, with completion working until queued",
+    "Terminal pets (/pets, built-in or custom) \u2014 deliberate ambient personality in a developer tool",
+    "codex completion generates bash/zsh/fish/PowerShell/elvish scripts; VISUAL/EDITOR opens long prompts in an external editor"
+   ],
+   "would_steal_for_zcode": [
+    "Layered config architecture verbatim: ~/.zcode/config.toml base + `zcode --profile name` overlay file + trust-gated .zcode/config.toml project layers (closest-wins, credential keys hard-blocked) + TOML-typed `--config key=value` overrides with dot notation + `--strict-config` unknown-key guard + /debug-config layer diagnostics. This is the single highest-leverage steal for zagent.",
+    "Dual-mode harness: interactive TUI and `zcode exec` sharing one core, where exec has --json JSONL event stream, --output-schema (JSON-Schema-validated final answer), --output-last-message, --ephemeral, stdin prompt, and `exec resume --last/--all` \u2014 makes zcode CI-native from day one.",
+    "Client/server split with schema generation: a JSON-RPC app-server (stdio/ws/unix transports) with Thread/Turn/Item primitives and `generate-ts`/`generate-json-schema` so the TUI, IDE plugins, and third-party clients are all peers of the same core; add turn/steer for mid-turn steering.",
+    "Orthogonal sandbox x approval axes with workspace-write default, protected .git/ inside the workspace, writable_roots extension via --add-dir instead of full access, and command-prefix `rules` (allow/prompt/forbid) for surgical exceptions \u2014 plus an optional auto_review approvals_reviewer agent for headless escalation decisions.",
+    "Subagents as full config layers: per-agent TOML files (name/description/developer_instructions/model/reasoning effort/sandbox_mode/own MCP servers and skills), built-in worker+explorer roles, max_concurrent_threads_per_session cap, summary-only return to the main thread to prevent context rot, and source-thread-labeled approval overlays with a key to jump into the thread.",
+    "Steering grammar as a core primitive, not an afterthought: Tab = queue for next turn, Enter = inject into in-flight turn, Esc-Esc = edit previous message and fork. Cheap to implement, transforms the feel of the TUI.",
+    "Persistent /goal object with set/edit/pause/resume/clear semantics (and a char limit pushing long specs into files) mirrored in the server API as thread/goal/set.",
+    "Review as a first-class target-selecting command (uncommitted | --base | --commit | custom-stdin prompt, mutually exclusive) that provably never mutates the working tree, with a separate review_model config key \u2014 a clean separation of reviewer model from coding model.",
+    "Session object lifecycle: named sessions, fork with preserved original transcript, archive/unarchive vs hard delete (delete --force restricted to UUIDs), cwd-scoped --last resume, and a tui.resume_cwd preference to stop nagging about directory mismatches.",
+    "Provider-agnostic model routing: [model_providers.<id>] with wire_api selection, command-backed token auth with refresh interval, and \u2014 most relevant for GLM \u2014 a catalog-driven model list (model/list returning supportedReasoningEfforts, default effort, upgrade hints, input modalities) so switching models never hardcodes capabilities; make zcode's GLM 4.x/5.x family a remote-refreshable catalog like codex debug models + model_catalog_json.",
+    "Shell environment policy for spawned commands: inherit=core, glob include/exclude filters, and automatic exclusion of *KEY*/*SECRET*/*TOKEN* names \u2014 a cheap, high-value secret hygiene default zcode should ship on by default.",
+    "Hook trust model: hooks declared next to config layers, require explicit persisted trust before running, managed hooks distinct from user hooks, project hooks gated on project trust, and a TUI /hooks browser to audit them.",
+    "Web search as a provider capability flag (supports_standalone_web_search) with cached default and explicit live opt-in \u2014 relevant for a GLM-native agent whose search endpoint differs from chat.",
+    "OTel event/metric catalog (tool_decision with config-vs-user provenance, per-tool duration histograms, TTFT metrics) off by default with prompt redaction \u2014 copy the event taxonomy, not just the toggle.",
+    "Migration importer as adoption strategy: /import that detects and pulls config, skills, AGENTS.md/CLAUDE.md, MCP servers, subagents, hooks, and recent sessions from Claude Code/Cursor \u2014 zcode should do exactly this for Claude Code and Codex artifacts to lower switching cost.",
+    "Plugin marketplace mechanics: GitHub shorthand owner/repo@ref sources, --ref pinning, sparse checkout, and machine-readable --json on every install/list/upgrade/remove for scripting."
+   ]
+  },
+  {
+   "agent": "xAI \"Grok Build\" (the `grok` CLI/TUI) \u2014 CONFIRMED SHIPPING, not unannounced. Officially launched in early beta May 25, 2026 (https://x.ai/news/grok-build-cli), available to SuperGrok and X Premium Plus subscribers, installable via `curl -fsSL https://x.ai/cli/install.sh | bash`. Full docs section lives at docs.x.ai/build/*; open-source Rust source at github.com/xai-org/grok-build (Apache-2.0, ~26.4k stars, synced periodically from the internal monorepo with a SOURCE_REV file, external contributions not accepted). Currently powered by grok-4.6 (same model on the API), with a `grok-build` agent model id as config default. Note: official x.ai/docs.x.ai page titles render \"SpaceXAI\" branding; the product name, binary, and docs are Grok Build / `grok`. GitHub org also ships xai-org/plugin-marketplace and xai-org/grok-build-plugin-cc (a Claude Code plugin that delegates to the grok CLI).",
+   "features": [
+    {
+     "area": "architecture",
+     "feature": "One local Rust binary, three front-ends",
+     "how": "Same `grok` binary runs (1) a fullscreen interactive TUI, (2) headless `grok -p` with --output-format plain|json|streaming-json for scripts/CI, (3) an ACP agent over stdin/stdout JSON-RPC (`grok agent stdio`) for IDE/editor embedding. Source is split into crates: xai-grok-pager (TUI rendering/scrollback/prompt), xai-grok-shell (agent runtime + leader/stdio/headless entry points), xai-grok-tools (terminal, file edit, search tools), xai-grok-workspace (host filesystem, VCS, execution, checkpoints) \u2014 i.e. UI and agent runtime are decoupled client/server-style within one process.",
+     "source_url": "https://github.com/xai-org/grok-build"
+    },
+    {
+     "area": "architecture",
+     "feature": "Kernel-level sandbox, off by default, with honest limitations table",
+     "how": "Landlock on Linux, Seatbelt on macOS. Profiles: off | workspace (write only CWD+~/.grok+temp) | devbox | read-only (network blocked) | strict (untrusted repos, network blocked). Custom named profiles via ~/.grok/sandbox.toml with `extends`, `restrict_network`, and `deny` globs (e.g. \"**/.env\"). Docs explicitly state limitations (child-network enforcement Linux-only; built-ins do not protect ~/.ssh \u2014 use custom deny). Enable via --sandbox flag, config, GROK_SANDBOX env, or enterprise managed pin.",
+     "source_url": "https://docs.x.ai/build/features/sandbox"
+    },
+    {
+     "area": "architecture",
+     "feature": "Permissions as a separate layer from sandbox",
+     "how": "Permissions decide WHETHER a tool call runs; sandbox limits WHAT an approved call can do. Three modes: Ask (default), Auto (classifier auto-approves safe tools), Always-approve; cycled with Shift+Tab. TOML allow/deny rules with tool+pattern ({action=\"deny\", tool=\"bash\", pattern=\"rm -rf *\"}), deny always wins; remembered 'always allow' still re-prompts for dangerous patterns like rm and git push; deny rules and PreToolUse hooks still apply in yolo mode. --allow/--deny per invocation.",
+     "source_url": "https://docs.x.ai/build/features/permissions"
+    },
+    {
+     "area": "context intelligence",
+     "feature": "Opt-in LSP code-intel tool; on-demand MCP tool search; gitignore-respecting search \u2014 no repo-map",
+     "how": "LSP is exposed as a single code-intel tool, default OFF (`GROK_LSP_TOOLS=1` or `[features] lsp_tools = true`), and plugins can bundle LSP servers. `tool_search` (default on) gives on-demand MCP tool discovery for large toolsets instead of loading all tools into context. Read/search tools respect .gitignore (`[tools] respect_gitignore`). No evidence of tree-sitter repo maps or embedding-based indexing in docs or README \u2014 UNVERIFIED/absent: context comes from AGENTS.md rules + live grep/read.",
+     "source_url": "https://docs.x.ai/build/settings/reference"
+    },
+    {
+     "area": "edit/diff UX",
+     "feature": "Plan mode with review UI that yolo mode cannot skip",
+     "how": "/plan or Shift+Tab; the agent may self-enter plan mode when a task looks ambiguous. Only the session plan file is editable until approval (bash still can write \u2014 documented caveat). Review screen keys: a approve, s request changes with notes, c comment on selected line/range, q quit; /view-plan reopens a saved plan. Subagents are NOT edit-gated by parent plan mode (documented).",
+     "source_url": "https://docs.x.ai/build/features/plan-mode"
+    },
+    {
+     "area": "edit/diff UX",
+     "feature": "Diff presentation controls in scrollback",
+     "how": "GROK_COLLAPSED_EDIT_BLOCKS collapses edits to one-line +N/-M summaries; GROK_GROUP_TOOL_VERBS folds consecutive read/search/list tool rows; per-block expand/collapse (h/l, e, Shift+E), fullscreen block viewer (Enter/Ctrl+F), raw-markdown toggle (r), thinking-blocks toggle (Ctrl+E), copy content or command/path (y/Shift+Y). Launch post says: once a plan is approved, every change shows up as a clean diff.",
+     "source_url": "https://docs.x.ai/build/settings/reference"
+    },
+    {
+     "area": "sessions",
+     "feature": "Everything persisted: sessions with file snapshots, rewind, fork, compact",
+     "how": "Every conversation (prompts, responses, tool calls, FILE SNAPSHOTS) saved to ~/.grok/sessions keyed by working directory. /rewind (or Esc Esc) restores all files to a per-prompt point AND truncates the conversation; /fork branches into a peer session (optionally in a worktree); --fork-session on resume; /compact [context] with preservation instructions plus auto-compaction; /context and /session-info show usage; `grok export <id>` to Markdown; `grok sessions list/search/delete`; `grok import` pulls Claude Code sessions in.",
+     "source_url": "https://docs.x.ai/build/features/sessions"
+    },
+    {
+     "area": "parallelism",
+     "feature": "Subagents on by default with typed roles and personas",
+     "how": "Subagents are independent child sessions with their own context returning a summary to the parent; enabled when the setting is unset. Built-in types: general-purpose (full capability), explore (read/list/search only \u2014 no shell, no edits), plan (drafts plans). Custom types in .grok/agents/ or ~/.grok/agents/; personas are behavioral-only overlays ([subagents.personas] or .grok/personas/*.toml); /agents and /personas modals. Launch demo shows 6 parallel explore agents fanning out on a p99-latency regression.",
+     "source_url": "https://docs.x.ai/build/features/subagents"
+    },
+    {
+     "area": "parallelism",
+     "feature": "Git worktrees as first-class isolation for parallel agents",
+     "how": "`grok -w`, `grok --worktree=feat \"prompt\"`, `--ref` for a clean checkout base; worktrees live under ~/.grok/worktrees/<repo>/<name>, start from HEAD including uncommitted changes; /fork --worktree; subagents can request worktree isolation; lifecycle CLI: `grok worktree list/show/rm/gc --max-age 7d`.",
+     "source_url": "https://docs.x.ai/build/features/worktrees"
+    },
+    {
+     "area": "parallelism",
+     "feature": "Agent Dashboard \u2014 fullscreen multi-session orchestrator",
+     "how": "Ctrl+\\ or `grok dashboard`: every session grouped by state (Needs input / Working / Idle / Inactive / Completed / Failed), live updates, peek panel, reply to idle agents immediately or queue to busy ones, answer permission prompts inline with number keys, bottom input bar dispatches NEW agents with Ctrl+W worktree toggle and Ctrl+L cwd change; pins, rename, search (a:/s: filters).",
+     "source_url": "https://docs.x.ai/build/features/dashboard"
+    },
+    {
+     "area": "parallelism",
+     "feature": "Background tasks: commands, scheduled /loop, log monitors, prompt queue",
+     "how": "Agent starts dev servers/builds as background tasks on its own (Ctrl+G pane, x to kill, Ctrl+B demotes a foreground command to background). /loop 5m <prompt> runs recurring prompt turns (min 60s, 7-day expiry, max 50 active). Monitors attach to a script so EACH output line becomes a conversation notification (watch CI/deploy logs). Prompts typed during a running turn are queued, not dropped (Ctrl+; queue panel).",
+     "source_url": "https://docs.x.ai/build/features/background-tasks"
+    },
+    {
+     "area": "extensibility",
+     "feature": "Hooks: lifecycle events, blocking PreToolUse, Claude/Cursor file compat",
+     "how": "JSON hook files (~/.grok/hooks, .grok/hooks with trust gate) with command AND http endpoint types. Events: SessionStart/End, UserPromptSubmit, PreToolUse (only blocking event \u2014 returns {\"decision\":\"deny\"} JSON, exit 2 denies, everything else fail-open), PostToolUse(+Failure), PermissionDenied, Stop(+Failure), Notification, SubagentStart/Stop, PreCompact/PostCompact. Grok also READS Claude Code .claude/settings.json and Cursor .cursor/hooks.json hook files, mapping Claude tool names automatically.",
+     "source_url": "https://docs.x.ai/build/features/hooks"
+    },
+    {
+     "area": "extensibility",
+     "feature": "MCP with doctor diagnostics and cross-vendor config ingestion",
+     "how": "`grok mcp add/list/remove/doctor --json`; stdio and HTTP transports with automatic OAuth (tokens in ~/.grok/mcp_credentials.json); ${VAR} and ${VAR:-default} expansion in command/args/env/headers/urls; per-server startup_timeout_sec and tool_timeout_sec; project scope writes .grok/config.toml and walks cwd\u2192git root, project overrides user by name. Also loads ~/.claude.json, .cursor/mcp.json, .mcp.json (per-vendor disable via [compat.claude] mcps=false). /mcps extensions tab toggles/authenticates servers live.",
+     "source_url": "https://docs.x.ai/build/features/mcp-servers"
+    },
+    {
+     "area": "extensibility",
+     "feature": "Skills + plugins + marketplace, and zero-config Claude Code compatibility",
+     "how": "Skills are SKILL.md folders with YAML frontmatter (when-to-use, paths gitignore-gating visibility, user-invocable\u2192slash command, disable-model-invocation); plugins bundle skills+agents+hooks+MCP+LSP servers; TUI Marketplace tab browses/installs from configured sources (official catalog: github.com/xai-org/plugin-marketplace). Docs claim: 'Grok is fully compatible with Claude Code with zero configuration' \u2014 auto-reads Claude marketplaces, plugins, skills, MCPs, agents, hooks, CLAUDE.md/.claude/rules, plus AGENTS.md family and ~/.agents/skills+commands.",
+     "source_url": "https://docs.x.ai/build/features/skills-plugins-marketplaces"
+    },
+    {
+     "area": "context intelligence",
+     "feature": "Layered AGENTS.md rules with per-subtree scoping and verification",
+     "how": "Loads global ~/.grok rules, then every dir from repo root to cwd (deeper wins), reading AGENTS.md/AGENT.md/CLAUDE.md/CLAUDE.local.md + .grok/rules/*.md (+ .claude/rules, .cursor/rules for compat); gitignored files skipped; nested AGENTS.md scopes a monorepo subtree; files loaded in full, no size cap. `--rules` appends, `--system-prompt-override` replaces. `grok inspect` lists every discovered rules file with path and approximate token count.",
+     "source_url": "https://docs.x.ai/build/features/project-rules"
+    },
+    {
+     "area": "model routing",
+     "feature": "Any-provider model config + separate routed web_search model",
+     "how": "config.toml [models] default = \"grok-build\" for agent sessions and web_search = \"grok-4.6\" for the client-side search tool \u2014 search is routed to its own model. Per-model block: model id, base_url, env_key, api_backend = chat_completions|responses|messages, temperature/top_p/max_completion_tokens/context_window, extra_headers, supports_backend_search (enables Grok-hosted server-side search). GROK_MODELS_BASE_URL points at any OpenAI-compatible endpoint and lists models from {base}/models. Switch with -m/--model or /model, reasoning effort with /effort/--effort.",
+     "source_url": "https://docs.x.ai/build/settings"
+    },
+    {
+     "area": "agentic search + X integration",
+     "feature": "Client-side web tools + server-side hosted search including X Search",
+     "how": "CLI ships web_search (on by default, disable with --disable-web-search, model routed via GROK_WEB_SEARCH_MODEL) and web_fetch (OFF by default for security, GROK_WEB_FETCH_PROXY egress proxy support). For endpoints with supports_backend_search, the agent can use xAI's server-side built-in tools, whose catalog is Web Search, X Search (xSearch \u2014 real-time search over X posts), Code Interpreter, Image Generation, Collections Search. X integration is therefore via the API's built-in X Search tool rather than a dedicated CLI command.",
+     "source_url": "https://docs.x.ai/developers/tools/x-search"
+    },
+    {
+     "area": "config quality",
+     "feature": "Five-scope config with enterprise policy pins and Claude Code flag aliases",
+     "how": "Scopes: env (GROK_*), user ~/.grok/config.toml, project .grok/config.toml (deliberately limited to MCP/plugins/permissions only), managed_config.toml (MDM-served defaults), requirements.toml (policy pins that can override the CLI, e.g. forcing a sandbox). /settings modal, GROK_HOME relocation, `grok inspect` shows everything discovered. Accepts Claude Code flag names as aliases: --allowedTools, --disallowedTools, --append-system-prompt, --system-prompt, --dangerously-skip-permissions; legacy approval_mode/yolo keys still honored.",
+     "source_url": "https://docs.x.ai/build/cli/reference"
+    },
+    {
+     "area": "enterprise",
+     "feature": "OIDC, login restriction, managed sandbox/permission locks, ZDR",
+     "how": "Enterprise OIDC or external auth provider, restricting allowed login methods (incl. team UUID allowlists), managed config for MDM deployment, headless dontAsk permission mode, sandbox/permission policy pins, documented network allowlist/TLS/proxy requirements, and Zero Data Retention tier.",
+     "source_url": "https://docs.x.ai/build/enterprise"
+    },
+    {
+     "area": "ecosystem",
+     "feature": "Cloud teammates (Grok Bot) and Claude Code delegation plugin",
+     "how": "Grok Bot: persistent named AI teammates on a shared user-scoped cloud VM (browser, filesystem, terminal), running in parallel, messaging each other and handing off tasks, learning routines from live demonstration, reachable from desktop/mobile apps \u2014 the cloud counterpart to the local CLI. Separately, xai-org/grok-build-plugin-cc is an official Claude Code marketplace plugin that shells out to the grok CLI (status/results/stop via PID+log files) so Claude Code can delegate work to Grok Build.",
+     "source_url": "https://docs.x.ai/grok-bot/overview"
+    }
+   ],
+   "tui_ux_highlights": [
+    "Fullscreen, mouse-interactive TUI (not inline REPL): scrollback is a navigable list \u2014 Tab focuses it, vim j/k or arrows select entries, Shift+H/L jump per-turn, h/l collapse/expand, Enter opens a block in a fullscreen viewer, / searches scrollback, r toggles raw markdown (https://docs.x.ai/build/keyboard-shortcuts)",
+    "Interject mid-turn: Ctrl+Enter sends input while the agent is still running; prompts typed during a turn queue instead of dropping (Ctrl+; panel) (https://docs.x.ai/build/keyboard-shortcuts, https://docs.x.ai/build/features/background-tasks)",
+    "Plan review as a dedicated approval screen with per-line comments (a/s/c/q keys) shown even in auto/yolo modes (https://docs.x.ai/build/features/plan-mode)",
+    "Live status line above the shortcuts bar with three modes: builtin (model, context fill, cost) or `command` \u2014 Grok pipes current session data as JSON into your shell script on a timer (https://docs.x.ai/build/features/status-line)",
+    "Theme system: 5 built-in themes with live preview picker, truecolor-only themes hidden on lesser terminals, and theme=\"auto\" that follows OS light/dark within seconds (https://docs.x.ai/build/features/theming)",
+    "Two panes for mental state: Ctrl+T todo pane (plan of record, survives resume) vs Ctrl+G tasks pane (running processes, loops, monitors) (https://docs.x.ai/build/features/sessions, https://docs.x.ai/build/features/background-tasks)",
+    "/terminal-setup diagnostic command plus `grok wrap ssh/docker/kubectl ...` \u2014 a local PTY that intercepts OSC 52 so clipboard copies over SSH reach your local machine (https://docs.x.ai/build/cli/terminal-support)",
+    "Per-terminal keyboard chord documentation (VS Code/Cursor/Zed, Apple Terminal, WezTerm kitty protocol, Zellij unlock mode) with concrete fixes instead of silent breakage (https://docs.x.ai/build/keyboard-shortcuts)",
+    "In-agent multimodal/workflow commands: /imagine and /imagine-video generate media, /deep-research runs background research, /create-workflow + /workflows give a live workflow-run dashboard, /btw asks a side question without interrupting the turn (https://docs.x.ai/build/modes-and-commands)",
+    "/feedback pipes bugs straight to the team from inside the session; /release-notes shows the changelog for the running version (https://x.ai/news/grok-build-cli, https://docs.x.ai/build/modes-and-commands)"
+   ],
+   "would_steal_for_zcode": [
+    "Zero-config cross-harness compatibility as an adoption wedge: auto-read Claude Code AND Cursor AND AGENTS.md ecosystem files (hooks, MCP configs, skills, agents, rules incl. .claude/rules and CLAUDE.local.md, gitignore-respected) with per-vendor disable switches \u2014 a GLM-native CLI that inherits users' existing Claude Code setups on first launch",
+    "`inspect` command: one command that dumps everything the agent discovered for the current directory (rules files with token counts, skills, plugins, hooks, MCP servers with origin, config sources) \u2014 makes config debugging deterministic",
+    "Clean two-layer safety model: permissions (does this call run: ask/auto-classifier/always-approve + allow/deny patterns) strictly separated from sandbox (what an approved call may touch: Landlock/Seatbelt profiles + custom deny globs), with a published limitations table instead of overselling",
+    "Session rewind = file snapshots + conversation truncation per prompt; sessions store tool calls AND file snapshots so state restore is exact; /fork for peer branching with optional worktree isolation",
+    "Background work as a first-class triad: agent-initiated background commands (Ctrl+B demotion), scheduled /loop prompt turns with expiry caps, and log-line MONITORS that inject one notification per matching line into the conversation \u2014 plus a prompt queue so typed input is never dropped mid-turn",
+    "Agent Dashboard as the multi-agent cockpit: state-grouped rows, peek panel, inline permission answering by number key, and dispatching NEW sessions directly into git worktrees from the dashboard input bar",
+    "Model routing granularity: a separate routed model for the web_search tool (cheap fast searcher vs main coder), per-model api_backend selection (chat_completions|responses|messages), context_window declared per model, and GROK_MODELS_BASE_URL pointing the whole CLI at any OpenAI-compatible endpoint \u2014 exactly what a GLM-native zcode needs for glm-5 + a cheap flash model",
+    "Plan-file gate: while planning, ONLY the session plan file is writable and the plan review UI cannot be skipped even in yolo mode \u2014 a simple invariant that makes plan mode trustworthy",
+    "Hooks contract with explicit semantics: named events incl. SubagentStart/Stop and PreCompact, PreToolUse as the single blocking event, JSON stdin + env vars, documented fail-open behavior, and a /hooks-trust trust gate for project-provided hooks",
+    "LSP as a default-OFF single tool and tool_search for on-demand MCP tool discovery instead of loading whole toolsets \u2014 proof you can ship a top-tier agent without always-on indexing (no repo map anywhere in the official docs)",
+    "Honest provenance in the open repo: THIRD-PARTY-NOTICES declaring in-tree source ports of openai/codex and sst/opencode tool implementations \u2014 copying proven tool behavior openly with license notices is a legitimate design move",
+    "Diff UX defaults: one-line +N/-M collapsed edit blocks and folded read/search tool rows keep scrollback dense; raw-markdown and fullscreen block viewer on demand"
+   ]
+  }
+ ]
+}
