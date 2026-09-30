@@ -19,7 +19,11 @@ const zagentd = path.join(root, 'packages/cli/zagentd.mjs');
 const sandbox = mkdtempSync(path.join(os.tmpdir(), 'zagentd-test-'));
 const temp = path.join(sandbox, 'tmp');
 mkdirSync(temp);
-const XDG = path.join(sandbox, 'xdg');
+// The XDG base the preference legs run against must keep zagentd.sock inside
+// the AF_UNIX sun_path room on every host — the sandbox tmpdir is long enough
+// on macOS to overflow it, and an over-long XDG is (correctly) skipped for a
+// shorter base rather than preferred. /tmp is short everywhere POSIX.
+const XDG = mkdtempSync('/tmp/zagentd-xdg-');
 
 const baseEnv = () => Object.assign(
   Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'LANG'].filter(k => process.env[k]).map(k => [k, process.env[k]])),
@@ -51,11 +55,11 @@ try {
   const fallback = daemonRuntimeDir({ env: {}, tmpdir: temp });
   assert.equal(fallback, path.join(temp, `zagent-${process.getuid()}`), 'tmpdir fallback is uid-keyed');
   assert.equal(statSync(fallback).mode & 0o777, 0o700, 'fallback dir is 0700');
-  const loose = path.join(sandbox, 'loose');
+  const loose = path.join(XDG, 'loose');
   mkdirSync(loose);
   daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: loose } });
   assert.equal(statSync(path.join(loose, `zagent-${process.getuid()}`)).mode & 0o777, 0o700, 'a dir we own is tightened to 0700');
-  const blockedBase = path.join(sandbox, 'blocked');
+  const blockedBase = path.join(XDG, 'blocked');
   mkdirSync(blockedBase);
   writeFileSync(path.join(blockedBase, `zagent-${process.getuid()}`), 'squatter');
   assert.throws(() => daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: blockedBase } }), 'a file squatting the dir path refuses');
@@ -175,4 +179,5 @@ try {
   try { foreign.kill('SIGKILL'); } catch {}
   if (daemonPid != null) try { process.kill(daemonPid, 'SIGKILL'); } catch {}
   rmSync(sandbox, { recursive: true, force: true });
+  rmSync(XDG, { recursive: true, force: true });
 }
