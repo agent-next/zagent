@@ -173,8 +173,13 @@ try {
   const pgrep = spawnSync('pgrep', ['-f', 'zagentd.mjs --serve'], { encoding: 'utf8' });
   if (pgrep.status === 0) {
     // scope to THIS test's daemons — another sandbox's daemon is not our leak
+    // Linux exposes a process environment in /proc; macOS has no /proc, and
+    // BSD ps -E appends the environment to the command column instead.
+    const environOf = p => process.platform === 'linux'
+      ? readFileSync(`/proc/${p}/environ`, 'utf8')
+      : spawnSync('ps', ['-E', '-ww', '-o', 'command=', '-p', String(p)], { encoding: 'utf8' }).stdout;
     const ours = pgrep.stdout.trim().split('\n').map(Number).filter(p => {
-      try { return readFileSync(`/proc/${p}/environ`, 'utf8').includes(`ZAGENT_TEST_SANDBOX=${sandbox}`); }
+      try { return environOf(p).includes(`ZAGENT_TEST_SANDBOX=${sandbox}`); }
       catch { return false; }
     });
     assert.equal(ours.length, 1, `exactly one serve process: ${pgrep.stdout}`);
