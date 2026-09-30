@@ -279,6 +279,29 @@ await regression('a webhook retry after a restart resends the persisted answer, 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+await regression('delivery settles pending and dedup in ONE state write (no crash window between them)', async () => {
+  const fs = (await import('node:fs')).default;
+  const { syncBuiltinESMExports } = await import('node:module');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = fs.mkdtempSync(join(tmpdir(), 'zfs-win-'));
+  const stateFile = join(dir, 'feishu-inbox-state.json');
+  const snaps = [], realRename = fs.renameSync;
+  fs.renameSync = (from, to) => { if (to === stateFile) snaps.push(JSON.parse(fs.readFileSync(from, 'utf8'))); return realRename(from, to); };
+  syncBuiltinESMExports();
+  try {
+    const inbox = makeInbox({ stateFile, handler: async () => 'done', sendReply: async () => {} });
+    assert.equal((await inbox(event('window'))).status, 200);
+    assert.ok(snaps.some(s => s.pending?.window), 'the answer was persisted before the send');
+    assert.ok(snaps.some(s => s.seen?.includes('window') && !s.pending?.window), 'the settled state was persisted');
+    assert.ok(!snaps.some(s => !s.pending?.window && !s.seen?.includes('window')),
+      'no persisted state has the answer cleared with the message not yet deduplicated');
+  } finally {
+    fs.renameSync = realRename; syncBuiltinESMExports();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 await regression('Feishu messages without usable IDs are rejected before execution', async () => {
   let calls = 0;
   const inbox = makeInbox({ handler: async () => { calls++; }, sendReply: async () => {} });

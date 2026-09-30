@@ -200,7 +200,7 @@ export function makeInbox({ handler, sendReply, allowedChatIds = null, onEvent =
         onEvent('delivery_error', String(e?.message ?? e));
         return { status: 503, body: {} };
       }
-      pendingReplies.delete(key); persist();
+      pendingReplies.delete(key); // rememberCompleted writes pending+seen in ONE persist: no crash window between them
       rememberCompleted(ev.messageId);
       return { status: 200, body: {} };
     });

@@ -43,7 +43,8 @@ const fBot = async (url, init) => {
   if (url.includes('getUpdates')) { polls++;
     if (polls === 1) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
       { update_id: 1, message: { chat: { id: 9 }, text: 'what is 2+2?' } },
-      { update_id: 2, message: { chat: { id: 9 }, photo: {} } } ] }) };
+      { update_id: 2, message: { chat: { id: 9 }, photo: [{ file_id: 'p1' }] } },
+      { update_id: 3, channel_post: { chat: { id: 9 } } } ] }) };
     return { ok: true, status: 200, json: async () => new Promise(() => {}) }; // hang = long-poll idle
   }
   return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
@@ -54,10 +55,9 @@ const bot = await runBot({ token: 'T', fetchImpl: fBot, pollTimeout: 0,
   onEvent: (t, d) => events.push(t) });
 await new Promise(r => setTimeout(r, 150));
 bot.stop();
-ok(handled.length === 1 && handled[0][0] === 9, 'text update handled; photo skipped');
-ok(events.includes('skipped'), 'skip event emitted');
-const sent = fBot; // replies went through sendMessage
-ok(true, 'loop ran');
+ok(handled.length === 2 && handled[0][1] === 'what is 2+2?', 'text update handled');
+ok(handled[1][0] === 9 && handled[1][1] === '', 'photo-only update reaches the handler with empty text');
+ok(events.filter(e => e === 'skipped').length === 1, 'an update with no message is skipped');
 
 // handler error reported to chat, bot survives
 let polls2 = 0; let reported = null; const replies2 = [];
@@ -219,6 +219,40 @@ ok(handled4.length === 0, 'handler not started after stop() (r2 #4)');
     ok(handled7.length === 1, 'handler ran exactly once across the restart');
     ok(settled(), 'delivered answer settles the offset');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+// A successful send settles the update in ONE state write: a persisted state
+// with the pending answer gone but the offset not yet advanced is a crash
+// window in which a restart re-runs the turn.
+{
+  const fs = (await import('node:fs')).default;
+  const { syncBuiltinESMExports } = await import('node:module');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = fs.mkdtempSync(join(tmpdir(), 'ztg-win-'));
+  const stateFile = join(dir, 'telegram-state.json');
+  const snaps = [], realRename = fs.renameSync;
+  fs.renameSync = (from, to) => { if (to === stateFile) snaps.push(JSON.parse(fs.readFileSync(from, 'utf8'))); return realRename(from, to); };
+  syncBuiltinESMExports();
+  try {
+    const fOkSend = async (url) => {
+      if (url.includes('getUpdates')) {
+        const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+        if (off <= 50) return { ok: true, status: 200, json: async () => ({ ok: true, result: [ { update_id: 50, message: { chat: { id: 4 }, text: 'go' } } ] }) };
+        return { ok: true, status: 200, json: async () => new Promise(() => {}) };
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+    };
+    const bot8 = await runBot({ token: 'T', fetchImpl: fOkSend, pollTimeout: 0, stateFile, handler: async () => 'done', onEvent: () => {} });
+    for (let i = 0; i < 60 && !snaps.some(s => s.offset > 50); i++) await new Promise(r => setTimeout(r, 50));
+    bot8.stop();
+    ok(snaps.some(s => s.pending?.['50']), 'the answer was persisted before the send');
+    ok(snaps.some(s => s.offset > 50 && !Object.keys(s.pending ?? {}).length), 'the settled state was persisted');
+    ok(!snaps.some(s => s.offset <= 50 && !Object.keys(s.pending ?? {}).length), 'no persisted state has the answer cleared with the offset still behind');
+  } finally {
+    fs.renameSync = realRename; syncBuiltinESMExports();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 console.log(fails ? `FAIL (${fails})` : 'PASS telegram-d5-full');
