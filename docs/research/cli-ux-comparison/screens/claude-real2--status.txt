@@ -1,0 +1,17 @@
+⚠ Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)
+  Restart without --safe-mode to re-enable
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Settings  Status   Config   Usage   Stats
+   Version:                 2.1.270
+   Session name:            /rename to add a name
+   Session ID:              b69a5f09-7218-43ea-810d-cbf63031fb6b
+   Session kind:            interactive
+   Peer address:            uds:/run/user/1000/cc-socks/2493450.sock
+   cwd:                     ~/workspace/zagent
+   Login method:            Claude Max account
+   Organization:            <user-email>'s Organization
+   Email:                   <user-email>
+   Claude Code on the web:  GitHub connected
+   Model:                   claude-fable-5-1[1m] (claude-fable-5-1)
+   Setting sources:         User settings
+   Esc to cancel

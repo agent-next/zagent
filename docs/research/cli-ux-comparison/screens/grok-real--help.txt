@@ -1,0 +1,14 @@
+ <scratch-dir> 1.5K / 500K │ [Dashboard]
+    //help                                                                                                    5:43 PM
+                                                                                                                     G =
+d,d                                                                                                                  Ga=
+d,d⠹ponse… 3.5s                                                                      3.5
+d,d                                                                                                                  Ga=
+dHelp improve Grok                                                                                   [Opt out] [Opt in]
+ Off by default. Opt-in to allow SpaceXAI to retain coding data, e.g., prompts, traces, & metrics,
+ for training and debugging purposes. Change anytime via settings.                                   d,d
+=Read Terms and Privacy Policy.                                                                                        G
+a=d,d=i,i=1,q=2───────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d=1,q=2                                                                                           │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+ Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+.:shortcuts

@@ -1,0 +1,24 @@
+  mcp node_repl: connecting
+> /diff
+  no session yet — diffs appear after the first turn
+> /usage
+⎿ tokens this session: 0 in · 0 cached · 0 out
+  ≈ $0.0000 list-price estimate at GLM-5.3 rates — the Coding Plan is a subscription, not metered billing
+> /context
+⎿ context: not reported yet (the meter fills in after the first turn)
+  baseline breakdown: not reported
+> /doctor
+⎿ runtime: desktop-bundle (/opt/ZCode/resources/glm)
+  interactive TUI: zagent (built in)
+  config: present
+  credential: present
+> /quota
+⎿ 5-hour window: 94% used · resets 19:24
+  monthly tool calls: 928 / 4000 (23% used) · resets 2026-10-03
+  plan: max
+⏺ Permission mode
+    1. plan
+  > 2. build  (current)
+    3. edit
+    4. yolo
+  up/down/tab or 1-9 to choose · enter to confirm · esc to cancel

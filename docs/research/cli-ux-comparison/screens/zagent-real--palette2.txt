@@ -1,0 +1,15 @@
+⏺ zagent 0.0.203 · runtime desktop-bundle 3.11.2 · zai/glm-5.3
+  <scratch-dir> · master
+  /help for commands · esc to interrupt · ctrl+c twice to exit
+  mcp node_repl: connecting
+    /undo revert the last turn's file changes (asks y/N first)
+    /export write the transcript as Markdown and print the path
+    /copy copy the last assistant message to the clipboard
+    /login Set up a Coding Plan provider.
+    /logout Remove the shared Z.ai login credentials.
+  > /compact Compact the current conversation with optional instructions.
+    +33 more · tab to cycle
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > /                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  >> build · zai/glm-5.3 · max · mcp 0/1

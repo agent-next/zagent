@@ -1,0 +1,16 @@
+u
+ ▐▛███▛█   Claude Code v2.1.270
+▝▜██████▀  Fable 5.1 with max effort · Claude Max
+  ▝▝ ▝▝    ~/workspace/zagent · /rc
+⚠ Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)
+  Restart without --safe-mode to re-enable
+  /install-github-app           Set up Claude GitHub Actions for a repository
+  /install-slack-app            Install the Claude Slack app
+  /keybindings                  Open your keyboard shortcuts file
+  /list-agents                  List subagents, teammates, and other Claude sessions you can message
+  /login                        Sign in with your Anthropic account
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_PE…
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

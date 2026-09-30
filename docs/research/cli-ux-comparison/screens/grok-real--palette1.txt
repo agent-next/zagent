@@ -1,0 +1,15 @@
+ <scratch-dir> 1.5K / 500K │ [Dashboard]
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────261─
+   ❯ /quit                                    Quit the application                                                    █
+     /usage                                   View usage
+     /login                                   Log in or re-authenticate with your account
+     /settings                                Open the settings modal
+     /goal                                    Set, manage, or check an autonomous goal
+     /workflows                               Browse installed workflows
+     /btw                                     Ask a side question without interrupting
+     /model                                   Switch the active model
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d/                                                                                                │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+ Enter:send  │  Shift+Tab:mode  │  Ctrl+.:shortcuts

@@ -1,0 +1,19 @@
+                       ┃ /loop-global-gates      List open LoopX user/controller gates and what  ┃
+                       ┃ /loop-global-risks      Show stale LoopX runs, boundary risks, failing  ┃
+                       ┃ /loop-global-summary    Read the compact global LoopX progress digest.  ┃
+                       ┃ /loop-global-todos      List runnable, blocked, deferred-ready, and rev ┃
+                       ┃ /loopx                  Inspect LoopX state, or start concrete project  ┃
+                       ┃ /loopx-deepresearch     Run a bounded LoopX deep-research loop: packet- ┃
+                       ┃ /loopx-global-gates     List open LoopX user/controller gates and what  ┃
+                       ┃ /loopx-global-risks     Show stale LoopX runs, boundary risks, failing  ┃
+                       ┃ /loopx-global-summary   Read the compact global LoopX progress digest.  ┃
+                       ┃ /loopx-global-todos     List runnable, blocked, deferred-ready, and rev ┃
+                       ┃
+                       ┃  /
+                       ┃
+                       ┃  Build · Kimi K2.5 Turbo (Developer Pass) Fireworks AI
+                       ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                       tab agents  ctrl+p commands
+                                  ● Tip Set any keybind to none to disable it completely
+  <scratch-dir>    1.17.11
+  master

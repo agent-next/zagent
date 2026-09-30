@@ -1,0 +1,15 @@
+⏺ zagent 0.0.203 · runtime desktop-bundle 3.11.2 · zai/glm-5.3
+  <scratch-dir> · master
+  /help for commands · esc to interrupt · ctrl+c twice to exit
+  mcp node_repl: connecting
+    /rewind Inspect or restore workspace checkpoints.
+    /approvals choose the permission mode (the /mode picker)
+    /plan switch to plan mode (/mode plan)
+    /expert Run or manage the expert workflow.
+    /effort Show or switch the current session reasoning effort.
+  > /mode Show or switch the current permission mode.
+    +23 more · tab to cycle
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > /                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  >> build · zai/glm-5.3 · max · mcp 0/1

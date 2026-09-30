@@ -1,0 +1,4 @@
+ Diff working tree                                                                                               0 files
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Loading diff...
+ tab focus file tree n next file  ] next hunk  [ previous hunk  p previous file  d switch source  m mark reviewed  ? all

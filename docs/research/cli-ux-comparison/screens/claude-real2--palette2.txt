@@ -1,0 +1,16 @@
+u
+ ▐▛███▛█   Claude Code v2.1.270
+▝▜██████▀  Fable 5.1 with max effort · Claude Max
+  ▝▝ ▝▝    ~/workspace/zagent · /rc
+⚠ Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)
+  Restart without --safe-mode to re-enable
+  /artifacts                    Browse your published and shared artifacts
+  /auto-mode-setup              Teach auto mode about your environment, plus optional rule tweaks
+  /autocompact                  Set how full the context gets before auto-summarizing
+  /autofix-pr                   Monitor and autofix any issues with the current PR
+  /background                   Send this session to the background and free the terminal
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_PE…
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

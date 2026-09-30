@@ -1,0 +1,11 @@
+⏺ zagent 0.0.203 · runtime desktop-bundle 3.11.2 · zai/glm-5.3
+  <scratch-dir> · master
+  /help for commands · esc to interrupt · ctrl+c twice to exit
+  mcp node_repl: connecting
+> //help
+⎿ Unknown command: //help. Available commands: /help, /login, /logout, /compact, /init, /expert, /effort, /workflow,
+  /workflows, /fork, /locale, /mcp, /plugins, /mode, /model, /new, /resume, /rewind, /skill, /goal.
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > Ask a task about this workspace                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  >> build · zai/glm-5.3 · max · mcp 0/1

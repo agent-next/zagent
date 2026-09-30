@@ -1,0 +1,15 @@
+u
+ ▐▛███▛█   Claude Code v2.1.270
+▝▜██████▀  Fable 5.1 with max effort · Claude Max
+  ▝▝ ▝▝    ~/workspace/zagent · /rc
+⚠ Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)
+  Restart without --safe-mode to re-enable
+  /loop                         Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo). Omit the
+                                interval to let the model self-pace.
+  /simplify                     Review the changed code for reuse, simplification, efficiency, and altitude cleanups,
+                                then apply the fixes. Quality only — it does not hunt for bugs; use /code-review for …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_PE…
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

@@ -1,0 +1,13 @@
+                                Status                                               esc
+                                No MCP Servers
+                                No Formatters
+                                1 Plugins
+                       ┃        • herdr-agent-state
+                       ┃  Ask
+                       ┃
+                       ┃  Build · Kimi K2.5 Turbo (Developer Pass) Fireworks AI
+                       ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                       tab agents  ctrl+p commands
+                            ● Tip Run /connect to add API keys for 75+ supported LLM providers
+  <scratch-dir>    1.17.11
+  master

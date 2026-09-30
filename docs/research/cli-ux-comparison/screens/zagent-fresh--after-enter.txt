@@ -1,0 +1,1 @@
+zagent: no GLM Coding Plan credential — set ZAI_API_KEY (see doctor)

@@ -1,0 +1,36 @@
+  Model
+  /approvals — choose the permission mode (the /mode picker)
+  /plan — switch to plan mode (/mode plan)
+  /expert — Run or manage the expert workflow. (runtime)
+  /effort — Show or switch the current session reasoning effort. (runtime)
+  /mode — Show or switch the current permission mode. (runtime)
+  /model — Show or switch the current session model. (runtime)
+  Project
+  /hooks — list configured ZCode hook events (read-only)
+  /permissions — persisted always-allow/deny grants
+  /memory — show project and global memory
+  /init — Create or update workspace AGENTS.md instructions. (runtime)
+  /skill — List skills, or force the next prompt to load one. (runtime)
+  /goal — Show or set the current session goal. (runtime)
+  Tools
+  /agents — running subagents in this session
+  /workflow — Create, validate, or run a script workflow. (runtime)
+  /workflows — List or inspect workflow runs. (runtime)
+  /mcp — Show or manage configured MCP servers. (runtime)
+  /plugins — Open the plugin manager. (runtime)
+  zagent
+  /status — version, runtime, model, session and token state
+  /version /v — print the zagent and runtime versions
+  /usage /cost — session tokens and a list-price estimate
+  /context — context meter and input baseline breakdown
+  /doctor — runtime/config/credential diagnosis (same checks as zagent doctor)
+  /quota — Coding Plan quota: 5-hour window and monthly tool-call pool
+  /update — check npm for a newer zagent and offer to install it
+  /theme — switch the palette: /theme light | dark | auto
+  /feedback — where to report bugs and feedback
+  /bug — report a bug
+  /help /? — show this command list
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > Ask a task about this workspace                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  >> build · zai/glm-5.3 · max · mcp 0/1

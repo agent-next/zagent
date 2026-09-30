@@ -1,0 +1,9 @@
+  Welcome to Codex, OpenAI's command-line coding agent
+  Finish signing in via your browser
+  If the link doesn't open automatically, open the following link to authenticate:
+  https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&redirect_uri=http%3A
+%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid%20profile%20email%20offline_access%20api.connectors.read%20api.con
+nectors.invoke&code_challenge=<redacted>&code_challenge_method=S256&id_token_add_organi
+zations=true&codex_cli_simplified_flow=true&state=<redacted>&originator=codex-tui
+  On a remote or headless machine? Press esc and choose Sign in with Device Code.
+  Press esc to cancel

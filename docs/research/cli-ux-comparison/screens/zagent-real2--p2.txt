@@ -1,0 +1,15 @@
+⏺ zagent 0.0.203 · runtime desktop-bundle 3.11.2 · zai/glm-5.3
+  <scratch-dir> · master
+  /help for commands · esc to interrupt · ctrl+c twice to exit
+  mcp node_repl: connecting
+    /exit leave the session
+  > /quit leave the session
+    /stop interrupt the running turn (same as esc)
+    /clear new session (kernel /new) and clear the transcript view
+    /diff this session's per-file changes (+A/-D and hunks)
+    /undo revert the last turn's file changes (asks y/N first)
+    +38 more · tab to cycle
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > /                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  >> build · zai/glm-5.3 · max · mcp 0/1

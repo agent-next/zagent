@@ -1,0 +1,15 @@
+ <scratch-dir> 1.5K / 500K │ [Dashboard]
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────261─
+     /btw                                     Ask a side question without interrupting                                █
+     /model                                   Switch the active model                                                Ga=
+d,d  /session-info                            Show session info                                                      Ga=
+d,d  /effort                                  Set reasoning effort for the current model                             Ga=
+d,d❯ /privacy                                 Open coding data, retention, and training settings                     Ga=
+d,d=i,personas                                Manage personas (create, edit, delete)
+     /help                                    Browse commands and keyboard shortcuts                         built-in
+     /tutorial                                Quick tips to get the most out of Grok Build      Ga=d,d=i,i=1,        Ga=
+d,d=i,i=1,q=2──────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d/                                                                                                │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+ Enter:send  │  Shift+Tab:mode  │  Ctrl+.:shortcuts

@@ -1,0 +1,19 @@
+                       ┃ /connect                Connect provider                                ┃
+                       ┃ /diff                   Open diff viewer                                ┃
+                       ┃ /editor                 Open editor                                     ┃
+                       ┃ /exit                   Exit the app                                    ┃
+                       ┃ /help                   Help                                            ┃
+                       ┃ /init                   guided AGENTS.md setup                          ┃
+                       ┃ /loop-global-gates      List open LoopX user/controller gates and what  ┃
+                       ┃ /loop-global-risks      Show stale LoopX runs, boundary risks, failing  ┃
+                       ┃ /loop-global-summary    Read the compact global LoopX progress digest.  ┃
+                       ┃ /loop-global-todos      List runnable, blocked, deferred-ready, and rev ┃
+                       ┃
+                       ┃  /
+                       ┃
+                       ┃  Build · Kimi K2.5 Turbo (Developer Pass) Fireworks AI
+                       ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                       tab agents  ctrl+p commands
+                            ● Tip Run /connect to add API keys for 75+ supported LLM providers
+  <scratch-dir>    1.17.11
+  master

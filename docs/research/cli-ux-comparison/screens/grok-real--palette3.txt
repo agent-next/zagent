@@ -1,0 +1,15 @@
+ <scratch-dir> 1.5K / 500K │ [Dashboard]
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────261─
+     /voice                                   Toggle dictation (Ctrl+Space/F8; Esc/Enter to stop)            built-in █
+     /new                                     Start a new session                                                    Ga=
+d,d  /context                                 View context usage                                                     Ga=
+d,d  /compact                                 Compact conversation history                                           Ga=
+d,d❯ /fork                                    Branch the current session into a peer agent                           Ga=
+d,d=i,resume                                  Resume a previous session
+     /loop                                    Run a prompt on a recurring interval
+     /plan                                    Enter plan mode                     ,i=1,q=2=1,        Ga=
+d,d=i,i=1,q=2──────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d/                                                                                                │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+ Enter:send  │  Shift+Tab:mode  │  Ctrl+.:shortcuts
