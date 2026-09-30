@@ -48,6 +48,8 @@ const EXEMPT = new Set([
 
 const walk = (dir, out = []) => {
   for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    // A linked worktree's `.git` is a FILE naming the worktree; its path is not repo content.
+    if (e.name === '.git') continue;
     const full = path.join(dir, e.name);
     const stats = e.isSymbolicLink() ? statSync(full, { throwIfNoEntry: false }) : e;
     if (!stats) continue;
