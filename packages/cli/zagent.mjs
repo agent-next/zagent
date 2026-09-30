@@ -19,6 +19,7 @@ import { findRuntime, kernelEnv, kernelResolves } from '../driver/runtime.mjs';
 import { runtimeCapabilities, capabilityLine } from '../driver/runtime-info.mjs';
 import { buildLaunchArgs, tuiPreference, tuiNodeSupported, TUI_NODE_FLOOR, nodeSqliteSupported, NODE_SQLITE_FLOOR } from '../driver/tui-launch.mjs';
 import { provisionStandaloneAccounts } from '../driver/account-provider.mjs';
+import { modelResolutionCheck, personalProviderConfigPath } from '../driver/personal-provider.mjs';
 import { explainProviderError, formatProviderError } from '../driver/provider-errors.mjs';
 import { nodeLine, doctorCredential, extensionCounts, hooksLine, diskLine, logDirLine, displayPath, displayText } from '../driver/doctor.mjs';
 import { snapshotStatus, snapshotLine } from '../driver/snapshot-guard.mjs';
@@ -621,6 +622,21 @@ if (args[0] === 'doctor' || !rt) {
   const cred = doctorCredential({ config: cfgJson, hasConfig: existsSync(cfg) });
   console.log(`credential: ${cred ?? 'NONE'}`);
   if (!cred && existsSync(cfg)) warnings.push('no Coding Plan credential in any source — turns will stop at the sign-in card');
+  // The credential can be fine while the model still cannot resolve: the
+  // app-server registry reads personal providers from v2/provider_config.json
+  // only, so a config whose selected provider/model is absent there (and not
+  // derivable from the cli config) fails every -p run with model-not-found.
+  // Doctor reports that class ahead of the turn instead of exiting 0.
+  if (cfgJson) {
+    const res = modelResolutionCheck({ config: cfgJson });
+    if (res) {
+      console.log(`model: ${res.detail}${res.ok ? '' : ' — NOT RESOLVABLE'}`);
+      if (!res.ok) {
+        warnings.push(`${res.detail} — cannot resolve in the runtime registry; fix the provider/model list in the cli config or in ${displayPath(personalProviderConfigPath())}`);
+        unhealthy = true;
+      }
+    }
+  }
   const ext = extensionCounts({ config: cfgJson });
   console.log(`plugins: ${ext.plugins} installed`);
   console.log(hooksLine(ext));
