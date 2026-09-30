@@ -22,23 +22,23 @@ if (!['start', 'stop', 'ask', '--serve', 'serve'].includes(cmd)) {
   console.error('usage: zagentd start | stop | ask "prompt"');
   process.exit(2);
 }
-// Resolve after the usage check so a bad invocation touches nothing on disk.
-// Throws if the runtime dir is squatter-owned or world-accessible.
-const { dir: RUN_DIR, sock: SOCK, pid: PID_FILE } = daemonPaths();
-// Single-instance lock (mkdir-based): serializes `start` and the daemon's own
-// socket setup inside the private runtime dir. A lock whose owner pid is dead
-// is reclaimed by acquireFileLockSync; a live holder is never stolen from.
-const START_LOCK = path.join(RUN_DIR, 'zagentd-start');
+// Socket/pid paths resolve on FIRST USE, never at import: a machine where no
+// usable dir exists must fail the command that needs the socket, carrying the
+// resolver's error naming every dir it tried — not crash every importer of
+// this module at load time. Memoized so a process sees one consistent dir.
+let pathsCache = null;
+const paths = () => pathsCache ??= daemonPaths();
 
 // The pid file names a live zagentd --serve process, or there is no daemon.
 // Anything else recorded there is stale/foreign and must not be trusted.
 const liveDaemonPid = () => {
   let pid = null;
-  try { pid = Number(readFileSync(PID_FILE, 'utf8').trim()); } catch {}
+  try { pid = Number(readFileSync(paths().pid, 'utf8').trim()); } catch {}
   return pidIsZagentd(pid) ? pid : null;
 };
 
 if (cmd === 'stop') {
+  const { pid: PID_FILE } = paths();
   let pid = null;
   try { pid = Number(readFileSync(PID_FILE, 'utf8').trim()); } catch {}
   if (Number.isInteger(pid) && pid > 0) {
@@ -62,6 +62,7 @@ if (cmd === 'stop') {
 if (cmd === 'ask') {
   const prompt = rest.join(' ');
   if (!prompt) { console.error('usage: zagentd ask "prompt"'); process.exit(1); }
+  const { sock: SOCK } = paths();
   const start = Date.now();
   const client = connect(SOCK);
   client.on('error', () => { console.error('daemon not running (start with: zagentd start)'); process.exit(1); });
@@ -91,11 +92,16 @@ if (cmd === 'ask') {
 }
 
 if (cmd === 'start') {
+  const { dir: RUN_DIR, sock: SOCK, pid: PID_FILE } = paths();
+  // Single-instance lock (mkdir-based): serializes `start` and the daemon's own
+  // socket setup inside the private runtime dir. A lock whose owner pid is dead
+  // is reclaimed by acquireFileLockSync; a live holder is never stolen from.
+  const START_LOCK = path.join(RUN_DIR, 'zagentd-start');
   const alreadyRunning = () => { console.log('daemon already running'); process.exit(0); };
   if (liveDaemonPid()) alreadyRunning();
-  // Take the single-instance lock BEFORE spawning: without it two concurrent
-  // starts both find no pid file and each fork a daemon that then overwrites
-  // the pid file and unlinks the other's socket path.
+  // The lock is taken BEFORE spawning: without it two concurrent starts both
+  // find no pid file and each fork a daemon that then overwrites the pid file
+  // and unlinks the other's socket path.
   let release;
   try {
     release = acquireFileLockSync(START_LOCK, { maxWaitMs: 10000 });
@@ -155,6 +161,8 @@ if (cmd === 'start') {
 
 if (cmd === '--serve' || cmd === 'serve') {
   // === THE DAEMON ===
+  const { dir: RUN_DIR, sock: SOCK, pid: PID_FILE } = paths();
+  const START_LOCK = path.join(RUN_DIR, 'zagentd-start');
   // Hold the start lock through socket setup: a second serve serializes behind
   // this one, then sees a live socket owner and refuses instead of unlinking
   // the path out from under the running daemon.

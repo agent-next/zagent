@@ -2,8 +2,11 @@
 // zagentd compact — ask the daemon to compact its warm session for this cwd.
 import { connect } from 'node:net';
 import { daemonPaths } from './zagentd-paths.mjs';
-const SOCK = daemonPaths().sock;
-const client = connect(SOCK);
+// Resolved at use, not import: a machine where no usable runtime dir exists
+// must fail THIS command with the resolver's error, not crash on import.
+let client;
+try { client = connect(daemonPaths().sock); }
+catch (e) { console.error(e.message); process.exit(1); }
 client.on('error', () => { console.error('daemon not running (zagentd start)'); process.exit(1); });
 client.on('connect', () => client.write(JSON.stringify({ op: 'compact', cwd: process.cwd() }) + '\n'));
 let buf = '', received = false;

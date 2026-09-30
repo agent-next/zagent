@@ -4,8 +4,11 @@
 // resume/mutate a foreign live session). No daemon → honest guidance.
 import { connect } from 'node:net';
 import { daemonPaths } from './zagentd-paths.mjs';
-const SOCK = daemonPaths().sock;
-const client = connect(SOCK);
+// Resolved at use, not import: a machine where no usable runtime dir exists
+// must fail THIS command with the resolver's error, not crash on import.
+let client;
+try { client = connect(daemonPaths().sock); }
+catch (e) { console.error(e.message); process.exit(1); }
 client.on('error', () => {
   console.error('compact applies to LIVE sessions. Start the daemon first (zagentd start), send an ask, then: zagent compact\n(for the interactive TUI use its own /compact — sessions are process-local).');
   process.exit(1);

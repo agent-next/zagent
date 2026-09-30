@@ -32,16 +32,22 @@ export const SOCKET_PATH_ROOM = process.platform === 'linux' ? 108
 export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home = os.homedir() } = {}) {
   const uid = typeof process.getuid === 'function' ? process.getuid() : 'nouser';
   const leaf = `zagent-${uid}`;
-  const socketBytes = (base) => path.join(base, leaf, 'zagentd.sock').length + 1; // + NUL terminator
-  const bases = [];
+  // Candidate dirs, most-preferred first. The first three nest under
+  // caller-controlled roots; the last is short BY CONSTRUCTION (29-36 bytes
+  // for the socket on any POSIX host) so the walk always has somewhere to
+  // land — a machine whose XDG, tmpdir AND home are all too long must still
+  // get a working daemon, not an error. Every candidate is created 0700 and
+  // owner-verified on the same terms, /tmp's sticky bit giving the last one
+  // the same protection the shared-tmpdir fallback always relied on.
+  const candidates = [];
   const preferred = env.XDG_RUNTIME_DIR?.trim();
-  if (preferred) bases.push(preferred);
-  bases.push(tmpdir, path.join(home, '.zagentd'));
+  if (preferred) candidates.push(path.join(preferred, leaf));
+  candidates.push(path.join(tmpdir, leaf), path.join(home, '.zagentd', leaf), path.join('/tmp', `zagentd-${uid}`));
+  const fits = (dir) => path.join(dir, 'zagentd.sock').length + 1 <= SOCKET_PATH_ROOM; // + NUL terminator
   const tried = [];
-  for (const base of bases) {
-    tried.push(base);
-    if (socketBytes(base) > SOCKET_PATH_ROOM) continue; // would truncate — never bind here
-    const dir = path.join(base, leaf);
+  for (const dir of candidates) {
+    tried.push(dir);
+    if (!fits(dir)) continue; // would truncate the bind — never use this dir
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (typeof process.getuid !== 'function') return dir; // no uid concept to verify
     const st = statSync(dir);
@@ -51,7 +57,7 @@ export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home
       throw new Error(`unsafe daemon runtime dir ${dir}: must be a directory owned by uid ${process.getuid()} with mode 0700`);
     return dir;
   }
-  throw new Error(`no private runtime base keeps zagentd.sock within the AF_UNIX sun_path room (${SOCKET_PATH_ROOM} bytes); tried: ${tried.join(', ')}`);
+  throw new Error(`no private runtime dir keeps zagentd.sock within the AF_UNIX sun_path room (${SOCKET_PATH_ROOM} bytes); tried: ${tried.join(', ')}`);
 }
 
 export function daemonPaths(opts) {
