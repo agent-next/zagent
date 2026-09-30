@@ -1,0 +1,1 @@
+Write a Python 3 function `toposort(edges)` where edges is a list of (before, after) pairs of strings. Return a topologically-ordered list of all nodes. Raise ValueError("cycle") on a cycle. Deterministic: process nodes in sorted order when free. Reply with ONLY one python code block containing the function.

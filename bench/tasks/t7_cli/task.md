@@ -1,0 +1,1 @@
+Write a Python 3 function main(argv) implementing a CLI: `prog add <a> <b>` prints the sum; `prog echo <text>` prints text uppercased; anything else prints 'usage' and returns exit code 2. Return the exit code, print to stdout. Reply with ONLY one python code block.

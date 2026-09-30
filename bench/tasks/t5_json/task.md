@@ -1,0 +1,1 @@
+Write a Python 3 function flatten_json(d: dict) -> dict that flattens nested dicts into dot-separated keys, e.g. {"a":{"b":1}} -> {"a.b":1}. Lists are leaf values. Reply with ONLY one python code block.

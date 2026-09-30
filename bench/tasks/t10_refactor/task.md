@@ -1,0 +1,1 @@
+The file messy.py contains a working but tangled word-count function with duplicated logic and dead code. Refactor it in place into clean small functions with identical behavior. First read messy.py, then edit the file directly. Do not reply with code.

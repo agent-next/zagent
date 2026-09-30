@@ -1,0 +1,1 @@
+This directory contains a tiny package: shapes.py (class Circle with radius) and report.py (function describe(circle) returning "Circle(r=...)"). Add an area() method to Circle in shapes.py AND extend describe() in report.py to append " area=<value rounded to 2dp>". Edit both files. Do not reply with code — edit the files directly.

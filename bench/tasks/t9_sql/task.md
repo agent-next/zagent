@@ -1,0 +1,1 @@
+Write a Python 3 function query(rows: list[dict], select=None, where=None, order_by=None, desc=False) -> list[dict]: filter rows by where (a callable), select keys if given (list), sort by order_by key (stable). Reply with ONLY one python code block.
