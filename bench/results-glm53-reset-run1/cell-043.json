@@ -1,0 +1,21 @@
+{
+  "task": "t8_apiclient",
+  "lane": "zcode",
+  "repeat": 1,
+  "index": 43,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:48:20.346Z",
+  "wallMs": 23801,
+  "usage": {
+    "inputTokens": 8717,
+    "outputTokens": 1876,
+    "cacheReadTokens": 8064,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

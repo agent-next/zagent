@@ -1,0 +1,21 @@
+{
+  "task": "t9_sql",
+  "lane": "zcode",
+  "repeat": 3,
+  "index": 52,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:51:39.738Z",
+  "wallMs": 4425,
+  "usage": {
+    "inputTokens": 8698,
+    "outputTokens": 132,
+    "cacheReadTokens": 8064,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

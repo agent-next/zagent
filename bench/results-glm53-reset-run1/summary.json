@@ -1,0 +1,303 @@
+{
+  "expectedCells": 60,
+  "observedCells": 60,
+  "complete": true,
+  "allPassed": false,
+  "missingCells": [],
+  "duplicateCells": 0,
+  "unexpectedCells": [],
+  "invalidRecords": 0,
+  "infraFailures": 0,
+  "perLane": {
+    "zcode": {
+      "observed": 30,
+      "pass": 29,
+      "failed": 1,
+      "infraFailures": 0,
+      "medianWallMs": 13018,
+      "nativeUsage": {
+        "records": 30,
+        "coverage": 1,
+        "numericFields": {
+          "cacheReadTokens": {
+            "count": 30,
+            "sum": 422400
+          },
+          "cacheWriteTokens": {
+            "count": 30,
+            "sum": 0
+          },
+          "inputTokens": {
+            "count": 30,
+            "sum": 472714
+          },
+          "outputTokens": {
+            "count": 30,
+            "sum": 23540
+          }
+        }
+      }
+    },
+    "claude_code": {
+      "observed": 30,
+      "pass": 30,
+      "failed": 0,
+      "infraFailures": 0,
+      "medianWallMs": 13082,
+      "nativeUsage": {
+        "records": 30,
+        "coverage": 1,
+        "numericFields": {
+          "cache_creation_input_tokens": {
+            "count": 30,
+            "sum": 0
+          },
+          "cache_read_input_tokens": {
+            "count": 30,
+            "sum": 934400
+          },
+          "input_tokens": {
+            "count": 30,
+            "sum": 97259
+          },
+          "output_tokens": {
+            "count": 30,
+            "sum": 27300
+          }
+        }
+      }
+    }
+  },
+  "pairedSuccessCells": [
+    {
+      "task": "t1_rot13",
+      "repeat": 1,
+      "key": "t1_rot13\u00001",
+      "zcodeWallMs": 9498,
+      "claudeCodeWallMs": 6690
+    },
+    {
+      "task": "t1_rot13",
+      "repeat": 2,
+      "key": "t1_rot13\u00002",
+      "zcodeWallMs": 13018,
+      "claudeCodeWallMs": 6491
+    },
+    {
+      "task": "t1_rot13",
+      "repeat": 3,
+      "key": "t1_rot13\u00003",
+      "zcodeWallMs": 7662,
+      "claudeCodeWallMs": 6609
+    },
+    {
+      "task": "t10_refactor",
+      "repeat": 1,
+      "key": "t10_refactor\u00001",
+      "zcodeWallMs": 43496,
+      "claudeCodeWallMs": 57475
+    },
+    {
+      "task": "t10_refactor",
+      "repeat": 2,
+      "key": "t10_refactor\u00002",
+      "zcodeWallMs": 50871,
+      "claudeCodeWallMs": 96227
+    },
+    {
+      "task": "t10_refactor",
+      "repeat": 3,
+      "key": "t10_refactor\u00003",
+      "zcodeWallMs": 49339,
+      "claudeCodeWallMs": 61784
+    },
+    {
+      "task": "t2_fixbug",
+      "repeat": 1,
+      "key": "t2_fixbug\u00001",
+      "zcodeWallMs": 17435,
+      "claudeCodeWallMs": 14028
+    },
+    {
+      "task": "t2_fixbug",
+      "repeat": 2,
+      "key": "t2_fixbug\u00002",
+      "zcodeWallMs": 21366,
+      "claudeCodeWallMs": 17160
+    },
+    {
+      "task": "t2_fixbug",
+      "repeat": 3,
+      "key": "t2_fixbug\u00003",
+      "zcodeWallMs": 16795,
+      "claudeCodeWallMs": 13898
+    },
+    {
+      "task": "t3_toposort",
+      "repeat": 1,
+      "key": "t3_toposort\u00001",
+      "zcodeWallMs": 11745,
+      "claudeCodeWallMs": 12179
+    },
+    {
+      "task": "t3_toposort",
+      "repeat": 2,
+      "key": "t3_toposort\u00002",
+      "zcodeWallMs": 23091,
+      "claudeCodeWallMs": 13298
+    },
+    {
+      "task": "t3_toposort",
+      "repeat": 3,
+      "key": "t3_toposort\u00003",
+      "zcodeWallMs": 12766,
+      "claudeCodeWallMs": 12776
+    },
+    {
+      "task": "t4_multifile",
+      "repeat": 1,
+      "key": "t4_multifile\u00001",
+      "zcodeWallMs": 23375,
+      "claudeCodeWallMs": 24833
+    },
+    {
+      "task": "t4_multifile",
+      "repeat": 2,
+      "key": "t4_multifile\u00002",
+      "zcodeWallMs": 26674,
+      "claudeCodeWallMs": 35099
+    },
+    {
+      "task": "t4_multifile",
+      "repeat": 3,
+      "key": "t4_multifile\u00003",
+      "zcodeWallMs": 34892,
+      "claudeCodeWallMs": 20785
+    },
+    {
+      "task": "t5_json",
+      "repeat": 1,
+      "key": "t5_json\u00001",
+      "zcodeWallMs": 9078,
+      "claudeCodeWallMs": 7301
+    },
+    {
+      "task": "t5_json",
+      "repeat": 2,
+      "key": "t5_json\u00002",
+      "zcodeWallMs": 8552,
+      "claudeCodeWallMs": 7359
+    },
+    {
+      "task": "t5_json",
+      "repeat": 3,
+      "key": "t5_json\u00003",
+      "zcodeWallMs": 8230,
+      "claudeCodeWallMs": 11168
+    },
+    {
+      "task": "t6_regex",
+      "repeat": 1,
+      "key": "t6_regex\u00001",
+      "zcodeWallMs": 12866,
+      "claudeCodeWallMs": 13082
+    },
+    {
+      "task": "t6_regex",
+      "repeat": 2,
+      "key": "t6_regex\u00002",
+      "zcodeWallMs": 21530,
+      "claudeCodeWallMs": 14524
+    },
+    {
+      "task": "t6_regex",
+      "repeat": 3,
+      "key": "t6_regex\u00003",
+      "zcodeWallMs": 9166,
+      "claudeCodeWallMs": 11848
+    },
+    {
+      "task": "t7_cli",
+      "repeat": 1,
+      "key": "t7_cli\u00001",
+      "zcodeWallMs": 9841,
+      "claudeCodeWallMs": 19817
+    },
+    {
+      "task": "t7_cli",
+      "repeat": 3,
+      "key": "t7_cli\u00003",
+      "zcodeWallMs": 18253,
+      "claudeCodeWallMs": 14227
+    },
+    {
+      "task": "t8_apiclient",
+      "repeat": 1,
+      "key": "t8_apiclient\u00001",
+      "zcodeWallMs": 23801,
+      "claudeCodeWallMs": 22496
+    },
+    {
+      "task": "t8_apiclient",
+      "repeat": 2,
+      "key": "t8_apiclient\u00002",
+      "zcodeWallMs": 8632,
+      "claudeCodeWallMs": 12132
+    },
+    {
+      "task": "t8_apiclient",
+      "repeat": 3,
+      "key": "t8_apiclient\u00003",
+      "zcodeWallMs": 36479,
+      "claudeCodeWallMs": 8917
+    },
+    {
+      "task": "t9_sql",
+      "repeat": 1,
+      "key": "t9_sql\u00001",
+      "zcodeWallMs": 6793,
+      "claudeCodeWallMs": 9449
+    },
+    {
+      "task": "t9_sql",
+      "repeat": 2,
+      "key": "t9_sql\u00002",
+      "zcodeWallMs": 10514,
+      "claudeCodeWallMs": 11241
+    },
+    {
+      "task": "t9_sql",
+      "repeat": 3,
+      "key": "t9_sql\u00003",
+      "zcodeWallMs": 4425,
+      "claudeCodeWallMs": 9271
+    }
+  ],
+  "pairedSuccessCount": 29,
+  "medians": {
+    "zcodeWallMs": 13018,
+    "claudeCodeWallMs": 13082,
+    "pairedSuccessCount": 29
+  },
+  "comparison": {
+    "eligible": false,
+    "canClaimWinner": false,
+    "winner": null,
+    "zcodeMedianWallMs": 13018,
+    "claudeCodeMedianWallMs": 13082,
+    "reason": "winner withheld until the complete matrix passes without infrastructure failures and has paired successes"
+  },
+  "tokenComparability": {
+    "status": "unknown",
+    "comparable": false,
+    "totals": null,
+    "reason": "zcode and claude_code usage fields are not validated as a common comparable measure"
+  },
+  "tokenTotals": null,
+  "stopReason": null,
+  "protectedUnchanged": true,
+  "fixtureRemoved": true,
+  "unexpectedChildren": 0,
+  "measurementValid": true,
+  "acceptancePassed": false
+}

@@ -1,0 +1,436 @@
+{
+  "package": "previous-package",
+  "version": "0.0.171",
+  "model": "glm-5.3",
+  "expectedCells": 60,
+  "modelCalls": true,
+  "timing": "full client process wall time including internal retries",
+  "osSandbox": false,
+  "tokenComparability": "unknown; native numeric usage only, no cost equivalence",
+  "billing": {
+    "route": "same canonical Z.AI Anthropic API endpoint and selected credential for both clients",
+    "accountPlan": "same GLM Coding Plan account",
+    "freeTokenEntitlement": "unverified",
+    "actualCharge": null,
+    "accountQuotaDelta": null,
+    "warning": "Official ZCode product promotions are not assumed to apply to this API route."
+  },
+  "inputs": {
+    "t1_rot13": {
+      "task.md": "be66903168f0833125ef2dabd5d1ff77f2b8fd99c34e48e1a4e760f89f6eaed1",
+      "test.py": "c49176a14c04f2dd13967aee1e8ba4b536b564b41bb2724ec34d311fe0a7f69a"
+    },
+    "t2_fixbug": {
+      "buggy.py": "20e18e9a4a881ff5db1bee043259f943e5f1b986aeff76d02c0116d2e36d2e26",
+      "task.md": "28fe6096e61882c88b7f3f78828edbca76fca09ca55457ab6fcf8569ba18b75f",
+      "test.py": "0e53d9cc1e0dbd72dd5be3cee1740f0d4408837f3b0d18e55663a9446a60cb5c"
+    },
+    "t3_toposort": {
+      "task.md": "fd61b7f0b89388ad2eaaafdeb2d4db91df85912aa8d3110254b41543117b40c5",
+      "test.py": "b33fde32e5ccc7a57953f292accef6639a5f74ac6ae1d1067c284a26803e12de"
+    },
+    "t4_multifile": {
+      "agent_graded": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "report.py": "a0e176dd24db35798a03d9f25929ea6190ca627a01bcddab0779715b20efbad3",
+      "shapes.py": "c5b825b75110eeaa048b6186c15789903a94f95bbed6f579e246f58417866213",
+      "task.md": "5408a5b3ed3b4f6350fd00a7db285a78856a084c05a4cdf5a3d2875052575c7d",
+      "test.py": "da645007bb3fe2458d7e671f29b6ebbccc09e5411c79fe5a786fff3e0ba15d6e"
+    },
+    "t5_json": {
+      "task.md": "ff9f7586802f173431159add4b2baf8cb079861d857ba20e11f274755b8754c4",
+      "test.py": "27523b945644065df696600b8b67b740244a5bc723baa78f6f188a040dd23cd9"
+    },
+    "t6_regex": {
+      "task.md": "fb00546a6889e47590d6b472394a16355884b93124a9677963f0b7823cd1fdef",
+      "test.py": "ec747d14a2cd4c975799526255a44bac168a83b9563e813179124c6a4dbab338"
+    },
+    "t7_cli": {
+      "task.md": "f77b10de92b2e338b0b3c7bf0426cc4e4413f5184e14da5fc3dc5b60a4b92084",
+      "test.py": "1c20cd213c33c4789d121b6249a92884040bccf7caf3959018759537855c0f11"
+    },
+    "t8_apiclient": {
+      "task.md": "d214200ea985cb045df1d60f481018928c6a7f55a9a65a8d0bd5e91b15da09df",
+      "test.py": "d053b550bf16c37b6d78b523843dc102ce250b5ba50c6bee9dcaa264463379cf"
+    },
+    "t9_sql": {
+      "task.md": "8045f54bfa20ba0cae651691bf408d9c511cb6b9d3e57f8e3681228c8c444a2d",
+      "test.py": "2da73e4f4e1c0f9bd38e081fa8b413d31302d8dcffb395123bf1365344cd4c68"
+    },
+    "t10_refactor": {
+      "agent_graded": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "messy.py": "f6ffece09994a648125061c774b93503bfda90849b3ba9830e7c2519f613f55e",
+      "task.md": "f9a10d56a99a14088496836176e74dde9c2bb725bd40a7fc3ee172e58663f068",
+      "test.py": "884fcb807e477e674ef3e25222312af68915481f0cfb6953cb87ab1cb55d6baf"
+    }
+  },
+  "matrix": [
+    {
+      "task": "t1_rot13",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 0
+    },
+    {
+      "task": "t1_rot13",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 1
+    },
+    {
+      "task": "t1_rot13",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 2
+    },
+    {
+      "task": "t1_rot13",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 3
+    },
+    {
+      "task": "t1_rot13",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 4
+    },
+    {
+      "task": "t1_rot13",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 5
+    },
+    {
+      "task": "t2_fixbug",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 6
+    },
+    {
+      "task": "t2_fixbug",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 7
+    },
+    {
+      "task": "t2_fixbug",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 8
+    },
+    {
+      "task": "t2_fixbug",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 9
+    },
+    {
+      "task": "t2_fixbug",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 10
+    },
+    {
+      "task": "t2_fixbug",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 11
+    },
+    {
+      "task": "t3_toposort",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 12
+    },
+    {
+      "task": "t3_toposort",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 13
+    },
+    {
+      "task": "t3_toposort",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 14
+    },
+    {
+      "task": "t3_toposort",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 15
+    },
+    {
+      "task": "t3_toposort",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 16
+    },
+    {
+      "task": "t3_toposort",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 17
+    },
+    {
+      "task": "t4_multifile",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 18
+    },
+    {
+      "task": "t4_multifile",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 19
+    },
+    {
+      "task": "t4_multifile",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 20
+    },
+    {
+      "task": "t4_multifile",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 21
+    },
+    {
+      "task": "t4_multifile",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 22
+    },
+    {
+      "task": "t4_multifile",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 23
+    },
+    {
+      "task": "t5_json",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 24
+    },
+    {
+      "task": "t5_json",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 25
+    },
+    {
+      "task": "t5_json",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 26
+    },
+    {
+      "task": "t5_json",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 27
+    },
+    {
+      "task": "t5_json",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 28
+    },
+    {
+      "task": "t5_json",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 29
+    },
+    {
+      "task": "t6_regex",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 30
+    },
+    {
+      "task": "t6_regex",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 31
+    },
+    {
+      "task": "t6_regex",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 32
+    },
+    {
+      "task": "t6_regex",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 33
+    },
+    {
+      "task": "t6_regex",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 34
+    },
+    {
+      "task": "t6_regex",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 35
+    },
+    {
+      "task": "t7_cli",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 36
+    },
+    {
+      "task": "t7_cli",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 37
+    },
+    {
+      "task": "t7_cli",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 38
+    },
+    {
+      "task": "t7_cli",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 39
+    },
+    {
+      "task": "t7_cli",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 40
+    },
+    {
+      "task": "t7_cli",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 41
+    },
+    {
+      "task": "t8_apiclient",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 42
+    },
+    {
+      "task": "t8_apiclient",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 43
+    },
+    {
+      "task": "t8_apiclient",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 44
+    },
+    {
+      "task": "t8_apiclient",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 45
+    },
+    {
+      "task": "t8_apiclient",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 46
+    },
+    {
+      "task": "t8_apiclient",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 47
+    },
+    {
+      "task": "t9_sql",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 48
+    },
+    {
+      "task": "t9_sql",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 49
+    },
+    {
+      "task": "t9_sql",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 50
+    },
+    {
+      "task": "t9_sql",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 51
+    },
+    {
+      "task": "t9_sql",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 52
+    },
+    {
+      "task": "t9_sql",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 53
+    },
+    {
+      "task": "t10_refactor",
+      "lane": "claude_code",
+      "repeat": 1,
+      "index": 54
+    },
+    {
+      "task": "t10_refactor",
+      "lane": "zcode",
+      "repeat": 1,
+      "index": 55
+    },
+    {
+      "task": "t10_refactor",
+      "lane": "zcode",
+      "repeat": 2,
+      "index": 56
+    },
+    {
+      "task": "t10_refactor",
+      "lane": "claude_code",
+      "repeat": 2,
+      "index": 57
+    },
+    {
+      "task": "t10_refactor",
+      "lane": "claude_code",
+      "repeat": 3,
+      "index": 58
+    },
+    {
+      "task": "t10_refactor",
+      "lane": "zcode",
+      "repeat": 3,
+      "index": 59
+    }
+  ],
+  "startedAt": "2026-09-06T21:30:01.024Z",
+  "sourceCommit": "98a9fc2bdc83f7c24b9856d667984742c6f11a11",
+  "tarballSha256": "0cb609f58255c659b231f8a10d992eb361a88663600bab0f3324cc31f7c919e5",
+  "claudeCodeWrapperSha256": "1df8edd8b520640d67c44318a3ffcc5d1b6eda6dc5dd3b203798734a8e9b8684",
+  "runtimeEntrySha256": "5c18d8ab10312add652e7c1d3fb08020b592d902fa46e0c55d95f687a57b084e",
+  "claudeCodeVersion": "2.1.263",
+  "cooldownMs": 10000,
+  "timeoutMs": 300000
+}

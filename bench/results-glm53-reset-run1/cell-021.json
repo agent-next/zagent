@@ -1,0 +1,21 @@
+{
+  "task": "t4_multifile",
+  "lane": "claude_code",
+  "repeat": 2,
+  "index": 21,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:39:18.512Z",
+  "wallMs": 35099,
+  "usage": {
+    "input_tokens": 13985,
+    "output_tokens": 653,
+    "cache_read_input_tokens": 80896,
+    "cache_creation_input_tokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

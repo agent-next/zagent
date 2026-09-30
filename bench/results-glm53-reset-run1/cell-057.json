@@ -1,0 +1,21 @@
+{
+  "task": "t10_refactor",
+  "lane": "claude_code",
+  "repeat": 2,
+  "index": 57,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:56:47.311Z",
+  "wallMs": 96227,
+  "usage": {
+    "input_tokens": 5263,
+    "output_tokens": 4893,
+    "cache_read_input_tokens": 100032,
+    "cache_creation_input_tokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}
