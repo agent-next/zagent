@@ -736,11 +736,15 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
     rmSync(h, { recursive: true, force: true });
     return res;
   };
-  for (const [label, doc] of [['non-object access', mk('sk')], ['missing access', mk(undefined)],
-    ['empty access.type', mk({ type: '', apiKey: KEY })], ['typeless access without a key', mk({})],
+  for (const [label, doc] of [['non-object access', mk('sk')], ['empty access.type', mk({ type: '', apiKey: KEY })], ['typeless access without a key', mk({})],
     ['null rule config', (() => { const d = mk({}); d.config.providerConfigRules.providerRules[0].config = null; return d; })()]]) {
     const r = check(doc);
     ok(r?.ok === false && /malformed/.test(r.detail), `${label} is flagged (${r?.detail})`);
+  }
+  // The kernel's schema makes access nullable + optional, so absent/null is valid.
+  for (const [label, a] of [['absent', undefined], ['null', null]]) {
+    const r = check(mk(a));
+    ok(r?.ok === true, `${label} access block is valid (${r?.detail})`);
   }
   const typed = check(mk({ type: 'api-key', apiKey: KEY }));
   ok(typed?.ok === true, `typed access block stays ok (${typed?.detail})`);

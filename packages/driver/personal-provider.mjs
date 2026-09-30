@@ -370,7 +370,8 @@ function buildPersonalProviderPlan({
       const c = r?.config;
       if (!c || typeof c !== 'object' || Array.isArray(c))
         return malformed('the personal provider config is malformed (provider rule)');
-      if (!c.access || typeof c.access !== 'object' || typeof c.access.type !== 'string' || !c.access.type)
+      // The kernel's schema makes access nullable+optional (account:* rules must omit it); a PRESENT one must be typed.
+      if (c.access != null && (typeof c.access !== 'object' || typeof c.access.type !== 'string' || !c.access.type))
         return malformed('the personal provider config is malformed (access.type)');
       if (c.personalModelIds !== undefined && !Array.isArray(c.personalModelIds))
         return malformed('the personal provider config is malformed (personalModelIds)');
