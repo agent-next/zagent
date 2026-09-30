@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync, rmSy
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DRIVER = path.join(root, 'usertest', 'swarm', 'pty-drive.py');
@@ -161,8 +161,8 @@ test('kitty CSI >u/<u/=u/?u are not cursor restore — plain CSI u still is', ()
 });
 
 test('pty:true cards carry the driver + SCREEN-cite contract', async () => {
-  const { EXTRA_SCENARIOS } = await import(path.join(root, 'usertest', 'swarm', 'scenarios-extra.mjs'));
-  const { SCENARIOS, SIGNIN_SCENARIOS, SIGNIN_PTY_SCENARIOS } = await import(path.join(root, 'usertest', 'swarm', 'scenarios.mjs'));
+  const { EXTRA_SCENARIOS } = await import(pathToFileURL(path.join(root, 'usertest', 'swarm', 'scenarios-extra.mjs')).href);
+  const { SCENARIOS, SIGNIN_SCENARIOS, SIGNIN_PTY_SCENARIOS } = await import(pathToFileURL(path.join(root, 'usertest', 'swarm', 'scenarios.mjs')).href);
   const pty = [...SCENARIOS, ...EXTRA_SCENARIOS, ...SIGNIN_SCENARIOS, ...SIGNIN_PTY_SCENARIOS].filter((s) => s.pty);
   assert.ok(pty.length >= 1, 'no pty:true cards — the class silently emptied');
   for (const s of pty) {

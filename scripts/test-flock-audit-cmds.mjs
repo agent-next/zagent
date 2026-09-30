@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'usertest', 'swarm', 'opencode-flock.mjs'), 'utf8');
+const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'usertest', 'swarm', 'opencode-flock.mjs'), 'utf8').replace(/\r\n/g, '\n'); // autocrlf checkouts
 const slice_ = (from, to) => {
   const i = src.indexOf(from);
   if (i < 0) throw new Error(`slice anchor missing: ${from}`);
