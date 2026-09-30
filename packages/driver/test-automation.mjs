@@ -150,6 +150,12 @@ if (process.platform !== 'win32') {
   ok(!alive, 'the grandchild dies with the job, not just the direct child');
   rmSync(markerDir, { recursive: true, force: true });
 }
+{
+  // A multi-byte char split across two pipe writes decodes intact.
+  const src = `const b = Buffer.from('\u4f60\u597d'); process.stdout.write(b.subarray(0, 4)); setTimeout(() => process.stdout.write(b.subarray(4)), 150);`;
+  const r = await runTimedProcess(process.execPath, ['-e', src], { timeoutMs: 10000 });
+  ok(r.stdout === '\u4f60\u597d', 'split multi-byte output is not corrupted');
+}
 rmSync(home, { recursive: true, force: true });
 console.log(fails ? `FAIL (${fails})` : 'PASS automation-d7-r7');
 process.exit(fails ? 1 : 0);
