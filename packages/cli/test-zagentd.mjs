@@ -3,6 +3,7 @@
 // before signalling it. POSIX-only: the daemon is a unix socket + getuid model.
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, statSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,7 +24,10 @@ mkdirSync(temp);
 // the AF_UNIX sun_path room on every host — the sandbox tmpdir is long enough
 // on macOS to overflow it, and an over-long XDG is (correctly) skipped for a
 // shorter base rather than preferred. /tmp is short everywhere POSIX.
-const XDG = mkdtempSync('/tmp/zagentd-xdg-');
+// mkdirSync, not mkdtempSync: the offline test preload re-roots every
+// mkdtemp prefix under TMPDIR, which is the long sandbox path again.
+const XDG = `/tmp/zagentd-xdg-${randomBytes(6).toString('hex')}`;
+mkdirSync(XDG, { mode: 0o700 });
 
 const baseEnv = () => Object.assign(
   Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'LANG'].filter(k => process.env[k]).map(k => [k, process.env[k]])),
