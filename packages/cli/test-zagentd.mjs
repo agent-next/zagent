@@ -28,6 +28,9 @@ mkdirSync(temp);
 // mkdtemp prefix under TMPDIR, which is the long sandbox path again.
 const XDG = `/tmp/zagentd-xdg-${randomBytes(6).toString('hex')}`;
 mkdirSync(XDG, { mode: 0o700 });
+// Same reason for the tmpdir base the fallback/relocation legs expect to win.
+const SHORT = `/tmp/zagentd-tmp-${randomBytes(6).toString('hex')}`;
+mkdirSync(SHORT, { mode: 0o700 });
 
 const baseEnv = () => Object.assign(
   Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'LANG'].filter(k => process.env[k]).map(k => [k, process.env[k]])),
@@ -56,8 +59,8 @@ try {
   const dir = daemonRuntimeDir({ env: { XDG_RUNTIME_DIR: XDG } });
   assert.equal(dir, path.join(XDG, `zagent-${process.getuid()}`), 'XDG runtime dir preferred');
   assert.equal(statSync(dir).mode & 0o777, 0o700, 'runtime dir is 0700');
-  const fallback = daemonRuntimeDir({ env: {}, tmpdir: temp });
-  assert.equal(fallback, path.join(temp, `zagent-${process.getuid()}`), 'tmpdir fallback is uid-keyed');
+  const fallback = daemonRuntimeDir({ env: {}, tmpdir: SHORT });
+  assert.equal(fallback, path.join(SHORT, `zagent-${process.getuid()}`), 'tmpdir fallback is uid-keyed');
   assert.equal(statSync(fallback).mode & 0o777, 0o700, 'fallback dir is 0700');
   const loose = path.join(XDG, 'loose');
   mkdirSync(loose);
@@ -76,16 +79,16 @@ try {
   // shorter private base, keep the 0700/owner guarantees, and actually serve.
   const deep = path.join(temp, 'd'.repeat(100)); // deep enough to overflow the room on every POSIX CI host
   mkdirSync(deep, { recursive: true });
-  const deepEnv = { ...baseEnv(), XDG_RUNTIME_DIR: deep };
-  const relocated = daemonRuntimeDir({ env: deepEnv, tmpdir: temp });
+  const deepEnv = { ...baseEnv(), XDG_RUNTIME_DIR: deep, TMPDIR: SHORT, TMP: SHORT, TEMP: SHORT };
+  const relocated = daemonRuntimeDir({ env: deepEnv, tmpdir: SHORT });
   assert.notEqual(relocated, path.join(deep, `zagent-${process.getuid()}`), 'an over-long XDG base is not used');
-  assert.equal(relocated, path.join(temp, `zagent-${process.getuid()}`), 'relocation lands on the tmpdir base');
-  assert.ok(daemonPaths({ env: deepEnv, tmpdir: temp }).sock.length + 1 <= SOCKET_PATH_ROOM, 'relocated socket path fits sun_path');
+  assert.equal(relocated, path.join(SHORT, `zagent-${process.getuid()}`), 'relocation lands on the tmpdir base');
+  assert.ok(daemonPaths({ env: deepEnv, tmpdir: SHORT }).sock.length + 1 <= SOCKET_PATH_ROOM, 'relocated socket path fits sun_path');
   assert.equal(statSync(relocated).mode & 0o777, 0o700, 'relocated dir keeps 0700');
   assert.equal(existsSync(path.join(deep, `zagent-${process.getuid()}`)), false, 'the length-skipped base is left untouched');
   const deepRun = spawnSync(process.execPath, [zagentd, 'start'], { cwd: root, env: deepEnv, encoding: 'utf8', timeout: 15000 });
   assert.equal(deepRun.status, 0, `daemon starts from a deep XDG: ${deepRun.stderr}`);
-  const deepPaths = daemonPaths({ env: deepEnv, tmpdir: temp });
+  const deepPaths = daemonPaths({ env: deepEnv, tmpdir: SHORT });
   assert(waitFor(() => existsSync(deepPaths.sock) && deepPaths.sock), 'daemon binds at the relocated socket path');
   daemonPid = Number(readFileSync(deepPaths.pid, 'utf8').trim());
   assert(pidIsZagentd(daemonPid), 'relocated pid file names the daemon');
@@ -184,4 +187,5 @@ try {
   if (daemonPid != null) try { process.kill(daemonPid, 'SIGKILL'); } catch {}
   rmSync(sandbox, { recursive: true, force: true });
   rmSync(XDG, { recursive: true, force: true });
+  rmSync(SHORT, { recursive: true, force: true });
 }
