@@ -80,11 +80,17 @@ try {
   assert.equal(r.status, 0);
   assert.match(r.stdout, /daemon not running/);
 
-  // real lifecycle: start -> private sock+pid -> pid verifies as zagentd -> stop
+  // real lifecycle: start -> private sock+pid -> pid verifies as zagentd -> stop.
+  // `start` itself polls for the bind, so by exit 0 the socket exists; the wait
+  // below is belt-and-braces and its failure message carries the serve log the
+  // daemon now writes beside the socket (boot crashes used to vanish into
+  // /dev/null, leaving only "socket never appeared").
   assert.equal(cli(['start']).status, 0, 'daemon starts');
   const paths = daemonPaths({ env: baseEnv() });
   const sock = waitFor(() => existsSync(paths.sock) && paths.sock);
-  assert(sock, 'daemon socket appears inside the private runtime dir');
+  let serveLog = '';
+  try { serveLog = readFileSync(path.join(paths.dir, 'zagentd.log'), 'utf8').trimEnd().split('\n').slice(-20).join('\n'); } catch {}
+  assert(sock, `daemon socket appears inside the private runtime dir (serve log: ${serveLog || 'none'})`);
   daemonPid = Number(readFileSync(paths.pid, 'utf8').trim());
   assert(pidIsZagentd(daemonPid), 'recorded pid is really a zagentd process');
   assert.equal(paths.pid.startsWith(dir + path.sep), true, 'pid file lives under the private dir');
