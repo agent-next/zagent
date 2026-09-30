@@ -11,6 +11,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   importLegacyCliConfig, personalProviderConfigDocument, personalProviderConfigPath, legacyCliConfigPath,
   provisionPersonalProviderConfig, planPersonalProviderConfig, modelResolutionCheck, UnsupportedLegacyCliProviderConfigError,
@@ -108,7 +109,7 @@ const tempHome = (cli = CLI_FIXTURE) => {
   const target = personalProviderConfigPath({ home, env: {} });
   ok(r.provisioned && r.path === target, `fresh home provisions (${r.reason ?? 'written'})`);
   ok(readFileSync(target, 'utf8') === KERNEL_SEEDED_BYTES, 'written file is byte-identical to the kernel migration output');
-  ok((statSync(target).mode & 0o777) === 0o600, 'provisioned file is 0600');
+  ok(process.platform === 'win32' || (statSync(target).mode & 0o777) === 0o600, 'provisioned file is 0600');
   ok(!existsSync(`${target}.lock`), 'lock dir cleaned up after provisioning');
   rmSync(home, { recursive: true, force: true });
 }
@@ -311,7 +312,7 @@ const tempHome = (cli = CLI_FIXTURE) => {
     JSON.stringify({ 'oauth:zai:access_token': 'fixture-token' }), { mode: 0o600 });
   const runtime = path.join(home, 'runtime.cjs');
   writeFileSync(runtime, 'throw new Error("doctor must not start runtime");');
-  const r = spawnSync(process.execPath, [new URL('./zagent.mjs', import.meta.url).pathname, 'doctor'], {
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL('./zagent.mjs', import.meta.url)), 'doctor'], {
     env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home,
       ZCODE_RUNTIME: runtime, ZAI_API_KEY: 'fixture-env-key' },
     encoding: 'utf8', cwd: home, timeout: 30000,
@@ -463,7 +464,7 @@ const tempHome = (cli = CLI_FIXTURE) => {
   write({ schemaVersion: 1, config: { providerConfigRules: { providerRules: { zai: {} } } } });
   const runtime = path.join(home, 'runtime.cjs');
   writeFileSync(runtime, 'throw new Error("doctor must not start runtime");');
-  const doc2 = spawnSync(process.execPath, [new URL('./zagent.mjs', import.meta.url).pathname, 'doctor'], {
+  const doc2 = spawnSync(process.execPath, [fileURLToPath(new URL('./zagent.mjs', import.meta.url)), 'doctor'], {
     env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home, ZCODE_RUNTIME: runtime },
     encoding: 'utf8', cwd: home, timeout: 30000,
   });
