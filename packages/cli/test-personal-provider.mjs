@@ -512,69 +512,178 @@ const tempHome = (cli = CLI_FIXTURE) => {
 // --- the public plan never throws, even when the injected IO does ---
 {
   const boom = () => { throw new Error('probe: exists exploded'); };
-  let threw = false, plan = null, r = null, res = null;
-  try { plan = planPersonalProviderConfig({ home: tempHome(), env: {}, exists: boom }); }
+  let threw = false, plan = null;
+  const phome = tempHome();
+  try { plan = planPersonalProviderConfig({ home: phome, env: {}, exists: boom }); }
   catch { threw = true; }
   ok(!threw && plan?.write === false && /plan failed: probe/.test(plan?.reason ?? ''),
     `a throwing exists degrades to a conservative refusal (${plan?.reason})`);
+  rmSync(phome, { recursive: true, force: true });
+  threw = false;
   const home = tempHome();
+  let r = null;
   try { r = provisionPersonalProviderConfig({ home, env: {}, exists: boom }); } catch { threw = true; }
   ok(!threw && r?.provisioned === false && /plan failed/.test(r?.reason ?? ''),
     `provisioning never propagates the throw (${r?.reason})`);
+  threw = false;
+  let res = null;
   try { res = modelResolutionCheck({ env: {}, home, config: CLI_FIXTURE, exists: boom }); } catch { threw = true; }
   ok(!threw && res === null, 'doctor wrapper never throws on failing IO (null verdict)');
   rmSync(home, { recursive: true, force: true });
 }
 
-// --- family-rule selections verify the model id against the builtin template ---
-// A family rule (builtin:zai -> zai-api) has no personalModelIds; whether it
-// resolves a model is the builtin template's builtinModelIds, so the verdict
-// checks the id there when the template list is available and refuses (no
-// write) when it is not — a create-if-missing seed must not guess.
-const BUILTIN_FIXTURE = {
+// --- family-rule selections: kernel-exact verdicts, never a seed refusal ---
+// The registry's explicit-selection lookup is exact and case-sensitive
+// (getModel: `this.#n.get(providerId)?.get(modelId)`, zcode.cjs ~576830;
+// models.find(g => g.modelId === t.modelId), ~579813) — measured live on
+// 3.14.4: `--model zai-api/glm-5.3` vs the template list answers
+// model-not-found, `zai-api/GLM-5.3` answers ok. Builtin catalog ids are
+// UPPER case (real zcode-builtin.json: ['GLM-5.3','GLM-5.3-Flash']) while
+// cli configs use lowercase — commit-msg canonicalises before sending for
+// exactly this reason. Family rules therefore seed ALWAYS (the kernel
+// migration writes them regardless; their model list lives in the template,
+// so a seed cannot brick a later selection) and the verdict compares ids
+// exactly like the kernel.
+const BUILTIN_FIXTURE = { // real shape: upper-case template ids
   schemaVersion: 1,
   config: { providerConfigRules: { providerRules: [], templateRules: [
-    { templateId: 'zai-api', config: { builtinModelIds: ['glm-5.3', 'glm-5.3-flash'] } },
+    { templateId: 'zai-api', config: { builtinModelIds: ['GLM-5.3', 'GLM-5.3-Flash'] } },
   ] } },
 };
 {
-  const famCli = { provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main: 'zai-api/not-a-real-model' } };
-  const home = tempHome(famCli);
+  const famCli = main => ({ provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main } });
   const env = {};
+  // Byte parity with the kernel's own migration of the same config (measured
+  // live on 3.14.4): the family rule's access block carries type:'api-key'
+  // (xz toJSON always emits it) — without it the kernel's strict parser
+  // rejects the whole file and even the kernel's own -p fails.
+  const KERNEL_FAMILY_BYTES = JSON.stringify({
+    schemaVersion: 1,
+    config: {
+      providerConfigRules: { providerRules: [
+        { providerId: 'zai-api', templateId: 'zai-api',
+          config: { group: 'standard-personal', access: { type: 'api-key', apiKey: KEY } } }] },
+      modelConfigRules: { providerModelRules: [], manualProviderModelRules: [] },
+      defaultModelSelection: { providerId: 'zai-api', modelId: 'glm-5.3' },
+    },
+  }, null, 2);
+  const phome = tempHome(famCli('zai-api/glm-5.3'));
+  const pr = provisionPersonalProviderConfig({ home: phome, env, runtimeEntry: '/nonexistent-runtime-entry' });
+  ok(pr.provisioned && readFileSync(personalProviderConfigPath({ home: phome, env }), 'utf8') === KERNEL_FAMILY_BYTES,
+    'family seed is byte-identical to the kernel migration output (access.type included)');
+  rmSync(phome, { recursive: true, force: true });
+
+  // Unknown id: verdict says not-in-list, the seed still happens.
+  const home = tempHome(famCli('zai-api/not-a-real-model'));
   const r = provisionPersonalProviderConfig({ home, env, builtin: BUILTIN_FIXTURE });
-  ok(!r.provisioned && !existsSync(personalProviderConfigPath({ home, env })),
-    `family selection with an unknown model id refuses to seed (${r.reason})`);
-  const res = modelResolutionCheck({ env, home, config: famCli, builtin: BUILTIN_FIXTURE });
+  ok(r.provisioned && existsSync(personalProviderConfigPath({ home, env })),
+    `family selection with an unknown model id still seeds (kernel-migration parity)`);
+  const res = modelResolutionCheck({ env, home, config: famCli('zai-api/not-a-real-model'), builtin: BUILTIN_FIXTURE });
   ok(res?.ok === false && /not in the builtin template's model list/.test(res.detail),
     `doctor names the missing template model (${res?.detail})`);
   rmSync(home, { recursive: true, force: true });
 
-  const okCli = { provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main: 'zai-api/glm-5.3' } };
-  const ohome = tempHome(okCli);
-  const or = provisionPersonalProviderConfig({ home: ohome, env: {}, builtin: BUILTIN_FIXTURE });
-  ok(or.provisioned && modelResolutionCheck({ env: {}, home: ohome, config: okCli, builtin: BUILTIN_FIXTURE })?.ok === true,
-    'a family model the template carries seeds and resolves');
+  // Lowercase id against the real upper-case list: exact comparison misses —
+  // the kernel's explicit-selection path rejects it too (measured).
+  const lhome = tempHome(famCli('zai-api/glm-5.3'));
+  const lr = provisionPersonalProviderConfig({ home: lhome, env, builtin: BUILTIN_FIXTURE });
+  const lres = modelResolutionCheck({ env, home: lhome, config: famCli('zai-api/glm-5.3'), builtin: BUILTIN_FIXTURE });
+  ok(lr.provisioned && lres?.ok === false && /model zai-api\/glm-5\.3 is not in the builtin template's model list/.test(lres.detail),
+    `case-mismatched family id seeds but is flagged exactly like the kernel rejects it (${lres?.detail})`);
+  rmSync(lhome, { recursive: true, force: true });
+
+  // Canonical id: seeds and resolves.
+  const ohome = tempHome(famCli('zai-api/GLM-5.3'));
+  const or = provisionPersonalProviderConfig({ home: ohome, env, builtin: BUILTIN_FIXTURE });
+  ok(or.provisioned && modelResolutionCheck({ env, home: ohome, config: famCli('zai-api/GLM-5.3'), builtin: BUILTIN_FIXTURE })?.ok === true,
+    'a canonical family model the template carries seeds and resolves');
   rmSync(ohome, { recursive: true, force: true });
 
-  // Template list unavailable (no builtin config named in the env): the seed
-  // is refused conservatively and doctor says why.
-  const uhome = tempHome(okCli);
-  const ur = provisionPersonalProviderConfig({ home: uhome, env: {} });
-  const ures = modelResolutionCheck({ env: {}, home: uhome, config: okCli });
-  ok(!ur.provisioned && !existsSync(personalProviderConfigPath({ home: uhome, env: {} })),
-    `family selection without the builtin template list refuses to seed (${ur.reason})`);
-  ok(ures?.ok === false && /builtin template model list is unavailable/.test(ures.detail),
-    `doctor says the verdict could not be verified (${ures?.detail})`);
+  // Template list unresolvable (no env preset, no runtime, no managed cache):
+  // seed exactly what the kernel migration would write and report UNVERIFIED.
+  const uhome = tempHome(famCli('zai-api/glm-5.3'));
+  const NO_RUNTIME = { env: {}, runtimeEntry: '/nonexistent-runtime-entry' };
+  const uplan = planPersonalProviderConfig({ home: uhome, ...NO_RUNTIME });
+  const ur = provisionPersonalProviderConfig({ home: uhome, ...NO_RUNTIME });
+  const ures = modelResolutionCheck({ ...NO_RUNTIME, home: uhome, config: famCli('zai-api/glm-5.3') });
+  ok(ur.provisioned && existsSync(personalProviderConfigPath({ home: uhome, env: {} })),
+    'family selection without any resolvable template list still seeds (#7 behaviour)');
+  ok(uplan.resolves === null && /builtin template model list is unavailable/.test(uplan.unverified ?? ''),
+    `plan reports the unverified reason (${uplan.unverified})`);
+  ok(ures?.ok === true && ures.unverified === true && /zai-api\/glm-5\.3 — unverified/.test(ures.detail),
+    `doctor says the check is unverified, not failed (${ures?.detail})`);
   rmSync(uhome, { recursive: true, force: true });
 
   // The env-named builtin config is read when no document is injected.
   const bfile = path.join(tmpdir(), `zagent-pp-builtin-${process.pid}.json`);
   writeFileSync(bfile, JSON.stringify(BUILTIN_FIXTURE));
-  const ehome = tempHome(okCli);
+  const ehome = tempHome(famCli('zai-api/GLM-5.3'));
   const er = provisionPersonalProviderConfig({ home: ehome, env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bfile } });
   ok(er.provisioned, 'family selection seeds from the env-named builtin config');
   rmSync(ehome, { recursive: true, force: true });
   rmSync(bfile, { force: true });
+}
+
+// --- the template list resolves the way the runtime spawn sees it ---
+// No env preset and no injected document: the bundled copy beside the
+// discovered runtime (what kernelEnv injects for our spawns) is read, then
+// the kernel's managed active cache under the data root — reusing zagent's
+// own resolvers (builtinConfigPath / kernelActiveBuiltinPath), not invented
+// paths.
+{
+  const famCli = main => ({ provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main } });
+  const { builtinConfigPath, kernelActiveBuiltinPath } = await import('../driver/account-config.mjs');
+  const { findRuntime } = await import('../driver/runtime.mjs');
+
+  // Runtime-anchored bundled copy: <resources>/glm/zcode.cjs beside
+  // <resources>/config/provider/zcode-builtin.json — discoverable via
+  // ZCODE_RUNTIME with no other env.
+  const rt = mkdtempSync(path.join(tmpdir(), 'zagent-pp-rt-'));
+  mkdirSync(path.join(rt, 'resources', 'glm'), { recursive: true });
+  mkdirSync(path.join(rt, 'resources', 'config', 'provider'), { recursive: true });
+  writeFileSync(path.join(rt, 'resources', 'glm', 'zcode.cjs'), '// stub entry\n');
+  writeFileSync(path.join(rt, 'resources', 'config', 'provider', 'zcode-builtin.json'), JSON.stringify(BUILTIN_FIXTURE));
+  const entry = path.join(rt, 'resources', 'glm', 'zcode.cjs');
+  const env = { ZCODE_RUNTIME: entry };
+  ok(findRuntime({ env })?.entry === entry && builtinConfigPath(entry) === path.join(rt, 'resources', 'config', 'provider', 'zcode-builtin.json'),
+    'fixture runtime anchors the bundled builtin path (kernelEnv parity)');
+  const bhome = tempHome(famCli('zai-api/GLM-5.3'));
+  const bres = modelResolutionCheck({ env, home: bhome, config: famCli('zai-api/GLM-5.3') });
+  ok(bres?.ok === true && !bres.unverified,
+    `template list found beside the runtime -> verified verdict (${bres?.detail})`);
+  const lres = modelResolutionCheck({ env, home: bhome, config: famCli('zai-api/glm-5.3') });
+  ok(lres?.ok === false && /not in the builtin template's model list/.test(lres.detail),
+    `the runtime-anchored list is actually consulted (${lres?.detail})`);
+  rmSync(bhome, { recursive: true, force: true });
+  rmSync(rt, { recursive: true, force: true });
+
+  // Managed active cache (what a bare kernel spawn provisions under the data
+  // root) is the next candidate when nothing else resolves.
+  const mhome = tempHome(famCli('zai-api/GLM-5.3'));
+  const active = kernelActiveBuiltinPath({ env: {}, home: mhome });
+  mkdirSync(path.dirname(active), { recursive: true });
+  writeFileSync(active, JSON.stringify(BUILTIN_FIXTURE));
+  const mres = modelResolutionCheck({ env: {}, home: mhome, config: famCli('zai-api/GLM-5.3'), runtimeEntry: '/nonexistent-runtime-entry' });
+  ok(mres?.ok === true && !mres.unverified,
+    `managed active cache under the data root resolves the list (${mres?.detail})`);
+  rmSync(mhome, { recursive: true, force: true });
+}
+
+// --- custom lists are kernel-exact too: casing must match the config's own ---
+// Same registry semantics as family lists: a selection whose id differs in
+// case from the configured models map is rejected by the kernel's explicit
+// lookup (measured: zai/GLM-5.3 vs ['glm-5.3',…] answers model-not-found),
+// so the verdict flags it and the permanent-miss guard refuses the seed.
+{
+  const cli = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  cli.model.main = 'zai/GLM-5.3';
+  const home = tempHome(cli);
+  const env = {};
+  const r = provisionPersonalProviderConfig({ home, env });
+  const res = modelResolutionCheck({ env, home, config: cli });
+  ok(!r.provisioned && res?.ok === false && /model zai\/GLM-5\.3 is not in the provider's model list/.test(res.detail),
+    `case-mismatched custom selection is flagged exactly (${res?.detail})`);
+  rmSync(home, { recursive: true, force: true });
 }
 
 // --- commit-msg and models test seed before opening their app-server client ---
