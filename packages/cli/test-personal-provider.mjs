@@ -7,11 +7,12 @@
 // never runs the legacy import (runZCodeProtocolAgent -> Ykt(env), no
 // standalone options), which is why `-p --model` failed on fresh hosts.
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import {
-  importLegacyCliConfig, personalProviderConfigDocument, personalProviderConfigPath,
+  importLegacyCliConfig, personalProviderConfigDocument, personalProviderConfigPath, legacyCliConfigPath,
   provisionPersonalProviderConfig, modelResolutionCheck, UnsupportedLegacyCliProviderConfigError,
 } from '../driver/personal-provider.mjs';
 import { runPrintOnce } from './zagent-print.mjs';
@@ -229,6 +230,112 @@ const tempHome = (cli = CLI_FIXTURE) => {
     config: { provider: { x: { options: { apiKeyRequired: false } } }, model: { main: 'x/m' } } });
   ok(bad?.ok === false && /not expressible/.test(bad.detail), `unimportable provider flagged (${bad?.detail})`);
   ok(modelResolutionCheck({ env, home, config: {} }) === null, 'no model.main -> nothing to check');
+  rmSync(home, { recursive: true, force: true });
+}
+
+// --- never persist an unusable selected key (OAuth apiKey:'' window) ---
+// ensureConfig writes apiKey:'' until the kernel provisions the real key; a
+// create-if-missing seed of that config would be permanent (nothing rewrites
+// an existing personal file), so the provisioner must abstain instead.
+{
+  const withKey = apiKey => {
+    const c = JSON.parse(JSON.stringify(CLI_FIXTURE));
+    if (apiKey === undefined) delete c.provider.zai.options.apiKey;
+    else c.provider.zai.options.apiKey = apiKey;
+    return c;
+  };
+  for (const bad of ['', '   ', undefined]) {
+    const home = tempHome(withKey(bad));
+    const r = provisionPersonalProviderConfig({ home, env: {} });
+    ok(!r.provisioned && !existsSync(personalProviderConfigPath({ home, env: {} })),
+      `selected provider key ${JSON.stringify(bad)} -> nothing seeded (${r.reason})`);
+    rmSync(home, { recursive: true, force: true });
+  }
+  // NHa stores a custom provider's key verbatim (xz ApiKeyAccessConfig keeps
+  // "" — offset 547578): a NON-selected provider's empty key still migrates;
+  // the safety net is the selected-provider gate, not converter divergence.
+  const both = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  both.provider.other = { kind: 'openai', options: { apiKey: '' }, models: { m1: {} } };
+  const home = tempHome(both);
+  const r = provisionPersonalProviderConfig({ home, env: {} });
+  const doc = JSON.parse(readFileSync(personalProviderConfigPath({ home, env: {} }), 'utf8'));
+  const other = doc.config.providerConfigRules.providerRules.find(p => p.providerId === 'other');
+  ok(r.provisioned && other?.config?.access?.apiKey === '',
+    "NHa parity: a non-selected provider's empty key is stored verbatim; the gate scopes to the selection");
+  rmSync(home, { recursive: true, force: true });
+}
+
+// --- source/target root rule is the kernel's measured asymmetry ---
+// The kernel's legacy import reads ~/.zcode/cli/config.json from the REAL home
+// (U7, offset 4090234) while the personal target follows ZCODE_DATA_BASE_DIR
+// (dQi, offset 1068307). Measured live on 3.14.4: HOME's key lands in the
+// data-root file; a data-root cli config is never consulted.
+{
+  const home = tempHome();
+  const data = mkdtempSync(path.join(tmpdir(), 'zagent-pp-'));
+  mkdirSync(path.join(data, '.zcode', 'cli'), { recursive: true });
+  const dataCli = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  dataCli.provider.zai.options.apiKey = 'DATA-ROOT-KEY';
+  writeFileSync(path.join(data, '.zcode', 'cli', 'config.json'), JSON.stringify(dataCli));
+  const env = { ZCODE_DATA_BASE_DIR: data };
+  ok(legacyCliConfigPath({ home }) === path.join(home, '.zcode', 'cli', 'config.json'),
+    'legacy source path helper is HOME-rooted (U7 parity)');
+  const r = provisionPersonalProviderConfig({ home, env });
+  const target = path.join(data, '.zcode', 'v2', 'provider_config.json');
+  ok(r.provisioned && r.path === target && existsSync(target),
+    'target follows ZCODE_DATA_BASE_DIR (dQi parity)');
+  ok(JSON.parse(readFileSync(target, 'utf8')).config.providerConfigRules.providerRules[0].config.access.apiKey === KEY,
+    'source stays the HOME cli config — the data root cli config is never read');
+  ok(!existsSync(path.join(home, '.zcode', 'v2', 'provider_config.json')),
+    'nothing is written under HOME when the data root relocates the target');
+  rmSync(home, { recursive: true, force: true });
+  rmSync(data, { recursive: true, force: true });
+}
+
+// --- garbage model entries are skipped, not fatal ---
+{
+  const cli = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  cli.provider.zai.models['glm-5.3'] = null; // hand-edited config debris
+  const conv = importLegacyCliConfig(cli);
+  ok(JSON.stringify(conv?.providers[0]?.config?.personalModelIds) === JSON.stringify(['glm-5.3-flash']),
+    'null model entries are skipped like deleted ones (no throw)');
+  const home = tempHome(cli);
+  const r = provisionPersonalProviderConfig({ home, env: {} });
+  ok(r.provisioned, 'a null model entry does not abort provisioning');
+  const res = modelResolutionCheck({ env: {}, home, config: cli });
+  ok(res?.ok === false && /not in the provider's model list/.test(res.detail),
+    `resolution verdict stays honest for the dropped model (${res?.detail}) — not "not expressible"`);
+  rmSync(home, { recursive: true, force: true });
+}
+
+// --- a malformed existing file is a verdict, never a crash ---
+{
+  const home = tempHome();
+  const env = {};
+  const target = personalProviderConfigPath({ home, env });
+  mkdirSync(path.dirname(target), { recursive: true });
+  const write = doc => writeFileSync(target, JSON.stringify(doc), { mode: 0o600 });
+  let res = null, threw = false;
+  write({ schemaVersion: 1, config: { providerConfigRules: { providerRules: { zai: {} } } } });
+  try { res = modelResolutionCheck({ env, home, config: CLI_FIXTURE }); } catch { threw = true; }
+  ok(!threw && res?.ok === false && /malformed \(providerRules\)/.test(res.detail),
+    `non-array providerRules -> malformed verdict, not a crash (${res?.detail})`);
+  threw = false;
+  write({ schemaVersion: 1, config: { providerConfigRules: { providerRules: [
+    { providerId: 'zai', config: { personalModelIds: { 'glm-5.3': 1 } } } ] } } });
+  try { res = modelResolutionCheck({ env, home, config: CLI_FIXTURE }); } catch { threw = true; }
+  ok(!threw && res?.ok === false && /malformed \(personalModelIds\)/.test(res.detail),
+    `non-array personalModelIds -> malformed verdict, not a crash (${res?.detail})`);
+  // end-to-end through doctor: a model: line and exit 1, never an uncaught throw
+  write({ schemaVersion: 1, config: { providerConfigRules: { providerRules: { zai: {} } } } });
+  const runtime = path.join(home, 'runtime.cjs');
+  writeFileSync(runtime, 'throw new Error("doctor must not start runtime");');
+  const doc2 = spawnSync(process.execPath, [new URL('./zagent.mjs', import.meta.url).pathname, 'doctor'], {
+    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home, ZCODE_RUNTIME: runtime },
+    encoding: 'utf8', cwd: home, timeout: 30000,
+  });
+  ok(doc2.status === 1 && /^model: .+NOT RESOLVABLE$/m.test(doc2.stdout) && !/TypeError/.test(doc2.stdout + doc2.stderr),
+    'doctor prints a model: verdict for a malformed personal config instead of crashing');
   rmSync(home, { recursive: true, force: true });
 }
 
