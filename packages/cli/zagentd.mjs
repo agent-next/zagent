@@ -127,21 +127,25 @@ if (cmd === 'start') {
   // instead of trusting spawn(). The lock is released above — the serve child
   // takes it for its own socket setup — and a child that dies at boot turns
   // into a nonzero exit carrying the log tail, not a silent missing socket.
+  // Giving up also reaps the child: a daemon that never bound is not left
+  // running behind a failed start.
   const pidAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
   const nap = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 10000;
+  const giveUp = (why) => {
+    try { closeSync(logFd); } catch {}
+    try { child.kill('SIGKILL'); } catch {} // boot-failed daemon: no state worth a graceful ask
+    rmSync(PID_FILE, { force: true });
+    rmSync(SOCK, { force: true });
+    console.error(`daemon failed to ${why} (pid ${child.pid}, socket ${SOCK.length + 1} bytes); ${LOG} tail:`);
+    try { console.error(readFileSync(LOG, 'utf8').trimEnd().split('\n').slice(-20).join('\n') || '(empty)'); }
+    catch { console.error('(no log)'); }
+    process.exit(1);
+  };
   while (!existsSync(SOCK)) {
     const died = child.exitCode !== null || child.signalCode !== null || !pidAlive(child.pid);
-    if (died || Date.now() >= deadline) {
-      try { closeSync(logFd); } catch {}
-      console.error(`daemon failed to ${died ? 'start' : 'bind its socket within 15s'} (pid ${child.pid}); ${LOG} tail:`);
-      try { console.error(readFileSync(LOG, 'utf8').trimEnd().split('\n').slice(-20).join('\n') || '(empty)'); }
-      catch { console.error('(no log)'); }
-      // A dead child's pid record is a lie; a merely slow one may still bind,
-      // so its record stays for `stop` to manage.
-      if (died) rmSync(PID_FILE, { force: true });
-      process.exit(1);
-    }
+    if (died) giveUp('start');
+    if (Date.now() >= deadline) giveUp('bind its socket within 10s');
     nap(100);
   }
   try { closeSync(logFd); } catch {}
@@ -232,6 +236,15 @@ if (cmd === '--serve' || cmd === 'serve') {
   const server = createServer(sock => acceptRequest(sock, handleRequest));
 
   server.listen(SOCK, () => {
+    // The kernel truncates over-long sun_path binds instead of failing them
+    // (a 130-char Linux bind lands at 108 chars and reports success), so
+    // "listening" is not proof the socket is where any client computes it.
+    // daemonRuntimeDir keeps the path inside the room by construction; this
+    // guard is the invariant made loud if that ever regresses.
+    if (!existsSync(SOCK)) {
+      console.error(`zagentd socket missing at ${SOCK} after listen — sun_path truncation?`);
+      process.exit(1);
+    }
     console.log(`zagentd listening on ${SOCK} (pid ${process.pid})`);
   });
   // Release the single-instance lock only once the socket is bound — a second
