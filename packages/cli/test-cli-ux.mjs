@@ -524,7 +524,9 @@ for (const flagArgs of [
 ]) {
   const r = run(flagArgs);
   assert.equal(r.status, 0, `${flagArgs.join(' ')}: ${r.stderr}`);
-  assert.match(r.stdout, new RegExp(`fixture-kernel:${flagArgs.map(a => a.replace(/[.[\]]/g, '\\$&')).join(' ')}`),
+  // Values are paths on win32 — an unescaped '\' in them turns into a regex
+  // escape (\t reads as TAB, \U as U...), so '\' must be quoted like the rest.
+  assert.match(r.stdout, new RegExp(`fixture-kernel:${flagArgs.map(a => a.replace(/[.[\]\\]/g, '\\$&')).join(' ')}`),
     `${flagArgs.join(' ')} must reach the runtime verbatim`);
 }
 // --browser-use preflight: the kernel's browser backend does
