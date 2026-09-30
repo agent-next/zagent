@@ -28,7 +28,8 @@ export async function runProcess(command, args, { cwd, env, timeoutMs = 300000, 
   return new Promise(resolve => {
     const child = spawn(command, args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '', timedOut = false, overflow = false, failed = false;
-    const kill = () => { if (child.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} } };
+    // Windows has no process groups: negative pids throw, so fall back to killing the child itself.
+    const kill = () => { if (child.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch {} } } };
     const timer = setTimeout(() => {
       timedOut = true; kill();
       if (env?.ZCODE_PAIRED_RUN) killTagged(env.ZCODE_PAIRED_RUN);
