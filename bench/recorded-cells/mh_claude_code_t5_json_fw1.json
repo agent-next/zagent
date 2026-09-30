@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t5_json",
+ "runId": "fw1",
+ "wall_s": 41,
+ "turn_s": 41,
+ "pass": true,
+ "outLen": 517,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

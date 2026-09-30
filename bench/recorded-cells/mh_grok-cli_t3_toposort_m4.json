@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t3_toposort",
+ "runId": "m4",
+ "wall_s": 42.7,
+ "turn_s": 42.7,
+ "pass": true,
+ "outLen": 935,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

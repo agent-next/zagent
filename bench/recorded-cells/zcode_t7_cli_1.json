@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t7_cli",
+ "runId": "1",
+ "wall_s": 22.5,
+ "turn_s": 19.7,
+ "pass": false,
+ "outLen": 483,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18408,
+   "outputTokens": 151,
+   "totalTokens": 18559,
+   "cacheReadTokens": 10368,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 18408,
+  "outputSum": 151,
+  "cacheSum": 10368,
+  "projectionUsed": 18559
+ },
+ "testOut": " last):\n  File \"/tmp/zbench-zcode-t7_cli-1-grade/test.py\", line 6, in <module>\n    assert rc == 0 and buf.getvalue().strip() == '5'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "claude_direct",
+ "task": "t12_string_reverse",
+ "runId": "s1",
+ "wall_s": 9.2,
+ "turn_s": 9.2,
+ "pass": true,
+ "outLen": 408,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t7_cli",
+ "runId": "m4",
+ "wall_s": 7.8,
+ "turn_s": 7.8,
+ "pass": false,
+ "outLen": 1137,
+ "spawn_error": null,
+ "testOut": "m4-grade/test.py\", line 6, in <module>\n    assert rc == 0 and buf.getvalue().strip() == '5'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+}

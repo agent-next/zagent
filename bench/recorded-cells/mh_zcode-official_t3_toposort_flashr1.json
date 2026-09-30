@@ -1,0 +1,16 @@
+{
+ "harness": "zcode-official",
+ "task": "t3_toposort",
+ "runId": "flashr1",
+ "model": "zai/glm-5.3-flash",
+ "home": "/tmp/zbench-flash-home-p4OA",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T19:12:11.220Z",
+ "wall_s": 120.1,
+ "turn_s": 120.1,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": "ETIMEDOUT",
+ "testOut": "    from solution import toposort\nImportError: cannot import name 'toposort' from 'solution' (/tmp/mbench-zcode-official-t3_toposort-flashr1-grade/solution.py)\n"
+}

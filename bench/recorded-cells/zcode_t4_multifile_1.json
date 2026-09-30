@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t4_multifile",
+ "runId": "1",
+ "wall_s": 38.5,
+ "turn_s": 35.7,
+ "pass": true,
+ "outLen": 216,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18418,
+   "outputTokens": 49,
+   "totalTokens": 18467,
+   "cacheReadTokens": 12352,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 112245,
+  "outputSum": 425,
+  "cacheSum": 105472,
+  "projectionUsed": 19034
+ },
+ "testOut": "PASS\n"
+}

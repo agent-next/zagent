@@ -1,0 +1,16 @@
+{
+ "lane": "claude_code",
+ "task": "t2_fixbug",
+ "runId": "1",
+ "wall_s": 29.3,
+ "turn_s": null,
+ "pass": true,
+ "outLen": 187,
+ "spawn_error": null,
+ "usage": {
+  "inputTokens": 89634,
+  "cacheReadTokens": 73472,
+  "outputTokens": 523
+ },
+ "testOut": "PASS\n"
+}

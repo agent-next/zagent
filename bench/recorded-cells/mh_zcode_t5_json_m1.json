@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t5_json",
+ "runId": "m1",
+ "wall_s": 6.5,
+ "turn_s": 6.5,
+ "pass": true,
+ "outLen": 1035,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t4_multifile",
+ "runId": "m8",
+ "wall_s": 26.2,
+ "turn_s": 26.2,
+ "pass": true,
+ "outLen": 259,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

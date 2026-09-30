@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t2_fixbug",
+ "runId": "m4",
+ "wall_s": 37,
+ "turn_s": 37,
+ "pass": true,
+ "outLen": 286,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

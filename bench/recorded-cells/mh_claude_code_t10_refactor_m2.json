@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t10_refactor",
+ "runId": "m2",
+ "wall_s": 154.3,
+ "turn_s": 154.3,
+ "pass": true,
+ "outLen": 481,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

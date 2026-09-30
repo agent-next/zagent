@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t10_refactor",
+ "runId": "fw1",
+ "wall_s": 78.5,
+ "turn_s": 78.5,
+ "pass": true,
+ "outLen": 1896,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

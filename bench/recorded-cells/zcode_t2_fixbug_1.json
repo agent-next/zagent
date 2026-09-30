@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t2_fixbug",
+ "runId": "1",
+ "wall_s": 10.8,
+ "turn_s": 8,
+ "pass": true,
+ "outLen": 186,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18435,
+   "outputTokens": 26,
+   "totalTokens": 18461,
+   "cacheReadTokens": 11648,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 36943,
+  "outputSum": 78,
+  "cacheSum": 30080,
+  "projectionUsed": 18560
+ },
+ "testOut": "PASS\n"
+}

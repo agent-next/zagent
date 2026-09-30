@@ -1,0 +1,17 @@
+{
+ "harness": "zcode-official",
+ "task": "t3_toposort",
+ "runId": "flashr3",
+ "model": "zai/glm-5.3-flash",
+ "home": "/tmp/zbench-flash-home-GqDm",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T22:38:56.955Z",
+ "wall_s": 33.6,
+ "turn_s": 33.6,
+ "pass": true,
+ "invalid": null,
+ "outLen": 1788,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

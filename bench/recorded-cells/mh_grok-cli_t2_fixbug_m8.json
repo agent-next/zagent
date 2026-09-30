@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t2_fixbug",
+ "runId": "m8",
+ "wall_s": 2.5,
+ "turn_s": 2.5,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": "ule>\n    from solution import moving_average\nImportError: cannot import name 'moving_average' from 'solution' (/tmp/mbench-grok-cli-t2_fixbug-m8-grade/solution.py)\n"
+}

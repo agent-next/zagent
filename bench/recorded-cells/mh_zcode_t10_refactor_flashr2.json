@@ -1,0 +1,17 @@
+{
+ "harness": "zcode",
+ "task": "t10_refactor",
+ "runId": "flashr2",
+ "model": "zai/glm-5.3-flash",
+ "home": "/tmp/zbench-flash-home-GqDm",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T22:29:50.563Z",
+ "wall_s": 98.1,
+ "turn_s": 98.1,
+ "pass": true,
+ "invalid": null,
+ "outLen": 1789,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

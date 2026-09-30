@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t8_apiclient",
+ "runId": "2",
+ "wall_s": 9.1,
+ "turn_s": 6.3,
+ "pass": true,
+ "outLen": 667,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18427,
+   "outputTokens": 156,
+   "totalTokens": 18583,
+   "cacheReadTokens": 10368,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 18427,
+  "outputSum": 156,
+  "cacheSum": 10368,
+  "projectionUsed": 18583
+ },
+ "testOut": "PASS\n"
+}

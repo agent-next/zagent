@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t8_apiclient",
+ "runId": "fw1",
+ "wall_s": 38.2,
+ "turn_s": 38.2,
+ "pass": true,
+ "outLen": 671,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

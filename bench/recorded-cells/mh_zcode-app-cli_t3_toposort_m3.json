@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t3_toposort",
+ "runId": "m3",
+ "wall_s": 9.4,
+ "turn_s": 9.4,
+ "pass": true,
+ "outLen": 1375,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

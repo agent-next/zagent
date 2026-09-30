@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t2_fixbug",
+ "runId": "m5",
+ "wall_s": 17.8,
+ "turn_s": 17.8,
+ "pass": false,
+ "outLen": 1702,
+ "spawn_error": null,
+ "testOut": "le>\n    from solution import moving_average\nImportError: cannot import name 'moving_average' from 'solution' (/tmp/mbench-zcode-t2_fixbug-m5-grade/solution.py)\n"
+}

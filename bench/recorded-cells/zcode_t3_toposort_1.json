@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t3_toposort",
+ "runId": "1",
+ "wall_s": 18.5,
+ "turn_s": 15.7,
+ "pass": true,
+ "outLen": 697,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18413,
+   "outputTokens": 202,
+   "totalTokens": 18615,
+   "cacheReadTokens": 12352,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 18413,
+  "outputSum": 202,
+  "cacheSum": 12352,
+  "projectionUsed": 18615
+ },
+ "testOut": "PASS\n"
+}

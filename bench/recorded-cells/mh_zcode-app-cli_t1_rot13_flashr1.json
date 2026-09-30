@@ -1,0 +1,17 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t1_rot13",
+ "runId": "flashr1",
+ "model": "zai/glm-5.3-flash",
+ "home": "/tmp/zbench-flash-home-rK6B",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T19:17:27.649Z",
+ "wall_s": 15.7,
+ "turn_s": 15.7,
+ "pass": true,
+ "invalid": null,
+ "outLen": 868,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

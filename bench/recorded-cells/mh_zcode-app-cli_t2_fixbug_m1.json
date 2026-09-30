@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t2_fixbug",
+ "runId": "m1",
+ "wall_s": 13.2,
+ "turn_s": 13.2,
+ "pass": true,
+ "outLen": 849,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

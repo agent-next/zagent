@@ -1,0 +1,17 @@
+{
+ "harness": "claude_code",
+ "task": "t9_sql",
+ "runId": "flashr1",
+ "model": "glm-5.3-flash",
+ "home": "$HOME",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T19:36:27.064Z",
+ "wall_s": 22.5,
+ "turn_s": 22.5,
+ "pass": true,
+ "invalid": null,
+ "outLen": 482,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

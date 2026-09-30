@@ -1,0 +1,16 @@
+{
+ "lane": "claude_code",
+ "task": "t1_rot13",
+ "runId": "5",
+ "wall_s": 32.4,
+ "turn_s": null,
+ "pass": true,
+ "outLen": 337,
+ "spawn_error": null,
+ "usage": {
+  "inputTokens": 21130,
+  "cacheReadTokens": 65536,
+  "outputTokens": 561
+ },
+ "testOut": "PASS\n"
+}

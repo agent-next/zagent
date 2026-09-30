@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t7_cli",
+ "runId": "m6",
+ "wall_s": 7.3,
+ "turn_s": 7.3,
+ "pass": true,
+ "outLen": 933,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

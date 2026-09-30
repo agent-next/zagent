@@ -1,0 +1,16 @@
+{
+ "lane": "claude_code",
+ "task": "t5_json",
+ "runId": "2",
+ "wall_s": 22.4,
+ "turn_s": null,
+ "pass": true,
+ "outLen": 671,
+ "spawn_error": null,
+ "usage": {
+  "inputTokens": 21149,
+  "cacheReadTokens": 60608,
+  "outputTokens": 819
+ },
+ "testOut": "PASS\n"
+}

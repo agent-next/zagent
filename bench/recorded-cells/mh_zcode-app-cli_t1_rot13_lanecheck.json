@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t1_rot13",
+ "runId": "lanecheck",
+ "wall_s": 37.6,
+ "turn_s": 37.6,
+ "pass": true,
+ "outLen": 866,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

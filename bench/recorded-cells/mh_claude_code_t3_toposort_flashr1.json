@@ -1,0 +1,16 @@
+{
+ "harness": "claude_code",
+ "task": "t3_toposort",
+ "runId": "flashr1",
+ "model": "glm-5.3-flash",
+ "home": "$HOME",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T19:09:27.153Z",
+ "wall_s": 40.6,
+ "turn_s": 40.6,
+ "pass": true,
+ "outLen": 1094,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

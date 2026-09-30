@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t9_sql",
+ "runId": "m5",
+ "wall_s": 14.4,
+ "turn_s": 14.4,
+ "pass": false,
+ "outLen": 2043,
+ "spawn_error": null,
+ "testOut": "py\", line 1, in <module>\n    from solution import query\nImportError: cannot import name 'query' from 'solution' (/tmp/mbench-zcode-t9_sql-m5-grade/solution.py)\n"
+}

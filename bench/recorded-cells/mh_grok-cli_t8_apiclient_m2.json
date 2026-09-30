@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t8_apiclient",
+ "runId": "m2",
+ "wall_s": 35.9,
+ "turn_s": 35.9,
+ "pass": true,
+ "outLen": 692,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

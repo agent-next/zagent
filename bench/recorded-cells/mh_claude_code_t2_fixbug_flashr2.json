@@ -1,0 +1,17 @@
+{
+ "harness": "claude_code",
+ "task": "t2_fixbug",
+ "runId": "flashr2",
+ "model": "glm-5.3-flash",
+ "home": "$HOME",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T19:48:21.382Z",
+ "wall_s": 29.8,
+ "turn_s": 29.8,
+ "pass": true,
+ "invalid": null,
+ "outLen": 177,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

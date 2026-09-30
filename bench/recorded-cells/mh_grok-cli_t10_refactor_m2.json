@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t10_refactor",
+ "runId": "m2",
+ "wall_s": 30.1,
+ "turn_s": 30.1,
+ "pass": true,
+ "outLen": 668,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

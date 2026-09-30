@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t9_sql",
+ "runId": "m8",
+ "wall_s": 12.4,
+ "turn_s": 12.4,
+ "pass": true,
+ "outLen": 365,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

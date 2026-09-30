@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t2_fixbug",
+ "runId": "m4",
+ "wall_s": 18.7,
+ "turn_s": 18.7,
+ "pass": true,
+ "outLen": 182,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t1_rot13",
+ "runId": "p1",
+ "wall_s": 0,
+ "turn_s": 0,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": "\", line 1, in <module>\n    from solution import rot13\nImportError: cannot import name 'rot13' from 'solution' (/tmp/mbench-zcode-t1_rot13-p1-grade/solution.py)\n"
+}

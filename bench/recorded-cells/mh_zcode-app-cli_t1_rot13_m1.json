@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t1_rot13",
+ "runId": "m1",
+ "wall_s": 6.4,
+ "turn_s": 6.4,
+ "pass": true,
+ "outLen": 994,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

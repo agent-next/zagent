@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t1_rot13",
+ "runId": "5",
+ "wall_s": 8.5,
+ "turn_s": 5.7,
+ "pass": true,
+ "outLen": 330,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18386,
+   "outputTokens": 120,
+   "totalTokens": 18506,
+   "cacheReadTokens": 0,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 18386,
+  "outputSum": 120,
+  "cacheSum": 0,
+  "projectionUsed": 18506
+ },
+ "testOut": "PASS\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t1_rot13",
+ "runId": "m6sc",
+ "wall_s": 7.9,
+ "turn_s": 7.9,
+ "pass": true,
+ "outLen": 994,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

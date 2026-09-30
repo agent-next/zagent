@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t5_json",
+ "runId": "1",
+ "wall_s": 9.9,
+ "turn_s": 7.1,
+ "pass": true,
+ "outLen": 324,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18394,
+   "outputTokens": 87,
+   "totalTokens": 18481,
+   "cacheReadTokens": 10368,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 18394,
+  "outputSum": 87,
+  "cacheSum": 10368,
+  "projectionUsed": 18481
+ },
+ "testOut": "PASS\n"
+}

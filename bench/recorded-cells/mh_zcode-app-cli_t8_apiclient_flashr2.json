@@ -1,0 +1,17 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t8_apiclient",
+ "runId": "flashr2",
+ "model": "zai/glm-5.3-flash",
+ "home": "/tmp/zbench-flash-home-GqDm",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T22:22:38.786Z",
+ "wall_s": 34.8,
+ "turn_s": 34.8,
+ "pass": true,
+ "invalid": null,
+ "outLen": 1568,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

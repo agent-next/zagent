@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t6_regex",
+ "runId": "m2",
+ "wall_s": 19.8,
+ "turn_s": 19.8,
+ "pass": true,
+ "outLen": 548,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

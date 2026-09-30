@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t9_sql",
+ "runId": "m8",
+ "wall_s": 9.3,
+ "turn_s": 9.3,
+ "pass": true,
+ "outLen": 1028,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

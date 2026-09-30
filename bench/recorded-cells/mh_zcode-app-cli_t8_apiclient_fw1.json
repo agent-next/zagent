@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t8_apiclient",
+ "runId": "fw1",
+ "wall_s": 13.5,
+ "turn_s": 13.5,
+ "pass": true,
+ "outLen": 1698,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

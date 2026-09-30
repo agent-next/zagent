@@ -1,0 +1,16 @@
+{
+ "lane": "claude_code",
+ "task": "t3_toposort",
+ "runId": "6",
+ "wall_s": 35.5,
+ "turn_s": null,
+ "pass": true,
+ "outLen": 951,
+ "spawn_error": null,
+ "usage": {
+  "inputTokens": 21188,
+  "cacheReadTokens": 47488,
+  "outputTokens": 1118
+ },
+ "testOut": "PASS\n"
+}

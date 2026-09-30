@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t15_class_design",
+ "runId": "s1",
+ "wall_s": 11.1,
+ "turn_s": 11.1,
+ "pass": true,
+ "outLen": 454,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

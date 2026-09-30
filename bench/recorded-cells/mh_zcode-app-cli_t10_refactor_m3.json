@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t10_refactor",
+ "runId": "m3",
+ "wall_s": 33.1,
+ "turn_s": 33.1,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": "count('def ') >= 2, 'dead code kept / not decomposed'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: dead code kept / not decomposed\n"
+}

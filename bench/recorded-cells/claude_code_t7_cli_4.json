@@ -1,0 +1,16 @@
+{
+ "lane": "claude_code",
+ "task": "t7_cli",
+ "runId": "4",
+ "wall_s": 22,
+ "turn_s": null,
+ "pass": true,
+ "outLen": 553,
+ "spawn_error": null,
+ "usage": {
+  "inputTokens": 21151,
+  "cacheReadTokens": 65536,
+  "outputTokens": 980
+ },
+ "testOut": "PASS\n"
+}

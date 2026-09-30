@@ -1,0 +1,11 @@
+{
+ "harness": "claude_direct",
+ "task": "t14_error_handling",
+ "runId": "s1",
+ "wall_s": 17.6,
+ "turn_s": 17.6,
+ "pass": true,
+ "outLen": 242,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

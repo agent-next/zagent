@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t9_sql",
+ "runId": "m8",
+ "wall_s": 2.9,
+ "turn_s": 2.9,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": ".py\", line 1, in <module>\n    from solution import query\nImportError: cannot import name 'query' from 'solution' (/tmp/mbench-grok-cli-t9_sql-m8-grade/solution.py)\n"
+}

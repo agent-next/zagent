@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t12_string_reverse",
+ "runId": "s1",
+ "wall_s": 7.1,
+ "turn_s": 7.1,
+ "pass": false,
+ "outLen": 65,
+ "spawn_error": null,
+ "testOut": " from solution import reverse_words\nImportError: cannot import name 'reverse_words' from 'solution' (/tmp/mbench-zcode-t12_string_reverse-s1-grade/solution.py)\n"
+}

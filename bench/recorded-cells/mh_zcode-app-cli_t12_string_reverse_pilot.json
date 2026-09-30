@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t12_string_reverse",
+ "runId": "pilot",
+ "wall_s": 6.2,
+ "turn_s": 6.2,
+ "pass": true,
+ "outLen": 724,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

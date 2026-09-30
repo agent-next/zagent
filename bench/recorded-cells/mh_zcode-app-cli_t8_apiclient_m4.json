@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t8_apiclient",
+ "runId": "m4",
+ "wall_s": 6,
+ "turn_s": 6,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": "e>\n    from solution import ApiClient\nImportError: cannot import name 'ApiClient' from 'solution' (/tmp/mbench-zcode-app-cli-t8_apiclient-m4-grade/solution.py)\n"
+}

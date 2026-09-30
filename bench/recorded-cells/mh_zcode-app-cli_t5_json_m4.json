@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t5_json",
+ "runId": "m4",
+ "wall_s": 6.5,
+ "turn_s": 6.5,
+ "pass": true,
+ "outLen": 1032,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t1_rot13",
+ "runId": "m1",
+ "wall_s": 13.1,
+ "turn_s": 13.1,
+ "pass": true,
+ "outLen": 337,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t2_fixbug",
+ "runId": "fw1",
+ "wall_s": 10.7,
+ "turn_s": 10.7,
+ "pass": true,
+ "outLen": 854,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

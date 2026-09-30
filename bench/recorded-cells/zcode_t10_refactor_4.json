@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t10_refactor",
+ "runId": "4",
+ "wall_s": 16.4,
+ "turn_s": 13.6,
+ "pass": true,
+ "outLen": 419,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18390,
+   "outputTokens": 26,
+   "totalTokens": 18416,
+   "cacheReadTokens": 2944,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 74836,
+  "outputSum": 404,
+  "cacheSum": 58688,
+  "projectionUsed": 19094
+ },
+ "testOut": "PASS\n"
+}

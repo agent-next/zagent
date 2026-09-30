@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t9_sql",
+ "runId": "m5c",
+ "wall_s": 9.7,
+ "turn_s": 9.7,
+ "pass": true,
+ "outLen": 1033,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t10_refactor",
+ "runId": "m1",
+ "wall_s": 16.9,
+ "turn_s": 16.9,
+ "pass": false,
+ "outLen": 980,
+ "spawn_error": null,
+ "testOut": "st):\n  File \"/tmp/mbench-zcode-t10_refactor-m1-grade/test.py\", line 1, in <module>\n    from messy import wordcount\nModuleNotFoundError: No module named 'messy'\n"
+}

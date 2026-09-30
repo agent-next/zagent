@@ -1,0 +1,17 @@
+{
+ "harness": "claude_code",
+ "task": "t10_refactor",
+ "runId": "flashr1",
+ "model": "glm-5.3-flash",
+ "home": "$HOME",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T19:40:40.235Z",
+ "wall_s": 134.2,
+ "turn_s": 134.2,
+ "pass": true,
+ "invalid": null,
+ "outLen": 492,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

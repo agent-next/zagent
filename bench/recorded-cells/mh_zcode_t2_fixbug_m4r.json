@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t2_fixbug",
+ "runId": "m4r",
+ "wall_s": 33.9,
+ "turn_s": 33.9,
+ "pass": true,
+ "outLen": 850,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

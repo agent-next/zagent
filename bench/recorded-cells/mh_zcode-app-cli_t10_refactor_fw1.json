@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t10_refactor",
+ "runId": "fw1",
+ "wall_s": 36.8,
+ "turn_s": 36.8,
+ "pass": true,
+ "outLen": 1923,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

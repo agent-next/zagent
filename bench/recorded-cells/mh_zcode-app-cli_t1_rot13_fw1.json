@@ -1,0 +1,11 @@
+{
+ "harness": "zcode-app-cli",
+ "task": "t1_rot13",
+ "runId": "fw1",
+ "wall_s": 38.5,
+ "turn_s": 38.5,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": ", in <module>\n    from solution import rot13\nImportError: cannot import name 'rot13' from 'solution' (/tmp/mbench-zcode-app-cli-t1_rot13-fw1-grade/solution.py)\n"
+}

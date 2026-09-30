@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t4_multifile",
+ "runId": "m2",
+ "wall_s": 46.3,
+ "turn_s": 46.3,
+ "pass": true,
+ "outLen": 841,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

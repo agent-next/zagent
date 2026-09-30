@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t7_cli",
+ "runId": "m5",
+ "wall_s": 13.4,
+ "turn_s": 13.4,
+ "pass": false,
+ "outLen": 2011,
+ "spawn_error": null,
+ "testOut": "t.py\", line 2, in <module>\n    from solution import main\nImportError: cannot import name 'main' from 'solution' (/tmp/mbench-zcode-t7_cli-m5-grade/solution.py)\n"
+}

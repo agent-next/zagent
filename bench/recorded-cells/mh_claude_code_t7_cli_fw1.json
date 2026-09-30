@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t7_cli",
+ "runId": "fw1",
+ "wall_s": 30.1,
+ "turn_s": 30.1,
+ "pass": true,
+ "outLen": 566,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

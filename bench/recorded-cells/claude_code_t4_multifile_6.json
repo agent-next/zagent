@@ -1,0 +1,16 @@
+{
+ "lane": "claude_code",
+ "task": "t4_multifile",
+ "runId": "6",
+ "wall_s": 55.7,
+ "turn_s": null,
+ "pass": true,
+ "outLen": 275,
+ "spawn_error": null,
+ "usage": {
+  "inputTokens": 43336,
+  "cacheReadTokens": 287552,
+  "outputTokens": 852
+ },
+ "testOut": "PASS\n"
+}

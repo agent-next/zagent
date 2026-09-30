@@ -1,0 +1,17 @@
+{
+ "harness": "claude_code",
+ "task": "t7_cli",
+ "runId": "flashr2",
+ "model": "glm-5.3-flash",
+ "home": "$HOME",
+ "runtimeEntry": null,
+ "node": "v22.22.0",
+ "startedAt": "2026-09-07T22:17:48.026Z",
+ "wall_s": 39.1,
+ "turn_s": 39.1,
+ "pass": false,
+ "invalid": null,
+ "outLen": 556,
+ "spawn_error": null,
+ "testOut": "r2-grade/test.py\", line 6, in <module>\n    assert rc == 0 and buf.getvalue().strip() == '5'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+}

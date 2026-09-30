@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t11_binary_search",
+ "runId": "p1",
+ "wall_s": 0,
+ "turn_s": 0,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": "  from solution import binary_search\nImportError: cannot import name 'binary_search' from 'solution' (/tmp/mbench-zcode-t11_binary_search-p1-grade/solution.py)\n"
+}

@@ -1,0 +1,11 @@
+{
+ "harness": "grok-cli",
+ "task": "t6_regex",
+ "runId": "m8",
+ "wall_s": 2.9,
+ "turn_s": 2.9,
+ "pass": false,
+ "outLen": 0,
+ "spawn_error": null,
+ "testOut": " 1, in <module>\n    from solution import parse_log\nImportError: cannot import name 'parse_log' from 'solution' (/tmp/mbench-grok-cli-t6_regex-m8-grade/solution.py)\n"
+}

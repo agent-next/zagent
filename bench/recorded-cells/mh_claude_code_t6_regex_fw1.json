@@ -1,0 +1,11 @@
+{
+ "harness": "claude_code",
+ "task": "t6_regex",
+ "runId": "fw1",
+ "wall_s": 34.3,
+ "turn_s": 34.3,
+ "pass": true,
+ "outLen": 524,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

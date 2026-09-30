@@ -1,0 +1,11 @@
+{
+ "harness": "zcode",
+ "task": "t8_apiclient",
+ "runId": "m8",
+ "wall_s": 7.2,
+ "turn_s": 7.2,
+ "pass": true,
+ "outLen": 1329,
+ "spawn_error": null,
+ "testOut": "PASS\n"
+}

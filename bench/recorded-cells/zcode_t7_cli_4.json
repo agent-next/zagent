@@ -1,0 +1,25 @@
+{
+ "lane": "zcode",
+ "task": "t7_cli",
+ "runId": "4",
+ "wall_s": 8.4,
+ "turn_s": 5.6,
+ "pass": true,
+ "outLen": 258,
+ "spawn_error": null,
+ "usage": {
+  "firstTurn": {
+   "inputTokens": 18408,
+   "outputTokens": 85,
+   "totalTokens": 18493,
+   "cacheReadTokens": 12288,
+   "cacheWriteTokens": 0,
+   "reasoningTokens": 0
+  },
+  "inputSum": 18408,
+  "outputSum": 85,
+  "cacheSum": 12288,
+  "projectionUsed": 18493
+ },
+ "testOut": "PASS\n"
+}
