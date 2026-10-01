@@ -45,8 +45,8 @@ what irreversible action comes next).
 
 ## Actions fed
 
-- Confirms the permission surface as the #1 gap (third independent signal:
-  maintainer judgment, an independent audit, DR complaints data).
+- Confirms the permission surface as the #1 gap (independent signals:
+  maintainer judgment, DR complaints data).
 - Adds to the resize work: a shrink-after-transcript resize matrix.
 - Parity metrics unchanged; add "approval interruptions per task" as a
   measured number (DR complaint #1).

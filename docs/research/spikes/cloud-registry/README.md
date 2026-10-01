@@ -74,12 +74,27 @@ to emit it verbatim, instead of asking the model to find one.
 
 ## Deploy
 
+Three workers, one config each. `REGISTRY_TOKEN` is the same secret on all of them;
+`/fan-out` refuses requests without it.
+
 ```bash
-wrangler d1 create fuzz-registry           # put the id in wrangler.jsonc
+# 1. registry (worker.js + D1)
+wrangler d1 create fuzz-registry           # put the id in wrangler.registry.jsonc
 wrangler d1 execute fuzz-registry --file schema.sql --remote
-wrangler secret put REGISTRY_TOKEN
+wrangler deploy -c wrangler.registry.jsonc
+wrangler secret put REGISTRY_TOKEN -c wrangler.registry.jsonc
+
+# 2. fan-out + workflow (containers-worker.js, fuzz-workflow.js)
+#    set REGISTRY_URL in wrangler.jsonc to the URL printed by step 1
 wrangler deploy
-curl -X POST "$WORKER/fan-out?n=10"        # start with 10
+wrangler secret put REGISTRY_TOKEN
+curl -H "authorization: Bearer $REGISTRY_TOKEN" "$WORKER/fan-out?n=10"   # start with 10
+
+# 3. triage (triage-worker.js, cron every 30 min); set REGISTRY_URL and ISSUE_REPO first
+wrangler deploy -c wrangler.triage.jsonc
+wrangler secret put REGISTRY_TOKEN -c wrangler.triage.jsonc
+wrangler secret put GITHUB_TOKEN -c wrangler.triage.jsonc
+wrangler secret put OPENCODE_KEY -c wrangler.triage.jsonc
 ```
 
 Deploying needs a Cloudflare API token with Workers, D1 and Containers permissions; the

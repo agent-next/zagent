@@ -1,0 +1,9 @@
+{
+  // The /claim registry the agents call (worker.js over D1).
+  "name": "zagent-fuzz-registry",
+  "main": "worker.js",
+  "compatibility_date": "2026-08-28",
+  "d1_databases": [
+    { "binding": "DB", "database_name": "fuzz-registry", "database_id": "<set by: wrangler d1 create fuzz-registry>" }
+  ]
+}

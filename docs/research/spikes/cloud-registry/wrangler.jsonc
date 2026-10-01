@@ -1,4 +1,5 @@
 {
+  // Fan-out worker + workflow. The registry and triage workers have their own configs.
   "name": "zagent-fuzz-cloud",
   "main": "containers-worker.js",
   "compatibility_date": "2026-08-28",
@@ -18,5 +19,5 @@
   "workflows": [{ "name": "fuzz-loop", "binding": "FUZZ_LOOP", "class_name": "FuzzLoop",
                   "schedules": ["*/30 * * * *"] }],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FuzzAgent"] }],
-  "vars": { "MAX_AGENTS": "100" }
+  "vars": { "MAX_AGENTS": "100", "REGISTRY_URL": "<url of the registry worker>" }
 }

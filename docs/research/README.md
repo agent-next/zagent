@@ -27,5 +27,5 @@ Benchmark configurations that appear in other documents use neutral labels:
 
 Conventions: captured third-party output has had home and scratch paths replaced by
 `~` / `<scratch-dir>` and account e-mails by `<user-email>`. Raw frame captures and
-the capture drivers are not stored here; `scripts/pty-capture.py` (shipped with the test tooling) is the capture tool
+the capture drivers are not stored here; `scripts/pty-capture.py` (added by the test-tooling PR, agent-next/zagent#10) is the capture tool
 the studies reference.

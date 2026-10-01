@@ -33,12 +33,18 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === '/fan-out') {
+      // Same shared-token check as worker.js: starting containers is billed.
+      if (!env.REGISTRY_TOKEN || request.headers.get('authorization') !== `Bearer ${env.REGISTRY_TOKEN}`) {
+        return new Response('unauthorized', { status: 401 });
+      }
       // Cap it here, not in the caller: a typo in a cron expression must not be
       // able to start ten thousand containers.
       const n = Math.min(Number(url.searchParams.get('n') ?? 10), Number(env.MAX_AGENTS ?? 100));
       const ids = await fanOut(env, n, `manual-${Date.now()}`);
       return Response.json({ started: ids.length, ids });
     }
-    return new Response('fuzz fan-out: POST /fan-out?n=10', { status: 404 });
+    return new Response('fuzz fan-out: GET /fan-out?n=10 (Bearer token required)', { status: 404 });
   },
 };
+
+export { FuzzLoop } from './fuzz-workflow.js';

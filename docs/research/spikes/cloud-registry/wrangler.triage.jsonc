@@ -1,0 +1,8 @@
+{
+  // Findings -> write-up -> issue (triage-worker.js), on a cron trigger.
+  "name": "zagent-fuzz-triage",
+  "main": "triage-worker.js",
+  "compatibility_date": "2026-08-28",
+  "triggers": { "crons": ["*/30 * * * *"] },
+  "vars": { "REGISTRY_URL": "<url of the registry worker>", "ISSUE_REPO": "<owner/repo>" }
+}

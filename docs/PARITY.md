@@ -78,7 +78,7 @@ identity surveys, and the A1 handshake spike. Strategy: **interop-first** — CL
 ## H. Benchmark (evidence for "why zcode is best for GLM")
 - [~] H1 dual-harness benchmark harness + objective tasks (pilot validated; full matrix queued)
 
-## I. Borrow queue (docs/BORROW.md)
+## I. Borrow queue (docs/research/BORROW.md)
 - [x] I1 plugin contract (zquota-panel plugin + marketplace + validator live) (manifest/marketplace/hooks 7-event/userConfig)
 - [x] I2 idle-task queue state machine (0.0.122: pure transitions + C4 error routing, 15/15)
 - [x] I3 off-peak scheduler helper — routeToFlash/inOffPeak/offPeakTurn with 24-checkpoint tests (0.0.72-74 era, re-verified 2026-09-06)
