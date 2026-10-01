@@ -6,8 +6,10 @@ Every claim below comes from a captured screen or `--help` text under
 `cli-ux-comparison/` next to this file (`screens/<cli>-<mode>--<screen>.txt`, `help/*.txt`).
 Captures were made with `scripts/pty-capture.py` (real PTY, 120x40, `TERM=xterm-256color`,
 rendered through a VT100 emulator, so each file is what a human would SEE, not the byte stream).
-Sanitized: the account e-mail replaced by `<user-email>`; absolute home and scratch paths replaced by `~` / `<scratch-dir>`; a terminal-query echo artifact of the
-capture tool (`Ga=d,d=i,i=1,q=2`, Grok CLI only) stripped. Model turns: none were scripted; one
+Sanitized: the account e-mail replaced by `<user-email>`; absolute home and scratch paths replaced by `~` / `<scratch-dir>`. One capture artifact is NOT
+stripped: a terminal-query echo of the capture tool (`Ga=d,d=i,i=1,q=2`, Grok CLI screens only)
+still runs through several grok captures and garbles the borders/text it crosses — those spans are
+capture noise, not product output. Model turns: none were scripted; one
 accidental prompt reached zagent (`zagent-real3--theme`, a mistyped shift-tab) and shows the
 rate-limit retry notice — kept as evidence.
 

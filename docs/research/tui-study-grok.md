@@ -5,11 +5,10 @@
   `COLORTERM=truecolor`, a scratch cwd. Raw bytes recorded with timestamps;
   screens rendered via `pyte` after stripping kitty-graphics APC sequences (`ESC_G…ESC\`)
   that pyte cannot parse.
-- Raw frame captures were not kept in this repository.
-  - `session-stage1.rb`, `session-stage2.rb` — raw PTY byte streams
-  - `session-*-index.jsonl` — `{t, offset, bytes}` chunk index (timing proof)
-  - `screen-<stage>-<label>.txt` — rendered 120×40 screens per probe point
-  - `drive.py` — the pexpect driver (reusable)
+- Raw frame captures were not kept in this repository. Each stage's capture set was:
+  the raw PTY byte stream, a `{t, offset, bytes}` chunk index (timing proof), and
+  pyte-rendered 120×40 screens per probe point. The pexpect-spawn + pyte-render
+  driver used here is the approach `scripts/pty-capture.py` implements and keeps.
 - Live budget: **2 model turns used** (P1+P3 shared turn 1, P2 turn 2). All other
   surfaces captured offline.
 - Note: host account runs in `always-approve` mode (footer badge), so no permission
