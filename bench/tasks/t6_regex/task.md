@@ -1,0 +1,1 @@
+Write a Python 3 function parse_log(line: str) that parses '2026-09-04T12:34:56 INFO user=alice action=login ok' style lines and returns a dict {ts, level, user, action, ok} with ok as bool (ok if the word ok appears at the end). Return None for non-matching lines. Reply with ONLY one python code block.

@@ -1,0 +1,21 @@
+{
+  "task": "t6_regex",
+  "lane": "zcode",
+  "repeat": 1,
+  "index": 31,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:43:12.309Z",
+  "wallMs": 12866,
+  "usage": {
+    "inputTokens": 8720,
+    "outputTokens": 713,
+    "cacheReadTokens": 8064,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

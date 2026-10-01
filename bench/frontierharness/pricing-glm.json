@@ -1,0 +1,33 @@
+{
+  "version": "glm-list-2026-09-14",
+  "currency": "USD",
+  "unit_tokens": 1000000,
+  "source": "https://docs.z.ai/guides/overview/pricing (read 2026-09-14; cached-input storage is 'limited-time free', so cache_write is 0)",
+  "models": {
+    "zai/glm-5.3": {
+      "fresh_input": 1.4,
+      "cache_write": 0.0,
+      "cache_read": 0.26,
+      "output": 4.4
+    },
+    "zai/glm-5.3-flash": {
+      "fresh_input": 0.15,
+      "cache_write": 0.0,
+      "cache_read": 0.03,
+      "output": 0.5
+    },
+    "glm-5.3": {
+      "fresh_input": 1.4,
+      "cache_write": 0.0,
+      "cache_read": 0.26,
+      "output": 4.4
+    },
+    "glm-5.3-flash": {
+      "fresh_input": 0.15,
+      "cache_write": 0.0,
+      "cache_read": 0.03,
+      "output": 0.5
+    }
+  },
+  "note": "Harbor records agent_info.model_info.name without the provider prefix, so both 'zai/glm-5.3' and 'glm-5.3' forms are listed."
+}

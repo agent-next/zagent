@@ -1,0 +1,21 @@
+{
+  "task": "t1_rot13",
+  "lane": "claude_code",
+  "repeat": 3,
+  "index": 5,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:31:41.262Z",
+  "wallMs": 6609,
+  "usage": {
+    "input_tokens": 516,
+    "output_tokens": 132,
+    "cache_read_input_tokens": 17984,
+    "cache_creation_input_tokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

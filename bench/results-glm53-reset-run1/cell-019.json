@@ -1,0 +1,21 @@
+{
+  "task": "t4_multifile",
+  "lane": "zcode",
+  "repeat": 1,
+  "index": 19,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:37:56.637Z",
+  "wallMs": 23375,
+  "usage": {
+    "inputTokens": 36147,
+    "outputTokens": 560,
+    "cacheReadTokens": 34816,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

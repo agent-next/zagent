@@ -1,0 +1,1 @@
+Write a Python 3 function `safe_divide(a, b)` that returns a/b, or the string "error: division by zero" for zero divisor, or "error: type" for non-numeric inputs. Reply with ONLY one python code block.
