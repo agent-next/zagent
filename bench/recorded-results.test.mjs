@@ -28,7 +28,8 @@ const verdict = analyze(cells);
 assert.equal(verdict.nPairs, 29);
 assert.equal(verdict.verdict, 'parity');
 
-const packedText = readFileSync(path.join(here, 'recorded-cells.jsonl'), 'utf8');
+// a Windows checkout may translate LF to CRLF; the pack format is LF
+const packedText = readFileSync(path.join(here, 'recorded-cells.jsonl'), 'utf8').replaceAll('\r\n', '\n');
 const packed = packedText.split('\n').filter(Boolean).map(line => JSON.parse(line));
 assert.equal(packed.length, 524);
 const names = packed.map(entry => entry.file);
