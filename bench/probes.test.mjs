@@ -2,11 +2,12 @@
 // Behaviour of the bench shell drivers and process helpers: resume semantics,
 // credentialed temp-home cleanup, kill fallback, shell quoting, grading copy.
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync, chmodSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createFrameDetector } from './proc.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -53,9 +54,14 @@ test('PTY probes write under a private temp dir with no stray fixed names or dea
   assert.doesNotMatch(src('slash-probe.mjs'), /replayScreen\(raw, /);
 });
 
-test('client-perf decodes UTF-8 across chunk boundaries', () => {
-  assert.match(src('client-perf.mjs'), /StringDecoder/);
-  assert.doesNotMatch(src('client-perf.mjs'), /d\.toString\(\)/);
+test('first-frame detection survives a multi-byte box char split across chunks', () => {
+  const box = Buffer.from('╭', 'utf8');
+  assert.equal(box.length, 3);
+  const detect = createFrameDetector();
+  assert.equal(detect(Buffer.concat([Buffer.from('boot '), box.subarray(0, 2)])), false);
+  assert.equal(detect(Buffer.concat([box.subarray(2), Buffer.from('──╮')])), true);
+  assert.equal(createFrameDetector()(Buffer.from('plain boot noise')), false);
+  assert.match(src('client-perf.mjs'), /createFrameDetector\(\)/);
 });
 
 test('multi-matrix re-runs an invalid receipt and skips valid ones', () => {
@@ -89,6 +95,15 @@ test('offpeak-matrix removes its credentialed temp HOME on exit', () => {
   const created = r.stdout.match(/flash-pinned HOME: (.+)/)[1];
   assert.ok(!existsSync(created), `the temp HOME holding the provider key must be removed: ${created}`);
   assert.deepEqual(readdirSync(tmp), []);
+
+  const mine = path.join(fx, 'mine');
+  mkdirSync(mine, { mode: 0o755 });
+  chmodSync(mine, 0o755);
+  const r2 = spawnSync('bash', [path.join(here, 'offpeak-matrix.sh')], {
+    env: { ...process.env, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home, TMPDIR: tmp, BENCH_ROOT: fakeRoot, FLASH_HOME: mine }, encoding: 'utf8' });
+  assert.equal(r2.status, 3, r2.stdout + r2.stderr);
+  assert.ok(existsSync(mine), 'a caller-supplied FLASH_HOME is left in place');
+  assert.equal(statSync(mine).mode & 0o777, 0o755, 'a caller-supplied FLASH_HOME keeps its mode');
 });
 
 test('run-multi grades the agent-edited file, not the pristine task copy', () => {

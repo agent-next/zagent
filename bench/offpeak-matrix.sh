@@ -35,15 +35,14 @@ GAP="${GAP:-8}"
 # Captured BEFORE any HOME override: the pin isolates config, not installed
 # binaries, and a lane that locates its entry under $HOME must still find it.
 export BENCH_REAL_HOME="$HOME"
-# The home holds a copy of the provider key: always owner-only, always removed on exit.
-# A caller-supplied FLASH_HOME is theirs and is left in place.
+# The temp home holds a copy of the provider key: mktemp -d makes it owner-only (0700),
+# and it is removed on exit. A caller-supplied FLASH_HOME is theirs: left in place, mode untouched.
 if [ -z "${FLASH_HOME:-}" ]; then
   FLASH_HOME="$(mktemp -d "${TMPDIR:-/tmp}/zbench-flash-home-XXXX")"
   trap 'rm -rf "$FLASH_HOME"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
 fi
-chmod 700 "$FLASH_HOME"
 mkdir -p "$FLASH_HOME/.zcode/cli"
 node -e '
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
