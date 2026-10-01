@@ -235,7 +235,12 @@ ok(handled4.length === 0, 'handler not started after stop() (r2 #4)');
   fs.renameSync = (from, to) => { if (to === stateFile) snaps.push(JSON.parse(fs.readFileSync(from, 'utf8'))); return realRename(from, to); };
   syncBuiltinESMExports();
   try {
+    let sends = 0, pendingAtSend = false;
     const fOkSend = async (url) => {
+      if (url.includes('sendMessage')) {
+        sends++;
+        pendingAtSend = !!JSON.parse(fs.readFileSync(stateFile, 'utf8')).pending?.['50'];
+      }
       if (url.includes('getUpdates')) {
         const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
         if (off <= 50) return { ok: true, status: 200, json: async () => ({ ok: true, result: [ { update_id: 50, message: { chat: { id: 4 }, text: 'go' } } ] }) };
@@ -246,6 +251,8 @@ ok(handled4.length === 0, 'handler not started after stop() (r2 #4)');
     const bot8 = await runBot({ token: 'T', fetchImpl: fOkSend, pollTimeout: 0, stateFile, handler: async () => 'done', onEvent: () => {} });
     for (let i = 0; i < 60 && !snaps.some(s => s.offset > 50); i++) await new Promise(r => setTimeout(r, 50));
     bot8.stop();
+    ok(sends === 1, `the answer is sent once (sends=${sends})`);
+    ok(pendingAtSend, 'the answer was already in the state file when the send ran');
     ok(snaps.some(s => s.pending?.['50']), 'the answer was persisted before the send');
     ok(snaps.some(s => s.offset > 50 && !Object.keys(s.pending ?? {}).length), 'the settled state was persisted');
     ok(!snaps.some(s => s.offset <= 50 && !Object.keys(s.pending ?? {}).length), 'no persisted state has the answer cleared with the offset still behind');
