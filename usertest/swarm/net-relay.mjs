@@ -24,6 +24,7 @@ import * as path from 'node:path';
 import net from 'node:net';
 import http from 'node:http';
 import https from 'node:https';
+import { fitsSunPath, sunPathBudget } from './sun-path.mjs';
 
 const mode = process.argv[2];          // 'host' | 'inner'
 // host/reverse/broker: argv[3]=sockPath, rest=options | inner: argv[3]=port argv[4]=sockPath
@@ -31,14 +32,15 @@ const sockPath = mode === 'inner' ? process.argv[4] : process.argv[3];
 const rest = process.argv.slice(mode === 'inner' ? 5 : 4);
 const port = mode === 'inner' ? parseInt(process.argv[3], 10) : NaN;
 
-// AF_UNIX sun_path is 108 bytes (a full 108-byte path binds; 109 does not).
-// Past it the bind fails opaquely — or worse, listen() sits silent forever —
-// and the caller's readiness wait is the only symptom. Refuse up front with
-// the reason, for the plain socket and the TLS twin alike.
+// AF_UNIX sun_path is platform-sized (108 bytes on Linux, 104 on Darwin/BSD);
+// a full-budget path binds, one byte past it does not. Past it the bind fails
+// opaquely — or worse, listen() sits silent forever — and the caller's
+// readiness wait is the only symptom. Refuse up front with the reason, for
+// the plain socket and the TLS twin alike.
 const tlsIdx = rest.indexOf('--tls-sock');
 for (const s of [sockPath, tlsIdx >= 0 ? rest[tlsIdx + 1] : null]) {
-  if (s && Buffer.byteLength(s) > 108) {
-    console.error(`[net-relay] socket path is ${Buffer.byteLength(s)} bytes; AF_UNIX paths are capped at 108: ${s}`);
+  if (s && !fitsSunPath(s)) {
+    console.error(`[net-relay] socket path is ${Buffer.byteLength(s)} bytes; AF_UNIX paths are capped at ${sunPathBudget()}: ${s}`);
     process.exit(2);
   }
 }

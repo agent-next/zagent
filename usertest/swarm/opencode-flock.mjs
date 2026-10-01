@@ -48,6 +48,7 @@ import { tmpdir, userInfo, homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SCENARIOS as BASE_SCENARIOS, SIGNIN_SCENARIOS, SIGNIN_PTY_SCENARIOS, pickScenario } from './scenarios.mjs';
+import { fitsSunPath, sunPathBudget } from './sun-path.mjs';
 import { findRuntime } from '../../packages/driver/runtime.mjs';
 import { provisionStandaloneAccounts } from '../../packages/driver/account-provider.mjs';
 import { EXTRA_SCENARIOS } from './scenarios-extra.mjs';
@@ -515,8 +516,10 @@ function makeSandboxIn(sbx, tarball, { signin = false } = {}) {
   // relay. The file exists so tools that read resolv.conf still behave.
   try { copyFileSync('/etc/resolv.conf', path.join(sbx, 'resolv.conf')); } catch { /* resolve later */ }
   // The wall hides the private repo — the inner relay script must live IN the
-  // sandbox (node itself is /usr/bin/node inside the ro-bind).
+  // sandbox (node itself is /usr/bin/node inside the ro-bind), together with
+  // the sun-path module it imports.
   copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'net-relay.mjs'), path.join(sbx, 'net-relay.mjs'));
+  copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'sun-path.mjs'), path.join(sbx, 'sun-path.mjs'));
   // FLOCK-PTY: the interactive-TUI driver rides along too — pty:true cards
   // tell the agent to script zagent under `python3 pty-drive.py` (the /usr
   // ro-bind makes python3 reachable; stdlib-only, nothing to install).
@@ -571,19 +574,20 @@ const RELAY_HOSTS = (process.env.FLOCK_RELAY_HOSTS || 'opencode.ai').split(',').
 let relayProc = null, relaySock = null;
 let brokerProc = null, brokerSock = null;
 const sockDirs = new Set(); // every socket dir ever spawned — a relay respawn must not strand a live broker.sock
-// AF_UNIX sun_path is 108 bytes (a full 108-byte path binds; 109 does not).
-// On a host whose TMPDIR is long, a socket under a plain mkdtemp dir blows
-// past it and the broker dies behind stdio:'ignore' — surfacing only as a
-// readiness timeout with no cause. Root every socket dir where its longest
-// bound leaf provably fits, falling back to /tmp before giving up loudly.
+// AF_UNIX sun_path is platform-sized (108 bytes on Linux, 104 on Darwin/BSD;
+// a full-budget path binds, one byte past it does not). On a host whose TMPDIR
+// is long, a socket under a plain mkdtemp dir blows past it and the broker
+// dies behind stdio:'ignore' — surfacing only as a readiness timeout with no
+// cause. Root every socket dir where its longest bound leaf provably fits,
+// falling back to /tmp before giving up loudly.
 function socketDir(prefix, longestLeaf) {
   for (const dir of [...new Set([tmpdir(), '/tmp'])]) {
     // +6 for mkdtemp's random suffix
-    if (Buffer.byteLength(path.join(dir, prefix + 'xxxxxx', longestLeaf)) <= 108) {
+    if (fitsSunPath(path.join(dir, prefix + 'xxxxxx', longestLeaf))) {
       return mkdtempSync(path.join(dir, prefix));
     }
   }
-  throw new Error(`no temp root can host ${prefix}*/${longestLeaf} inside the 108-byte AF_UNIX path cap (TMPDIR=${tmpdir()})`);
+  throw new Error(`no temp root can host ${prefix}*/${longestLeaf} inside the ${sunPathBudget()}-byte AF_UNIX path cap (TMPDIR=${tmpdir()})`);
 }
 // Registered once, not per-respawn (the listener pile-up tripped
 // MaxListenersExceededWarning on long runs).
