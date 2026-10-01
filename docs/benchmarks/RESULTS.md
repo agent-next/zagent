@@ -1,4 +1,4 @@
-# zcode vs claude_code — final breadth benchmark (2026-09-04, harness v0.0.22+, 60 cells)
+# zcode vs claude_code — breadth benchmark (2026-09-04, harness v0.0.22+, 48 cells in runIds 1-3)
 
 > Historical results. Current comparison must use paired wall-time and correctness
 > receipts, including [the paired rerun](PAIRED-RESULTS.md) and
@@ -6,30 +6,38 @@
 > different accounting conventions; they do not establish billed credits or quota
 > savings. Earlier “cheaper” and token-cost target claims below are withdrawn.
 
-Setup: 10 objective tasks (8 reply-coded + 2 agentic edit-in-place), hidden test oracles,
+Setup: objective tasks (reply-coded + agentic edit-in-place), hidden test oracles,
 3 runs each × 2 lanes, same model (glm-5.3 via z.ai coding plan), clean agent workspaces,
 deduped usage (message.id), zcode latency measured as turn_s (send→turn-completed, excludes
-harness boot/settle). Raw records: `bench/recorded-cells.jsonl` (canonical runIds 1-3 only).
+harness boot/settle).
+
+Raw records: `bench/recorded-cells.jsonl` holds the lane cells for runIds 1-6 of tasks
+t2, t3, t4, t5, t7 and t8 (plus runIds 4-6 of t1, t6, t9 and t10), and every number below is
+re-derived from it by `bench/recorded-results.test.mjs`. The runId 1-3 receipts of t1, t6, t9
+and t10 were not retained in the source repository (only superseded earlier-harness copies of
+the zcode t1 cells survive in its history), so earlier revisions' 60-cell, 29/30 vs 30/30,
+54/60 vs 56/60 and 120-cell totals are not reproducible and are replaced by the figures
+below: runIds 1-3 = 18 cells per lane over 6 tasks.
 
 ## Evidence caliber (read first)
-- **turn med 7.1s is protocol-level** (send→turn-completed, excludes harness boot/settle);
+- **turn med 7.8s is protocol-level** (send→turn-completed, excludes harness boot/settle);
   claude_code numbers are full-run walls. The two are different instruments — the comparable pair
-  is walls 9–27s vs 16.5–110.4s (**1.6–4.4×**). "2–4×" in older revisions mixed the calibers.
+  is per-task median walls 9.0–27.2s vs 16.7–41.6s (**1.5–4.2×**). "2–4×" in older revisions mixed the calibers.
 - Multi-harness full-CLI runs ([MULTI-HARNESS-RESULTS.md](MULTI-HARNESS-RESULTS.md), 34/50
   cells): zagent 20.1s avg vs claude_code 22.7s (modest), zcode-app-cli 10.2s (fastest — it IS the launcher).
-- Pooled correctness across both rounds: 54/60 vs 56/60; the rerun's tail was
+- Pooled correctness across both rounds (runIds 1-6, shipped cells): 42/48 vs 44/48; the rerun's tail was
   shared-bucket throttled → verdict parity, NOT a quality win for either lane.
 
 ## Headline (medians)
 | Metric | zcode (our driver) | claude_code (Claude Code) | Delta |
 |---|---|---|---|
-| Correctness | **29/30** (97%) | 30/30 (100%) | 1 model-level miss (t7_cli run1) |
-| Latency | turn med 7.1s (walls 9–27s) | walls 16.5–110.4s | like-for-like walls: **1.6–4.4×**; turn-vs-wall is NOT comparable (see caliber note) |
-| Native input field (historical median) | 18,410 | 22,252 | Accounting differs; no cost ratio |
-| Cache reads | inclusion in input requires provider verification | up to 660k (t10) | Cannot sum across lanes without verified semantics |
+| Correctness (runIds 1-3) | **17/18** (94%) | 18/18 (100%) | 1 model-level miss (t7_cli run1) |
+| Latency | turn med 7.8s (median walls 9.0–27.2s per task) | median walls 16.7–41.6s per task | like-for-like walls: **1.5–4.2×**; turn-vs-wall is NOT comparable (see caliber note) |
+| Native input field (historical median) | 18,419 | 24,487 | Accounting differs; no cost ratio |
+| Cache reads | inclusion in input requires provider verification | up to 326k (t4) | Cannot sum across lanes without verified semantics |
 
-Per-task zcode turn medians: 6.2–8.2s coded, 21.5–24.4s agentic. claude_code walls: 16.5–41.6s
-coded, 110.4s agentic (t10).
+Per-task zcode turn medians: 6.2–8.2s coded, 24.4s agentic (t4). claude_code median walls:
+16.7–41.6s across the same six tasks.
 
 ## Notes on honesty
 - Token semantics: claude_code emits 1–2 real calls per run (both shapes measured); deduped by
@@ -42,8 +50,8 @@ coded, 110.4s agentic (t10).
 ## Target verdict (target: match or beat claude_code)
 - [x] latency: like-for-like walls 1.6–4.4× faster (turn-vs-wall comparison retired)
 - [ ] token cost: UNVERIFIED; requires attributable billing evidence
-- [x] breadth: 10 tasks incl. 2 agentic, 30 cells/lane
-- [~] correctness: 97% vs 100% (single-cell difference at n=30; treat as parity-in-noise,
+- [x] breadth: 6 tasks in runIds 1-3 (incl. 1 agentic), 18 cells/lane; 10 tasks in the rerun
+- [~] correctness: 94% vs 100% (single-cell difference at n=18; treat as parity-in-noise,
       rerun to confirm; the bar is "beat", so this stays open until a
       rerun shows ≥ parity with the same cells)
 
@@ -55,14 +63,14 @@ jsonl; this table supersedes them.
 ## Correctness rerun (runIds 4-6, 2026-09-04 late) — confounded, verdict = parity
 Both lanes hit shared-bucket throttling in the tail runs (zcode 25/30 with 4 turn-timeouts
 on runs 5-6; claude_code 26/30 with 4 fails on the same tail). Failures are infra (timeouts), not
-reasoning. Pooled across both rounds: zcode 54/60 vs claude_code 56/60 — statistically
+reasoning. Pooled across both rounds: zcode 42/48 vs claude_code 44/48 — statistically
 indistinguishable; zcode never trails beyond noise.
 
 ## FINAL TARGET VERDICT
-- latency: BEAT (2–4×, both rounds)
+- latency: BEAT (1.5–4.2× per-task median walls, runIds 1-3)
 - token cost: UNVERIFIED (native token fields do not prove credit savings)
-- breadth: DONE (10 tasks, 2 agentic, 120 cells total)
-- correctness: PARITY (54/60 vs 56/60 pooled, both lanes equally throttle-confounded)
+- breadth: DONE (96 lane cells over runIds 1-6)
+- correctness: PARITY (42/48 vs 44/48 pooled, shipped cells, both lanes equally throttle-confounded)
 **The “faster and cheaper at equal quality” claim and its verdict are withdrawn.**
 These historical runs do not establish current latency, quality equivalence, or cost savings.
 Root cause for future rounds: inter-cell
