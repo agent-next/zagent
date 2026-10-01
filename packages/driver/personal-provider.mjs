@@ -249,10 +249,12 @@ function builtinTemplateIndex(builtin) {
 // Returns the parsed document, or undefined when none is readable.
 function resolveBuiltinConfig({ env, home, read, builtin, runtimeEntry }) {
   if (builtin !== undefined) return builtin;
-  const entry = runtimeEntry ?? findRuntime({ env })?.entry;
+  const preset = env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim();
+  // An explicit preset is authoritative: the runtime never falls back to the
+  // bundled copy when it is set, so neither may the verdict.
+  const entry = preset ? null : runtimeEntry ?? findRuntime({ env, home })?.entry;
   const bundled = entry ? builtinConfigPath(entry) : null;
-  const candidates = [kernelActiveBuiltinPath({ env, home, bundledPath: bundled }),
-    env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim(), bundled];
+  const candidates = [kernelActiveBuiltinPath({ env, home, bundledPath: bundled }), preset || bundled];
   for (const p of candidates) {
     if (!p) continue;
     try { return JSON.parse(read(p)); } catch { /* try the next candidate */ }

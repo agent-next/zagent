@@ -15,6 +15,7 @@ import {
   importLegacyCliConfig, personalProviderConfigDocument, personalProviderConfigPath, legacyCliConfigPath,
   provisionPersonalProviderConfig, planPersonalProviderConfig, modelResolutionCheck, UnsupportedLegacyCliProviderConfigError,
 } from '../driver/personal-provider.mjs';
+import { findRuntime } from '../driver/runtime.mjs';
 import { runPrintOnce } from './zagent-print.mjs';
 
 let fails = 0;
@@ -706,6 +707,41 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
     config: famCli('zai-api/PRESET-ONLY'), runtimeEntry: entry });
   ok(pres?.ok === true && !pres.unverified, `preset builtin file is read when no active cache exists (${pres?.detail})`);
   rmSync(pfile, { force: true });
+  // An unreadable explicit preset must not fall back to the bundled copy: the
+  // runtime would not use it, so a conflicting bundled catalog may not verify.
+  const missing = path.join(rt, 'no-such-builtin.json');
+  const ex = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: missing }, home,
+    config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(ex?.unverified === true, `unreadable explicit preset is unverified, not verified via bundled (${JSON.stringify(ex)})`);
+  const bad = path.join(rt, 'bad-builtin.json');
+  writeFileSync(bad, '{not json');
+  const exb = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bad }, home,
+    config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(exb?.unverified === true, `invalid explicit preset is unverified (${JSON.stringify(exb)})`);
+  const xhome = tempHome(famCli('zai-api/BUNDLED-ONLY'));
+  const exs = provisionPersonalProviderConfig({ home: xhome,
+    env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: missing }, runtimeEntry: entry });
+  ok(exs.provisioned, 'family seeding is kept when the explicit preset is unreadable');
+  rmSync(xhome, { recursive: true, force: true });
+
+  // findRuntime receives the caller's home: a home-local installation is found
+  // with neither runtimeEntry nor ZCODE_RUNTIME.
+  const lhome = tempHome(famCli('zai-api/HOME-LOCAL'));
+  const lenv = { APPDATA: path.join(lhome, 'AppData', 'Roaming') };
+  const lroot = process.platform === 'win32'
+    ? path.join(lenv.APPDATA, 'npm', 'node_modules', 'zcode-app-cli')
+    : path.join(lhome, '.local', 'opt', 'zcode-app-cli', 'node_modules', 'zcode-app-cli');
+  mkdirSync(path.join(lroot, 'bin'), { recursive: true });
+  mkdirSync(path.join(lroot, 'config', 'provider'), { recursive: true });
+  writeFileSync(path.join(lroot, 'bin', 'zcode.js'), '// stub entry\n');
+  writeFileSync(path.join(lroot, 'config', 'provider', 'zcode-builtin.json'), JSON.stringify(tmpl(['HOME-LOCAL'])));
+  // A system-wide desktop install outranks a home-local one; only assert when
+  // the fixture is what discovery selects on this machine.
+  if (findRuntime({ env: lenv, home: lhome })?.kind === 'zcode-app-cli') {
+    const hl = modelResolutionCheck({ env: lenv, home: lhome, config: famCli('zai-api/HOME-LOCAL') });
+    ok(hl?.ok === true && !hl.unverified, `home-local runtime catalog is resolved via the given home (${JSON.stringify(hl)})`);
+  } else console.log('note - home-local discovery case not exercised: a system-wide install shadows the fixture');
+  rmSync(lhome, { recursive: true, force: true });
 
   // provisionPersonalProviderConfig honours runtimeEntry like the plan does.
   const reads = [];
@@ -810,7 +846,8 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
   git(['add', 'hello.txt']);
   const cm = spawnSync(process.execPath, [bin, 'commit-msg'], {
     encoding: 'utf8', timeout: 60000, env: stubEnv(ch), cwd: repo });
-  ok(cm.status !== 0, `commit-msg fails against the dead stub (status ${cm.status})`);
+  ok(!cm.error && !cm.signal && Number.isInteger(cm.status) && cm.status > 0,
+    `commit-msg fails against the dead stub (status ${cm.status}, signal ${cm.signal}, error ${cm.error?.code})`);
   ok(existsSync(personalProviderConfigPath({ home: ch, env: {} })),
     'commit-msg seeded the personal provider config before opening its client');
   rmSync(ch, { recursive: true, force: true });
@@ -826,7 +863,8 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
       models: { 'glm-5.3': {}, 'glm-5.3-flash': {} } } } }), { mode: 0o600 });
   const mt = spawnSync(process.execPath, [bin, 'models', 'test', 'zai/glm-5.3'], {
     encoding: 'utf8', timeout: 60000, env: stubEnv(mh), cwd: mh });
-  ok(mt.status !== 0, `models test fails against the dead stub (status ${mt.status})`);
+  ok(!mt.error && !mt.signal && Number.isInteger(mt.status) && mt.status > 0,
+    `models test fails against the dead stub (status ${mt.status}, signal ${mt.signal}, error ${mt.error?.code})`);
   ok(existsSync(personalProviderConfigPath({ home: mh, env: {} })),
     'models test seeded the personal provider config before opening its client');
   rmSync(mh, { recursive: true, force: true });
