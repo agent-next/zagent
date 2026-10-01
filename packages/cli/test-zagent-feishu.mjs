@@ -58,9 +58,29 @@ const probe = (big) => {
   return c.stdout.trim();
 };
 
+// Body sent in two writes that split a multi-byte char: the answered challenge
+// must come back intact, not with U+FFFD where the char was cut.
+const SPLIT_SRC = `import net from 'node:net';
+const body = Buffer.from(JSON.stringify({ type: 'url_verification', token: 'vt-test', challenge: '\u4f60\u597d\u4e16\u754c' }));
+const cut = body.indexOf(Buffer.from('\u597d')) + 1; // inside the 3-byte char
+const s = net.connect(${port}, '127.0.0.1');
+const chunks = [];
+s.on('data', d => chunks.push(d));
+s.on('connect', () => {
+  s.write(Buffer.concat([Buffer.from('POST / HTTP/1.1\\r\\nhost: x\\r\\ncontent-length: ' + body.length + '\\r\\nconnection: close\\r\\n\\r\\n'), body.subarray(0, cut)]));
+  setTimeout(() => s.end(body.subarray(cut)), 200);
+});
+s.on('error', () => {});
+s.on('close', () => { console.log('RESP ' + JSON.stringify(Buffer.concat(chunks).toString('utf8'))); process.exit(0); });
+setTimeout(() => { console.log('RESP_TIMEOUT'); process.exit(0); }, 10000);`;
+
 try {
   // Control: a small forged body gets an answered HTTP status (401: bad token).
   assert.match(await probe(false), /^PROBE (\d*[1-9]\d*)$/, 'small request receives a response');
+
+  // Chunk-split multi-byte body decodes intact.
+  const split = spawnSync(process.execPath, ['--input-type=module', '-e', SPLIT_SRC], { env, encoding: 'utf8', timeout: 15000 });
+  assert.ok(split.stdout.includes('\u4f60\u597d\u4e16\u754c') && !split.stdout.includes('\ufffd'), `chunk-split CJK body survives: ${split.stdout}`);
 
   // 400_000 CJK chars = 400K UTF-16 units (under the old char-counted cap) but
   // 1.2MB of bytes — the byte-counted guard must cut it before any reply.

@@ -134,13 +134,13 @@ export async function runBot({ token, handler, fetchImpl = fetch, pollTimeout = 
             if (reply && Number.isInteger(id)) remember(id, { chatId: m.chatId, reply, attempts: 0 });
           }
           if (reply) {
-            try { await sendMessage(fetchImpl, token, m.chatId, reply, { api }); pending.delete(id); persist(); }
+            try { await sendMessage(fetchImpl, token, m.chatId, reply, { api }); pending.delete(id); } // settle() below writes pending+offset in ONE persist
             catch (e) {
               onEvent('delivery_error', String(e?.message ?? e));
               const entry = held ?? { chatId: m.chatId, reply, attempts: 0 };
               entry.attempts += 1;
               if (entry.attempts >= maxDeliveryAttempts) {
-                pending.delete(id); persist(); onEvent('dropped', id); // bounded: a dead chat cannot block the queue forever
+                pending.delete(id); onEvent('dropped', id); // bounded: a dead chat cannot block the queue forever
               } else {
                 remember(id, entry);
                 resendWait = Math.min(1000 * 2 ** (entry.attempts - 1), 60000);

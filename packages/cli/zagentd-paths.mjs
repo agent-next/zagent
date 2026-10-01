@@ -7,7 +7,7 @@
 // a recycled pid. The socket accepts agent prompts unauthenticated, so the
 // directory holding it must be private — the filename being unguessable is not
 // what protects it.
-import { mkdirSync, statSync, chmodSync, readFileSync } from 'node:fs';
+import { mkdirSync, lstatSync, openSync, fstatSync, fchmodSync, closeSync, constants, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,8 +29,8 @@ export const SOCKET_PATH_ROOM = process.platform === 'linux' ? 108
 // only when the socket path they imply would not fit sun_path — every caller
 // (start, --serve, stop, ask, the compact clients) runs the same walk on the
 // same env, so all of them resolve the same dir.
-export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home = os.homedir() } = {}) {
-  const uid = typeof process.getuid === 'function' ? process.getuid() : 'nouser';
+export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home = os.homedir(), getuid = process.getuid?.bind(process) } = {}) {
+  const uid = typeof getuid === 'function' ? getuid() : 'nouser';
   const leaf = `zagent-${uid}`;
   // Candidate dirs, most-preferred first. The first three nest under
   // caller-controlled roots; the last is short BY CONSTRUCTION (29-36 bytes
@@ -43,21 +43,42 @@ export function daemonRuntimeDir({ env = process.env, tmpdir = os.tmpdir(), home
   const preferred = env.XDG_RUNTIME_DIR?.trim();
   if (preferred) candidates.push(path.join(preferred, leaf));
   candidates.push(path.join(tmpdir, leaf), path.join(home, '.zagentd', leaf), path.join('/tmp', `zagentd-${uid}`));
-  const fits = (dir) => path.join(dir, 'zagentd.sock').length + 1 <= SOCKET_PATH_ROOM; // + NUL terminator
+  const fits = (dir) => Buffer.byteLength(path.join(dir, 'zagentd.sock')) + 1 <= SOCKET_PATH_ROOM; // + NUL terminator
   const tried = [];
   for (const dir of candidates) {
     tried.push(dir);
     if (!fits(dir)) continue; // would truncate the bind — never use this dir
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    if (typeof process.getuid !== 'function') return dir; // no uid concept to verify
-    const st = statSync(dir);
-    if (st.isDirectory() && st.uid === process.getuid()) chmodSync(dir, 0o700); // tighten a dir we own
-    const final = statSync(dir);
-    if (!final.isDirectory() || final.uid !== process.getuid() || (final.mode & 0o077) !== 0)
-      throw new Error(`unsafe daemon runtime dir ${dir}: must be a directory owned by uid ${process.getuid()} with mode 0700`);
+    // A base we cannot even create (unwritable XDG, a file in the way) falls
+    // through to the next candidate; one that exists but is unsafe still throws.
+    try { mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch (e) { if (e?.code !== 'EEXIST') continue; }
+    if (typeof getuid !== 'function') {
+      // No uid concept to verify, but an existing file or link at the path is not a runtime dir.
+      let st;
+      try { st = lstatSync(dir); } catch { continue; }
+      if (!st.isDirectory()) continue;
+      return dir;
+    }
+    // Open the leaf itself, never through a symlink: stat/chmod by path would
+    // follow a planted link and tighten (and bind inside) someone else's dir.
+    const unsafe = () => new Error(`unsafe daemon runtime dir ${dir}: must be a directory (not a symlink) owned by uid ${uid} with mode 0700`);
+    let fd;
+    try { fd = openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW); }
+    catch { throw unsafe(); }
+    try {
+      if (fstatSync(fd).uid === uid) fchmodSync(fd, 0o700); // tighten a dir we own
+      const final = fstatSync(fd);
+      if (final.uid !== uid || (final.mode & 0o077) !== 0) throw unsafe();
+    } finally { closeSync(fd); }
     return dir;
   }
   throw new Error(`no private runtime dir keeps zagentd.sock within the AF_UNIX sun_path room (${SOCKET_PATH_ROOM} bytes); tried: ${tried.join(', ')}`);
+}
+
+// True when the serve child's own "listening on <sock> (pid <pid>)" line is in
+// the log bytes appended after `start` (the pre-spawn size); a line left by an
+// earlier daemon, even one with a recycled pid, is not proof of life.
+export function logShowsListening(logBytes, start, sock, pid) {
+  return logBytes.subarray(start).toString('utf8').includes(`listening on ${sock} (pid ${pid})`);
 }
 
 export function daemonPaths(opts) {
@@ -75,6 +96,6 @@ export function pidIsZagentd(pid) {
   try {
     return daemonArgv(readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0'));
   } catch { /* pid gone, or no /proc (macOS/BSD) — fall back to ps */ }
-  const r = spawnSync('ps', ['-o', 'args=', '-p', String(pid)], { encoding: 'utf8' });
+  const r = spawnSync('ps', ['-ww', '-o', 'args=', '-p', String(pid)], { encoding: 'utf8' });
   return r.status === 0 && daemonArgv(r.stdout.trim().split(/\s+/));
 }

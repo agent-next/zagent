@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, appendF
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { spawn, spawnSync } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import os from 'node:os';
 
 const require = createRequire(import.meta.url);
@@ -334,8 +335,9 @@ export function runTimedProcess(cmd, args, { cwd, env, timeoutMs = 300000, maxBu
       clearTimeout(timer); clearTimeout(force); clearTimeout(hang);
       resolve(res);
     };
-    child.stdout.on('data', d => { if (Buffer.byteLength(stdout) < maxBuffer) stdout += d; });
-    child.stderr.on('data', d => { if (Buffer.byteLength(stderr) < maxBuffer) stderr += d; });
+    const outDec = new StringDecoder('utf8'), errDec = new StringDecoder('utf8'); // multi-byte chars split across chunks
+    child.stdout.on('data', d => { if (Buffer.byteLength(stdout) < maxBuffer) stdout += outDec.write(d); });
+    child.stderr.on('data', d => { if (Buffer.byteLength(stderr) < maxBuffer) stderr += errDec.write(d); });
     const timer = setTimeout(() => {
       timedOut = true;
       killProcessTree(child.pid, 'SIGTERM');

@@ -39,6 +39,9 @@ export const NEEDS_LINUX_PTY = new Set(['test-journeys.mjs', 'test-journeys-comm
 // excluded on every OS belongs in NEEDS_RUNTIME/NEEDS_LINUX_PTY instead.
 export const PLATFORM_EXCLUDES = [
   // { file: 'test-x.mjs', os: 'win32', reason: '...' },
+  { file: 'test-flock-broker.mjs', os: 'win32', reason: 'the broker listens on unix-socket paths and the test waits for the socket file, which Windows never exposes via stat' },
+  { file: 'test-flock-pty.mjs', os: 'win32', reason: 'usertest/swarm/pty-drive.py imports fcntl/pty, which do not exist in Windows Python' },
+  { file: 'test-soak-published.mjs', os: 'win32', reason: 'the soak spawns shebang stub binaries and a POSIX install layout, which Windows cannot exec directly' },
 ];
 
 // Both spellings are in use — scripts and packages chose the first, bench the

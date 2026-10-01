@@ -49,11 +49,11 @@ const inbox = makeInbox({
 });
 const server = http.createServer((req, res) => {
   if (req.method !== 'POST') { res.writeHead(405).end(); return; }
-  let buf = '', bytes = 0;
-  req.on('data', c => { buf += c; bytes += c.length; if (bytes > 1e6) req.destroy(); }); // 1MB guard — c.length is bytes (Buffer); buf.length would count UTF-16 chars
+  const chunks = []; let bytes = 0;
+  req.on('data', c => { chunks.push(c); bytes += c.length; if (bytes > 1e6) req.destroy(); }); // 1MB guard — c.length is bytes (Buffer); buf.length would count UTF-16 chars
   req.on('end', async () => {
     try {
-      let body; try { body = JSON.parse(buf); } catch { res.writeHead(400).end(); return; }
+      let body; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { res.writeHead(400).end(); return; }
       if (body === null || typeof body !== 'object') { res.writeHead(400).end(); return; } // r3 #2: scalars/arrays
       const r = await inbox(body);
       res.writeHead(r.status, { 'content-type': 'application/json' }).end(JSON.stringify(r.body));

@@ -57,7 +57,10 @@ ok(discovered.length > 0, `discovered ${discovered.length} test file(s)`);
 
 for (const rel of discovered) {
   const base = path.basename(rel);
-  const buckets = [EXCLUDED.has(base) ? 'excluded' : 'matrix'];
+  const buckets = [];
+  if (NEEDS_RUNTIME.has(base)) buckets.push('runtime');
+  if (NEEDS_LINUX_PTY.has(base)) buckets.push('pty');
+  if (!buckets.length) buckets.push('matrix');
   eq(buckets.length, 1, `${rel} is in exactly one bucket (${buckets[0]})`);
 }
 

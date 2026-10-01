@@ -83,8 +83,8 @@ const FEISHU_ATTACHMENT_TYPES = new Set(['image', 'file', 'audio', 'media', 'sti
 export function receiveEvent(body, { verifyToken } = {}) {
   // Review r3 #1: events must authenticate with the app's Verification Token.
   // The url_verification handshake carries that token too (top-level `token`,
-  // header.token on v2-shaped payloads) — answer it before the check, not after,
-  // or the endpoint tells a stranger where the unauthenticated hole is.
+  // header.token on v2-shaped payloads) — it is checked like any event, so the
+  // endpoint never answers a challenge for a caller without the token.
   if (body?.type === 'url_verification') {
     if (verifyToken !== undefined && (body?.token ?? body?.header?.token) !== verifyToken)
       return { kind: 'unauthorized' };
@@ -200,7 +200,7 @@ export function makeInbox({ handler, sendReply, allowedChatIds = null, onEvent =
         onEvent('delivery_error', String(e?.message ?? e));
         return { status: 503, body: {} };
       }
-      pendingReplies.delete(key); persist();
+      pendingReplies.delete(key); // rememberCompleted writes pending+seen in ONE persist: no crash window between them
       rememberCompleted(ev.messageId);
       return { status: 200, body: {} };
     });

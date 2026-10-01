@@ -8,11 +8,11 @@
 //        node packages/cli/zagentd.mjs stop
 import { createServer, connect } from 'node:net';
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync, readFileSync, openSync, closeSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync, openSync, closeSync, fstatSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acceptRequest, isolatedTurn, serializeWorkspaces, DAEMON_RESPONSE_TIMEOUT_MS } from './daemon-request.mjs';
-import { daemonPaths, pidIsZagentd } from './zagentd-paths.mjs';
+import { daemonPaths, pidIsZagentd, logShowsListening } from './zagentd-paths.mjs';
 import { acquireFileLockSync, writePrivateFileSync } from '../driver/credentials.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url))); // = repo root
@@ -114,12 +114,13 @@ if (cmd === 'start') {
   // The serve child's output lands in the private runtime dir, not /dev/null:
   // a daemon that dies at boot must be diagnosable from `start` itself.
   const LOG = path.join(RUN_DIR, 'zagentd.log');
-  let logFd;
+  let logFd, logStart = 0;
   let child;
   try {
     if (liveDaemonPid()) { release(); alreadyRunning(); }
     rmSync(PID_FILE, { force: true }); // stale or foreign record — never trust it
     logFd = openSync(LOG, 'a');
+    logStart = fstatSync(logFd).size; // only lines this spawn writes count as its proof of life
     // Daemon mode: fork ourselves detached
     child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve'],
       { detached: true, stdio: ['ignore', logFd, logFd], env: process.env });
@@ -136,23 +137,39 @@ if (cmd === 'start') {
   // Giving up also reaps the child: a daemon that never bound is not left
   // running behind a failed start.
   const pidAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
-  const nap = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   const deadline = Date.now() + 10000;
-  const giveUp = (why) => {
+  const giveUp = async (why) => {
     try { closeSync(logFd); } catch {}
     try { child.kill('SIGKILL'); } catch {} // boot-failed daemon: no state worth a graceful ask
     rmSync(PID_FILE, { force: true });
-    rmSync(SOCK, { force: true });
-    console.error(`daemon failed to ${why} (pid ${child.pid}, socket ${SOCK.length + 1} bytes); ${LOG} tail:`);
+    if (child.exitCode === null && child.signalCode === null)
+      await Promise.race([new Promise(r => child.once('exit', r)), new Promise(r => setTimeout(r, 2000))]);
+    // The socket is ours to remove only if nothing serves it: a child that
+    // refused to start because a live daemon already owns the path must not
+    // take that daemon's socket away.
+    if (!(await accepting())) rmSync(SOCK, { force: true });
+    console.error(`daemon failed to ${why} (pid ${child.pid}, socket ${Buffer.byteLength(SOCK) + 1} bytes); ${LOG} tail:`);
     try { console.error(readFileSync(LOG, 'utf8').trimEnd().split('\n').slice(-20).join('\n') || '(empty)'); }
     catch { console.error('(no log)'); }
     process.exit(1);
   };
-  while (!existsSync(SOCK)) {
-    const died = child.exitCode !== null || child.signalCode !== null || !pidAlive(child.pid);
-    if (died) giveUp('start');
-    if (Date.now() >= deadline) giveUp('bind its socket within 10s');
-    nap(100);
+  // A socket FILE is not proof of a daemon: a stale one from a crashed run
+  // exists before the child has removed it, and a connect can reach a DIFFERENT
+  // live daemon that owns the path. Success needs both the serve child's own
+  // "listening (pid <child>)" line in the log and a connect, with the child alive.
+  const childListening = () => { try { return logShowsListening(readFileSync(LOG), logStart, SOCK, child.pid); } catch { return false; } };
+  const accepting = () => new Promise(res => {
+    const probe = connect(SOCK);
+    probe.setTimeout(1000, () => { probe.destroy(); res(false); }); // a wedged listener must not outlast the deadline
+    probe.once('connect', () => { probe.destroy(); res(true); });
+    probe.once('error', () => res(false));
+  });
+  const childDied = () => child.exitCode !== null || child.signalCode !== null || !pidAlive(child.pid);
+  for (;;) {
+    if (childDied()) await giveUp('start');
+    if (childListening() && await accepting() && !childDied()) break;
+    if (Date.now() >= deadline) await giveUp('bind its socket within 10s');
+    await new Promise(r => setTimeout(r, 100));
   }
   try { closeSync(logFd); } catch {}
   console.log(`daemon started (pid ${child.pid})`);

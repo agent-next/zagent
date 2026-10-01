@@ -15,6 +15,7 @@ client.on('error', () => {
 });
 client.on('connect', () => client.write(JSON.stringify({ op: 'compact', cwd: process.cwd() }) + '\n'));
 let buf = '';
+client.setEncoding('utf8'); // a multi-byte char split across chunks must not decode to U+FFFD
 client.on('data', d => { buf += d; const i = buf.indexOf('\n'); if (i >= 0) {
   try { const r = JSON.parse(buf.slice(0, i));
     if (!r || typeof r !== 'object' || Array.isArray(r)) throw new Error('invalid response');
