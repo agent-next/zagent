@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TASKS, buildMatrix, extractResponse, classifyRun, summarize } from './paired-core.mjs';
+import { killChild } from './proc.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -27,15 +28,15 @@ export async function runProcess(command, args, { cwd, env, timeoutMs = 300000, 
   const start = performance.now();
   return new Promise(resolve => {
     const child = spawn(command, args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     let stdout = '', stderr = '', timedOut = false, overflow = false, failed = false;
-    // Windows has no process groups: negative pids throw, so fall back to killing the child itself.
-    const kill = () => { if (child.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch {} } } };
+    const kill = () => killChild(child);
     const timer = setTimeout(() => {
       timedOut = true; kill();
       if (env?.ZCODE_PAIRED_RUN) killTagged(env.ZCODE_PAIRED_RUN);
     }, timeoutMs);
     const collect = (stream, data) => {
-      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) + data.length > maxBytes) {
+      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) + Buffer.byteLength(data) > maxBytes) {
         overflow = true; kill(); return;
       }
       if (stream === 'stdout') stdout += data; else stderr += data;
@@ -123,7 +124,7 @@ export function writeReport(manifest, records, summary) {
     'No model or tool-call count is inferred from a successful answer. Main/lite model routing is configured explicitly; observed-model identity may be unavailable.',
     'Actual account quota delta, charges and free-token entitlement are unverified in this runner. Do not equate token count with credits or USD.',
     'The documented Flash campaign distinguishes official ZCode from other supported agents; matching account credentials does not prove matching campaign eligibility.',
-    'See bench/PAIRED-RELEASE.md for the dated official credit formula, campaign conditions and remaining evidence requirements.', '',
+    'See docs/benchmarks/PAIRED-RELEASE.md for the dated official credit formula, campaign conditions and remaining evidence requirements.', '',
   ].join('\n');
 }
 

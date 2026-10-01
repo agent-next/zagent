@@ -48,19 +48,21 @@ const STEPS = [
 ].filter(s => !process.argv.includes('--only') || s.name === arg('only', ''));
 
 const entry = path.join(repo, 'packages', 'cli', 'zagent.mjs');
-const child = spawn('script', ['-qfec', `stty rows 24 cols 80; node ${entry} --cwd ${cwd}`, '/dev/null'], {
+const child = spawn('script', ['-qfec', `stty rows 24 cols 80; node ${shQuote(entry)} --cwd ${shQuote(cwd)}`, '/dev/null'], {
   env: { ...process.env, TERM: 'xterm-256color' },
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 let raw = '';
-child.stdout.on('data', (d) => { raw += d.toString(); });
-child.stderr.on('data', (d) => { raw += d.toString(); });
+child.stdout.setEncoding('utf8');
+child.stderr.setEncoding('utf8');
+child.stdout.on('data', (d) => { raw += d; });
+child.stderr.on('data', (d) => { raw += d; });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const log = [];
 const slog = (o) => { log.push(o); console.log(JSON.stringify(o)); };
 
 await sleep(4500);
-let screen = replayScreen(raw, 88);
+let screen = replayScreen(raw);
 if (!/zagent \d/.test(screen)) {
   slog({ step: 'banner', ok: false, note: 'banner never rendered' });
   console.log(screen);
@@ -81,7 +83,7 @@ for (let i = 0; i < STEPS.length; i++) {
   // means the command finished (or never started a turn).
   while (Date.now() - t0 < s.maxWait) {
     await sleep(400);
-    const cur = replayScreen(raw, 88);
+    const cur = replayScreen(raw);
     if (cur !== last) { last = cur; stableSince = Date.now(); }
     else if (Date.now() - stableSince > 1400 && Date.now() - t0 > 2500) break;
   }
@@ -89,7 +91,7 @@ for (let i = 0; i < STEPS.length; i++) {
   // Dismiss any lingering chooser/palette so the next step starts at a prompt.
   child.stdin.write('\x1b');
   await sleep(600);
-  screen = replayScreen(raw, 88);
+  screen = replayScreen(raw);
   const tag = `${String(i).padStart(2, '0')}-${s.name}`;
   writeFileSync(path.join(outDir, `${tag}.screen.txt`), screen + '\n');
   writeFileSync(path.join(outDir, `${tag}.raw.txt`), raw.slice(rawStart));

@@ -10,23 +10,29 @@
 //   node bench/tui-boot-probe.mjs                 # installed runtime
 //   ZCODE_RUNTIME=/path/to/zcode.cjs node bench/tui-boot-probe.mjs   # explicit kernel
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { replayTerminal } from '../packages/tui/screen-replay.mjs';
+import { shQuote } from './proc.mjs';
 import { findRuntime } from '../packages/driver/runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const runtime = findRuntime();
 console.log('runtime:', runtime ? `${runtime.kind} ${runtime.version ?? '?'} -> ${runtime.entry}` : 'NONE');
+const outDir = mkdtempSync(path.join(os.tmpdir(), 'zagent-tui-boot-'));
+console.log('screens:', outDir);
 const entry = path.join(root, 'packages', 'cli', 'zagent.mjs');
-const child = spawn('script', ['-qfec', `stty rows 24 cols 80; node ${JSON.stringify(entry)}`, '/dev/null'], {
+const child = spawn('script', ['-qfec', `stty rows 24 cols 80; node ${shQuote(entry)}`, '/dev/null'], {
   env: { ...process.env, TERM: 'xterm-256color' },
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 let raw = '';
-child.stdout.on('data', d => { raw += d.toString(); });
-child.stderr.on('data', d => { raw += d.toString(); });
+child.stdout.setEncoding('utf8');
+child.stderr.setEncoding('utf8');
+child.stdout.on('data', d => { raw += d; });
+child.stderr.on('data', d => { raw += d; });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // scrollback + visible screen is what a person sees; the bounded model parses
@@ -42,7 +48,7 @@ let boot = '', after = '';
 try {
   await sleep(12000);
   boot = view(raw);
-  writeFileSync('/tmp/w1e-tui-boot.txt', boot);
+  writeFileSync(path.join(outDir, 'boot.txt'), boot);
   console.log('=== BOOT SCREEN (12s) ==='); console.log(boot);
 
   // submit one trivial turn — classify the error (quota-class = provider resolved)
@@ -51,7 +57,7 @@ try {
   child.stdin.write('\r');
   await sleep(45000);
   after = view(raw);
-  writeFileSync('/tmp/w1e-tui-turn.txt', after);
+  writeFileSync(path.join(outDir, 'turn.txt'), after);
   console.log('=== SCREEN AFTER TURN (45s) ==='); console.log(after);
 
   child.stdin.write('\x03'); await sleep(400); child.stdin.write('\x03'); await sleep(800);
@@ -84,6 +90,6 @@ const verdict =
   : /error: Turn execution failed|quota|exhausted|rate.?limit|1308|1113|1302|limit reached|try again/i.test(body) ? 'UNBLOCKED: provider resolved; turn failed on quota/runtime, not the credential gate'
   : /\bPONG\b/.test(body) ? 'GREEN: turn completed'
   : /error|failed/i.test(body) ? 'UNBLOCKED? (non-provider error — inspect screen)'
-  : 'UNCLEAR — inspect /tmp/w1e-tui-*.txt';
+  : `UNCLEAR — inspect ${outDir}/*.txt`;
 console.log('VERDICT:', verdict);
 process.exit(/^(GREEN|UNBLOCKED)/.test(verdict) ? 0 : 1);

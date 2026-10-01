@@ -35,6 +35,7 @@ try {
         ZCODE_DEVICE_MID: 'fixture-device', ZCODE_BASE_URL: base },
     });
     let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => { stdout += chunk; });
     child.stderr.on('data', chunk => { stderr += chunk; });
     const code = await new Promise(resolve => child.on('close', resolve));
