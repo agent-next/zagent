@@ -828,7 +828,7 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
 // after the seeding line ran: the personal config exists afterwards. These
 // assertions fail if either seed call is removed from the command files.
 {
-  const bin = new URL('../../bin/zagent', import.meta.url).pathname;
+  const bin = fileURLToPath(new URL('../../bin/zagent', import.meta.url));
   const stubHome = () => {
     const h = tempHome();
     writeFileSync(path.join(h, 'runtime.cjs'), 'process.exit(3); // stub: never speaks JSON-RPC\n');
@@ -850,7 +850,7 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
   ok(!cm.error && !cm.signal && Number.isInteger(cm.status) && cm.status > 0,
     `commit-msg fails against the dead stub (status ${cm.status}, signal ${cm.signal}, error ${cm.error?.code})`);
   ok(existsSync(personalProviderConfigPath({ home: ch, env: {} })),
-    'commit-msg seeded the personal provider config before opening its client');
+    `commit-msg seeded the personal provider config before opening its client (stderr: ${cm.stderr?.slice(0, 400)})`);
   rmSync(ch, { recursive: true, force: true });
   rmSync(repo, { recursive: true, force: true });
 
@@ -867,7 +867,7 @@ const BUILTIN_FIXTURE = { // real shape: upper-case template ids
   ok(!mt.error && !mt.signal && Number.isInteger(mt.status) && mt.status > 0,
     `models test fails against the dead stub (status ${mt.status}, signal ${mt.signal}, error ${mt.error?.code})`);
   ok(existsSync(personalProviderConfigPath({ home: mh, env: {} })),
-    'models test seeded the personal provider config before opening its client');
+    `models test seeded the personal provider config before opening its client (stderr: ${mt.stderr?.slice(0, 400)})`);
   rmSync(mh, { recursive: true, force: true });
 }
 
