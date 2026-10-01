@@ -20,8 +20,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const check = (rel) => spawnSync('git',
-  ['-c', 'core.excludesFile=/dev/null', 'check-ignore', '-v', '--', rel],
+// -v also reports a matching negated (!) rule, which means NOT ignored, so
+// exclusion itself is judged by -q; -v only names the rule's source.
+const check = (rel, mode = '-q') => spawnSync('git',
+  ['-c', 'core.excludesFile=/dev/null', 'check-ignore', mode, '--', rel],
   { cwd: root, encoding: 'utf8', timeout: 15_000 });
 
 const mustIgnore = [
@@ -38,7 +40,7 @@ for (const rel of mustIgnore) {
   // repository's own .gitignore — .git/info/exclude or a global excludes file
   // matching instead means the committed rule is gone and this gate is being
   // masked by local state.
-  const line = r.stdout.trim().split('\n')[0];
+  const line = check(rel, '-v').stdout.trim().split('\n')[0];
   const source = line.split('\t')[0].split(':')[0];
   assert.equal(source, '.gitignore', `${rel} must be ignored by the repository .gitignore, not ${source}`);
 }
