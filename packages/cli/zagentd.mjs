@@ -12,7 +12,7 @@ import { existsSync, rmSync, readFileSync, openSync, closeSync, fstatSync } from
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acceptRequest, isolatedTurn, serializeWorkspaces, DAEMON_RESPONSE_TIMEOUT_MS } from './daemon-request.mjs';
-import { daemonPaths, pidIsZagentd } from './zagentd-paths.mjs';
+import { daemonPaths, pidIsZagentd, logShowsListening } from './zagentd-paths.mjs';
 import { acquireFileLockSync, writePrivateFileSync } from '../driver/credentials.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url))); // = repo root
@@ -157,7 +157,7 @@ if (cmd === 'start') {
   // exists before the child has removed it, and a connect can reach a DIFFERENT
   // live daemon that owns the path. Success needs both the serve child's own
   // "listening (pid <child>)" line in the log and a connect, with the child alive.
-  const childListening = () => { try { return readFileSync(LOG).subarray(logStart).toString('utf8').includes(`listening on ${SOCK} (pid ${child.pid})`); } catch { return false; } };
+  const childListening = () => { try { return logShowsListening(readFileSync(LOG), logStart, SOCK, child.pid); } catch { return false; } };
   const accepting = () => new Promise(res => {
     const probe = connect(SOCK);
     probe.setTimeout(1000, () => { probe.destroy(); res(false); }); // a wedged listener must not outlast the deadline

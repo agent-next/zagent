@@ -9,7 +9,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { daemonRuntimeDir, daemonPaths, pidIsZagentd, SOCKET_PATH_ROOM } from './zagentd-paths.mjs';
+import { daemonRuntimeDir, daemonPaths, pidIsZagentd, logShowsListening, SOCKET_PATH_ROOM } from './zagentd-paths.mjs';
 
 if (process.platform === 'win32' || typeof process.getuid !== 'function') {
   console.log('SKIP zagentd (POSIX daemon surface)');
@@ -260,6 +260,21 @@ try {
   });
   fake.close();
   assert.equal(JSON.parse(compact).compacted, '\u4f60\u597d', `compact reply survives a mid-char split: ${compact}`);
+  // Without a uid concept (Windows) a regular file squatting the candidate is not a runtime dir.
+  const noUidTmp = mkdtempSync(path.join(SHORT, 'nu-'));
+  writeFileSync(path.join(noUidTmp, 'zagent-nouser'), 'squat');
+  const noUidHome = path.join(noUidTmp, 'home');
+  const noUidDir = daemonRuntimeDir({ env: {}, tmpdir: noUidTmp, home: noUidHome, getuid: null });
+  assert.notEqual(noUidDir, path.join(noUidTmp, 'zagent-nouser'), 'a file at the candidate is not returned');
+  assert.ok(statSync(noUidDir).isDirectory(), 'the resolved dir is a directory');
+  // start's readiness proof only counts log bytes appended after the pre-spawn size.
+  {
+    const line = 'zagentd listening on /r/zagentd.sock (pid 4242)\n';
+    const before = Buffer.from(line);
+    assert.equal(logShowsListening(before, before.length, '/r/zagentd.sock', 4242), false, 'a line from an earlier run is not proof');
+    assert.equal(logShowsListening(Buffer.concat([before, Buffer.from(line)]), before.length, '/r/zagentd.sock', 4242), true, 'a newly appended line is proof');
+    assert.equal(logShowsListening(Buffer.concat([before, Buffer.from(line)]), before.length, '/r/zagentd.sock', 4243), false, 'another pid is not proof');
+  }
   console.log('PASS zagentd');
 } finally {
   try { foreign.kill('SIGKILL'); } catch {}
