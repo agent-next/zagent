@@ -136,7 +136,7 @@ test('scenario-prop credentials (flock-test-*) are NOT escapes — only real car
   assert.equal(res.runs[0]?.class, 'ESCAPE');
 });
 
-test('the onboard-bad-key card literal is a declared prop — the 0.0.238 [1e] FP', () => {
+test('the onboard-bad-key card literal is a declared prop — the 0.0.238 release-flock FP', () => {
   // 2026-09-19 ~01:54Z: worker 2 ran the card verbatim (`export
   // ZAI_API_KEY=dummy-not-a-real-key; time zagent onboard`) and the
   // credential-carrier audit ESCAPEd it, halting a release run. A

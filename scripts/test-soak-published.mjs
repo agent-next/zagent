@@ -84,7 +84,7 @@ try {
   });
 
   test('a wedged probe FAILs the gate — a hang is not a PASS', () => {
-    // review F1: a stub that prints acceptable doctor output then hangs
+    // A stub that prints acceptable doctor output then hangs
     // used to soak green — the kill left status null and the printed bytes
     // satisfied the content checks. The timeout must FAIL the probe.
     const dir = mkdtempSync(path.join(tmpdir(), 'zagent-soak-hang-'));
@@ -98,7 +98,7 @@ try {
   });
 
   test('--bin version binding: a stub whose banner lies must FAIL', () => {
-    // review F2: --bin without --version used to leave the banner check
+    // --bin without --version used to leave the banner check
     // unbound and unrecorded. Bound+match passes; bound+lie fails on the
     // version row; unbound is recorded UNBOUND in the receipt header.
     const dirA = mkdtempSync(path.join(tmpdir(), 'zagent-soak-bind-'));
@@ -117,14 +117,14 @@ try {
     assert.equal(un.status, 0);
     assert.match(un.stderr, /UNBOUND/, 'unbound --bin must be disclosed on stderr');
     assert.match(receiptText(dirC), /expected version: UNBOUND/);
-    // review LOW: the row a differ scans must not read PASS for a check
+    // The row a differ scans must not read PASS for a check
     // whose binding leg was never performed.
     assert.match(receiptText(dirC), /\| version banner[^|]*\| UNBOUND \|/,
       'unbound version check must render UNBOUND, not PASS');
   });
 
   test('a SIGTERM-ignoring wedged probe still FAILs inside the bound', () => {
-    // review MINOR: spawnSync's default timeout signal is SIGTERM, which
+    // spawnSync's default timeout signal is SIGTERM, which
     // a stub can trap — the gate then wedged forever with no receipt and no
     // verdict. killSignal SIGKILL cannot be ignored, so the bound still
     // produces a FAIL row.
@@ -139,7 +139,7 @@ try {
   });
 
   test('multi-verb probes hash ALL verbs, not just the last', () => {
-    // review F5: the row hash used to be last-wins, so drift in
+    // The row hash used to be last-wins, so drift in
     // `sessions --help` was invisible when `task --help` stayed identical.
     const dirA = mkdtempSync(path.join(tmpdir(), 'zagent-soak-mva-'));
     const stubA = writeGoodStub(dirA, { sessionsHelp: 'A' });
@@ -154,7 +154,7 @@ try {
   });
 
   test('a .js stack frame in doctor output FAILs (bundled releases are .js)', () => {
-    // review F4: the detector required a literal .mjs — a bundled
+    // The detector used to require a literal .mjs — a bundled
     // dist/cli.js frame slipped through.
     const dir = mkdtempSync(path.join(tmpdir(), 'zagent-soak-jsstack-'));
     const stub = writeGoodStub(dir, { doctorStack: true });
@@ -164,7 +164,7 @@ try {
   });
 
   test('a signal-killed probe FAILs the gate — status null is not a clean exit', () => {
-    // r1 MINOR: F1 covered ETIMEDOUT only; a signal death (SIGSEGV/SIGABRT/OOM)
+    // The hang case covered ETIMEDOUT only; a signal death (SIGSEGV/SIGABRT/OOM)
     // leaves the same null status with pre-crash bytes intact — same class.
     const dir = mkdtempSync(path.join(tmpdir(), 'zagent-soak-crash-'));
     const stub = writeGoodStub(dir, { crashDoctor: true });
@@ -175,7 +175,7 @@ try {
   });
 
   test('glued-empty values and valueless-glued flags are usage errors', () => {
-    // r1 LOW/NIT: `--bin=` silently fell into npm-install mode, `--version=`
+    // `--bin=` silently fell into npm-install mode, `--version=`
     // recorded a blank expected version, and `--no-pty=x`/`--keep=x` no-oped.
     const dir = mkdtempSync(path.join(tmpdir(), 'zagent-soak-args-'));
     const stub = writeGoodStub(dir);
@@ -184,14 +184,14 @@ try {
       assert.equal(r.status, 2, `${bad.join(' ')} must exit 2, got ${r.status}`);
       assert.match(r.stderr, /needs a value|takes no value/);
     }
-    // review NIT: an unsanitized --version could inject receipt lines.
+    // An unsanitized --version could inject receipt lines.
     const inj = runSoak(['--bin', stub, '--version', '9.9.9\n- fake: injected'], dir);
     assert.equal(inj.status, 2, 'non-semver --version must exit 2');
     assert.match(inj.stderr, /bad --version value/);
   });
 
   test('a host without util-linux script(1) skips the PTY leg loudly', () => {
-    // r1 LOW: BSD script(1) lacks -e/-c — the leg used to FAIL the whole gate
+    // BSD script(1) lacks -e/-c — the leg used to FAIL the whole gate
     // on a macOS host instead of recording a SKIP.
     const dir = mkdtempSync(path.join(tmpdir(), 'zagent-soak-noscript-'));
     const stub = writeGoodStub(dir);
@@ -205,7 +205,7 @@ try {
   });
 
   test('the receipt records the env passthrough fingerprint and registry', () => {
-    // review F6/F7: ZCODE_RUNTIME changes recorded hashes but was never
+    // ZCODE_RUNTIME changes recorded hashes but was never
     // recorded; the npm registry override was invisible too.
     const receipt = receiptText(passDir);
     assert.match(receipt, /env passthrough: ZCODE_RUNTIME=[^,]+, ZAGENT_UPDATE_CHECK=0/);
@@ -233,8 +233,8 @@ process.exit(0);
     assert.ok(!keys.some(k => /KEY|TOKEN|SECRET/i.test(k)), `credential-shaped env leaked: ${keys.filter(k => /KEY|TOKEN|SECRET/i.test(k)).join(',')}`);
   });
 
-  test('the PTY leg demands a real surface, not word-list luck (F3)', () => {
-    // review F3: the old check was a word list — a crash dump mentioning
+  test('the PTY leg demands a real surface, not word-list luck', () => {
+    // The old check was a word list — a crash dump mentioning
     // 'runtime'/'login' passed. Requires script(1); skips loudly without it.
     if (spawnSync('script', ['--version'], { encoding: 'utf8' }).status !== 0) {
       console.log('     (skipped: no script(1) on this host)');
@@ -282,7 +282,7 @@ else console.log('ok');
     assert.equal(good.status, 0, `honest card boot must pass: ${(good.stderr || good.stdout).slice(-300)}`);
     assert.match(receiptText(dirB), /PTY boot[^\n]*PASS/);
 
-    // review MAJOR: a resident fatal frame whose only "surface" is the
+    // A resident fatal frame whose only "surface" is the
     // product noun ('ZCode desktop' / the install hint) must FAIL — bare
     // nouns are not a drawn card. This frame matches NO crash word either;
     // the old regex passed it on the noun alone.
@@ -310,7 +310,7 @@ else console.log('ok');
     assert.equal(noun.status, 1, `a bare-noun resident frame must fail, got ${noun.status}`);
     assert.match(receiptText(dirC), /PTY boot[^\n]*FAIL[^\n]*no recognizable surface/);
 
-    // review MAJOR: the runtime-free path never reaches the chooser — the
+    // The runtime-free path never reaches the chooser — the
     // CLI runs the doctor diagnosis and exits 1 (zagent.mjs), so the anchored
     // 'runtime:' line on a really-exited process is the honest surface.
     const dirD = mkdtempSync(path.join(tmpdir(), 'zagent-soak-ptyrtfree-'));
@@ -337,7 +337,7 @@ else console.log('ok');
     assert.equal(rtfree.status, 0, `runtime-free honest boot must pass: ${(rtfree.stderr || rtfree.stdout).slice(-300)}`);
     assert.match(receiptText(dirD), /PTY boot[^\n]*PASS/);
 
-    // review MAJOR: a resident frame that prints an anchored 'runtime:' line
+    // A resident frame that prints an anchored 'runtime:' line
     // and then HANGS is not an honest surface — ^C/timeout death (code >=128
     // or 124) must not satisfy doctorExit.
     const dirE = mkdtempSync(path.join(tmpdir(), 'zagent-soak-ptyrthang-'));

@@ -490,7 +490,7 @@ function makeSandboxIn(sbx, tarball, { signin = false } = {}) {
   // The ONLY host secret inside the wall: the muse (opencode provider) token,
   // FILTERED to that single entry — the host auth.json also carries openai /
   // opencode-go / openrouter keys and must never enter the sandbox whole
-  // (review finding 1). mcp-auth.json is not copied at all.
+  // (that whole-file leak is what the filter exists to prevent). mcp-auth.json is not copied at all.
   const dataDir = path.join(home, '.local', 'share', 'opencode');
   mkdirSync(dataDir, { recursive: true });
   try {
@@ -826,7 +826,7 @@ const ESCAPE_PATTERNS = [
 // as an explicit prop; a worker obeying the card is not exfiltrating, and the
 // exact literal keeps `KEY=<real> # flock-test-` from riding the exemption.
 // 'dummy-not-a-real-key' was the onboard-bad-key-fast-fail card's literal —
-// the verbatim card command ESCAPEd and killed the 0.0.238 [1e] gate flock
+// the verbatim card command ESCAPEd and killed the 0.0.238 release-gate flock
 // 2026-09-19 (a worker obeying its card, not a wall probe); the card now
 // declares flock-test-000 and the old literal stays exempt defensively.
 // 'dummy-key-123' — same class, 2026-09-23: the quota-nocred-class-agreement
@@ -838,13 +838,13 @@ const ESCAPE_PATTERNS = [
 // when scenario cards exercise key handling — dummy-key-123 and fake-key-123
 // both killed gate flocks 2026-09-23; exact literals cannot converge). The
 // synthetic assignment is STRIPPED before any pattern runs, so an exemption
-// can never mask a different credential carrier in the same command (a review
-// S3 2026-09-23: `curl -H "Authorization: Bearer <real>" ".../?API_KEY=example"`
+// can never mask a different credential carrier in the same command (seen
+// 2026-09-23: `curl -H "Authorization: Bearer <real>" ".../?API_KEY=example"`
 // escaped when the whole-pattern exemption keyed off the URL parameter). Value
 // length ≤ 40 keeps a marker SUFFIX on a real key (z.ai hex.id is 49, sk-ant
 // bodies 95+) from disguising it; a plain `# fake` comment never matched the
 // value-bounded regex in the first place.
-// Value-end anchored (review finding S4 2026-09-23): without the lookahead the strip ate only the
+// Value-end anchored (found 2026-09-23): without the lookahead the strip ate only the
 // first ~15 chars of `API_KEY=example<real-49-char-key>`, leaving the real key's
 // remainder riding as a bare token. The lookahead forces the WHOLE value to end
 // within the bounds, so a marker can never prefix/suffix a real key: total value
@@ -1025,7 +1025,7 @@ async function oneRound(tarball, worker, rng) {
     const ranZagent = rec.cmds.some((c) => /(^|[\s;&|])(zagent|za)(\s|$)|prefix\/bin\/zagent/.test(c));
     const echoedSeed = rec.cmds.some((c) => new RegExp(`echo SEED:${runSeed}\\b`).test(c));
     // A finding whose CMD the agent never actually ran is a hallucination
-    // risk: keep it for review but tag it so triage shows the doubt.
+    // risk: keep it, but tag it so triage shows the doubt.
     const ranCmd = (f) => {
       const cmd = (f.match(/CMD:\s*([^|]+)/)?.[1] ?? '').trim().replace(/\s+/g, ' ');
       if (!cmd) return false;
