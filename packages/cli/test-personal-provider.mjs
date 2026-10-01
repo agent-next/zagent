@@ -15,6 +15,7 @@ import {
   importLegacyCliConfig, personalProviderConfigDocument, personalProviderConfigPath, legacyCliConfigPath,
   provisionPersonalProviderConfig, planPersonalProviderConfig, modelResolutionCheck, UnsupportedLegacyCliProviderConfigError,
 } from '../driver/personal-provider.mjs';
+import { findRuntime } from '../driver/runtime.mjs';
 import { runPrintOnce } from './zagent-print.mjs';
 
 let fails = 0;
@@ -213,15 +214,21 @@ const tempHome = (cli = CLI_FIXTURE) => {
   writeFileSync(target, JSON.stringify({
     schemaVersion: 1,
     config: { providerConfigRules: { providerRules: [
-      { providerId: 'other', config: { personalModelIds: ['x'] } },
-      { providerId: 'zai', config: { personalModelIds: ['glm-5.3-flash'] } },
+      { providerId: 'other', config: { access: { type: 'api-key', apiKey: KEY }, personalModelIds: ['x'] } },
+      { providerId: 'zai', config: { access: { type: 'api-key', apiKey: KEY }, personalModelIds: ['glm-5.3-flash'] } },
     ] } },
   }), { mode: 0o600 });
   const miss = modelResolutionCheck({ env, home, config: CLI_FIXTURE });
   ok(miss?.ok === false && /not in the provider's model list/.test(miss.detail),
     `existing file wins: a missing model is flagged (${miss?.detail})`);
-  ok(modelResolutionCheck({ env, home, config: { model: { main: 'other/m' } } })?.ok === false,
-    'provider absent from the existing file is flagged');
+  // The file carries provider 'other' (models ['x']) but not its model 'm':
+  // the verdict must name the missing MODEL, not a missing provider.
+  const wrongModel = modelResolutionCheck({ env, home, config: { model: { main: 'other/m' } } });
+  ok(wrongModel?.ok === false && /model other\/m is not in the provider's model list/.test(wrongModel.detail),
+    `existing file: a configured provider without the model is flagged precisely (${wrongModel?.detail})`);
+  const noProvider = modelResolutionCheck({ env, home, config: { model: { main: 'ghost/m' } } });
+  ok(noProvider?.ok === false && /provider 'ghost' is not configured/.test(noProvider.detail),
+    `existing file: an absent provider is flagged precisely (${noProvider?.detail})`);
   ok(modelResolutionCheck({ env, home, config: { model: { main: 'account:zai-individual-coding-plan/glm-5.3' } } }) === null,
     'account/builtin selections cannot be judged statically -> null');
   ok(modelResolutionCheck({ env, home, config: { model: { main: 'builtin:zapi/m' } } }) === null,
@@ -455,7 +462,7 @@ const tempHome = (cli = CLI_FIXTURE) => {
     `non-array providerRules -> malformed verdict, not a crash (${res?.detail})`);
   threw = false;
   write({ schemaVersion: 1, config: { providerConfigRules: { providerRules: [
-    { providerId: 'zai', config: { personalModelIds: { 'glm-5.3': 1 } } } ] } } });
+    { providerId: 'zai', config: { access: { type: 'api-key', apiKey: KEY }, personalModelIds: { 'glm-5.3': 1 } } } ] } } });
   try { res = modelResolutionCheck({ env, home, config: CLI_FIXTURE }); } catch { threw = true; }
   ok(!threw && res?.ok === false && /malformed \(personalModelIds\)/.test(res.detail),
     `non-array personalModelIds -> malformed verdict, not a crash (${res?.detail})`);
@@ -470,6 +477,397 @@ const tempHome = (cli = CLI_FIXTURE) => {
   ok(doc2.status === 1 && /^model: .+NOT RESOLVABLE$/m.test(doc2.stdout) && !/TypeError/.test(doc2.stdout + doc2.stderr),
     'doctor prints a model: verdict for a malformed personal config instead of crashing');
   rmSync(home, { recursive: true, force: true });
+}
+
+// --- provider ids are normalised everywhere (import AND the key gate) ---
+// The importer trims map keys ('zai ' -> rule id 'zai'); the gates must look
+// the cli entry up the same way, or an entry keyed 'zai ' slips past the
+// unusable-key gate and seeds an empty-key file the doctor calls resolvable.
+{
+  const withRawId = (rawId, apiKey) => {
+    const c = JSON.parse(JSON.stringify(CLI_FIXTURE));
+    const entry = c.provider.zai;
+    delete c.provider.zai;
+    entry.options.apiKey = apiKey;
+    c.provider[rawId] = entry;
+    return c;
+  };
+  const bad = withRawId('zai ', '');
+  const home = tempHome(bad);
+  const env = {};
+  const r = provisionPersonalProviderConfig({ home, env });
+  ok(!r.provisioned && !existsSync(personalProviderConfigPath({ home, env })),
+    `untrimmed map key with an empty key refuses to seed (${r.reason})`);
+  const res = modelResolutionCheck({ env, home, config: bad });
+  ok(res?.ok === false && /has no usable API key/.test(res.detail),
+    `doctor agrees the untrimmed-key entry is unseedable (${res?.detail})`);
+  rmSync(home, { recursive: true, force: true });
+  const good = withRawId('zai ', KEY);
+  const ghome = tempHome(good);
+  const gr = provisionPersonalProviderConfig({ home: ghome, env: {} });
+  ok(gr.provisioned && modelResolutionCheck({ env: {}, home: ghome, config: good })?.ok === true,
+    'an untrimmed map key with a usable key still seeds (one normalised id everywhere)');
+  rmSync(ghome, { recursive: true, force: true });
+}
+
+// --- the public plan never throws, even when the injected IO does ---
+{
+  const boom = () => { throw new Error('probe: exists exploded'); };
+  let threw = false, plan = null;
+  const phome = tempHome();
+  try { plan = planPersonalProviderConfig({ home: phome, env: {}, exists: boom }); }
+  catch { threw = true; }
+  ok(!threw && plan?.write === false && /plan failed: probe/.test(plan?.reason ?? ''),
+    `a throwing exists degrades to a conservative refusal (${plan?.reason})`);
+  rmSync(phome, { recursive: true, force: true });
+  threw = false;
+  const home = tempHome();
+  let r = null;
+  try { r = provisionPersonalProviderConfig({ home, env: {}, exists: boom }); } catch { threw = true; }
+  ok(!threw && r?.provisioned === false && /plan failed/.test(r?.reason ?? ''),
+    `provisioning never propagates the throw (${r?.reason})`);
+  threw = false;
+  let res = null;
+  try { res = modelResolutionCheck({ env: {}, home, config: CLI_FIXTURE, exists: boom }); } catch { threw = true; }
+  ok(!threw && res === null, 'doctor wrapper never throws on failing IO (null verdict)');
+  rmSync(home, { recursive: true, force: true });
+}
+
+// --- family-rule selections: kernel-exact verdicts, never a seed refusal ---
+// The registry's explicit-selection lookup is exact and case-sensitive
+// (getModel: `this.#n.get(providerId)?.get(modelId)`, zcode.cjs ~576830;
+// models.find(g => g.modelId === t.modelId), ~579813) — measured live on
+// 3.14.4: `--model zai-api/glm-5.3` vs the template list answers
+// model-not-found, `zai-api/GLM-5.3` answers ok. Builtin catalog ids are
+// UPPER case (real zcode-builtin.json: ['GLM-5.3','GLM-5.3-Flash']) while
+// cli configs use lowercase — commit-msg canonicalises before sending for
+// exactly this reason. Family rules therefore seed ALWAYS (the kernel
+// migration writes them regardless; their model list lives in the template,
+// so a seed cannot brick a later selection) and the verdict compares ids
+// exactly like the kernel.
+const BUILTIN_FIXTURE = { // real shape: upper-case template ids
+  schemaVersion: 1,
+  config: { providerConfigRules: { providerRules: [], templateRules: [
+    { templateId: 'zai-api', config: { builtinModelIds: ['GLM-5.3', 'GLM-5.3-Flash'] } },
+  ] } },
+};
+{
+  const famCli = main => ({ provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main } });
+  const env = {};
+  // Byte parity with the kernel's own migration of the same config (measured
+  // live on 3.14.4): the family rule's access block carries type:'api-key'
+  // (xz toJSON always emits it) — without it the kernel's strict parser
+  // rejects the whole file and even the kernel's own -p fails.
+  const KERNEL_FAMILY_BYTES = JSON.stringify({
+    schemaVersion: 1,
+    config: {
+      providerConfigRules: { providerRules: [
+        { providerId: 'zai-api', templateId: 'zai-api',
+          config: { group: 'standard-personal', access: { type: 'api-key', apiKey: KEY } } }] },
+      modelConfigRules: { providerModelRules: [], manualProviderModelRules: [] },
+      defaultModelSelection: { providerId: 'zai-api', modelId: 'glm-5.3' },
+    },
+  }, null, 2);
+  const phome = tempHome(famCli('zai-api/glm-5.3'));
+  const pr = provisionPersonalProviderConfig({ home: phome, env, runtimeEntry: '/nonexistent-runtime-entry' });
+  ok(pr.provisioned && readFileSync(personalProviderConfigPath({ home: phome, env }), 'utf8') === KERNEL_FAMILY_BYTES,
+    'family seed is byte-identical to the kernel migration output (access.type included)');
+  rmSync(phome, { recursive: true, force: true });
+
+  // Unknown id: verdict says not-in-list, the seed still happens.
+  const home = tempHome(famCli('zai-api/not-a-real-model'));
+  const r = provisionPersonalProviderConfig({ home, env, builtin: BUILTIN_FIXTURE });
+  ok(r.provisioned && existsSync(personalProviderConfigPath({ home, env })),
+    `family selection with an unknown model id still seeds (kernel-migration parity)`);
+  const res = modelResolutionCheck({ env, home, config: famCli('zai-api/not-a-real-model'), builtin: BUILTIN_FIXTURE });
+  ok(res?.ok === false && /not in the builtin template's model list/.test(res.detail),
+    `doctor names the missing template model (${res?.detail})`);
+  rmSync(home, { recursive: true, force: true });
+
+  // Lowercase id against the real upper-case list: exact comparison misses —
+  // the kernel's explicit-selection path rejects it too (measured).
+  const lhome = tempHome(famCli('zai-api/glm-5.3'));
+  const lr = provisionPersonalProviderConfig({ home: lhome, env, builtin: BUILTIN_FIXTURE });
+  const lres = modelResolutionCheck({ env, home: lhome, config: famCli('zai-api/glm-5.3'), builtin: BUILTIN_FIXTURE });
+  ok(lr.provisioned && lres?.ok === false && /model zai-api\/glm-5\.3 is not in the builtin template's model list/.test(lres.detail),
+    `case-mismatched family id seeds but is flagged exactly like the kernel rejects it (${lres?.detail})`);
+  rmSync(lhome, { recursive: true, force: true });
+
+  // Canonical id: seeds and resolves.
+  const ohome = tempHome(famCli('zai-api/GLM-5.3'));
+  const or = provisionPersonalProviderConfig({ home: ohome, env, builtin: BUILTIN_FIXTURE });
+  ok(or.provisioned && modelResolutionCheck({ env, home: ohome, config: famCli('zai-api/GLM-5.3'), builtin: BUILTIN_FIXTURE })?.ok === true,
+    'a canonical family model the template carries seeds and resolves');
+  rmSync(ohome, { recursive: true, force: true });
+
+  // Template list unresolvable (no env preset, no runtime, no managed cache):
+  // seed exactly what the kernel migration would write and report UNVERIFIED.
+  const uhome = tempHome(famCli('zai-api/glm-5.3'));
+  const NO_RUNTIME = { env: {}, runtimeEntry: '/nonexistent-runtime-entry' };
+  const uplan = planPersonalProviderConfig({ home: uhome, ...NO_RUNTIME });
+  const ur = provisionPersonalProviderConfig({ home: uhome, ...NO_RUNTIME });
+  const ures = modelResolutionCheck({ ...NO_RUNTIME, home: uhome, config: famCli('zai-api/glm-5.3') });
+  ok(ur.provisioned && existsSync(personalProviderConfigPath({ home: uhome, env: {} })),
+    'family selection without any resolvable template list still seeds (#7 behaviour)');
+  ok(uplan.resolves === null && /builtin template model list is unavailable/.test(uplan.unverified ?? ''),
+    `plan reports the unverified reason (${uplan.unverified})`);
+  ok(ures?.ok === true && ures.unverified === true && /zai-api\/glm-5\.3 — unverified/.test(ures.detail),
+    `doctor says the check is unverified, not failed (${ures?.detail})`);
+  rmSync(uhome, { recursive: true, force: true });
+
+  // The env-named builtin config is read when no document is injected.
+  const bfile = path.join(tmpdir(), `zagent-pp-builtin-${process.pid}.json`);
+  writeFileSync(bfile, JSON.stringify(BUILTIN_FIXTURE));
+  const ehome = tempHome(famCli('zai-api/GLM-5.3'));
+  const er = provisionPersonalProviderConfig({ home: ehome, env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bfile } });
+  ok(er.provisioned, 'family selection seeds from the env-named builtin config');
+  const epre = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bfile }, home: ehome, config: famCli('zai-api/not-in-list') });
+  ok(epre?.ok === false && /not in the builtin template's model list/.test(epre.detail),
+    `the env-named builtin file's list is actually read (${epre?.detail})`);
+  rmSync(ehome, { recursive: true, force: true });
+  rmSync(bfile, { force: true });
+}
+
+// --- the template list resolves the way the runtime spawn sees it ---
+// No env preset and no injected document: the bundled copy beside the
+// discovered runtime (what kernelEnv injects for our spawns) is read, then
+// the kernel's managed active cache under the data root — reusing zagent's
+// own resolvers (builtinConfigPath / kernelActiveBuiltinPath), not invented
+// paths.
+{
+  const famCli = main => ({ provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main } });
+  const { builtinConfigPath, kernelActiveBuiltinPath } = await import('../driver/account-config.mjs');
+  const { findRuntime } = await import('../driver/runtime.mjs');
+
+  // Runtime-anchored bundled copy: <resources>/glm/zcode.cjs beside
+  // <resources>/config/provider/zcode-builtin.json — discoverable via
+  // ZCODE_RUNTIME with no other env.
+  const rt = mkdtempSync(path.join(tmpdir(), 'zagent-pp-rt-'));
+  mkdirSync(path.join(rt, 'resources', 'glm'), { recursive: true });
+  mkdirSync(path.join(rt, 'resources', 'config', 'provider'), { recursive: true });
+  writeFileSync(path.join(rt, 'resources', 'glm', 'zcode.cjs'), '// stub entry\n');
+  writeFileSync(path.join(rt, 'resources', 'config', 'provider', 'zcode-builtin.json'), JSON.stringify(BUILTIN_FIXTURE));
+  const entry = path.join(rt, 'resources', 'glm', 'zcode.cjs');
+  const env = { ZCODE_RUNTIME: entry };
+  ok(findRuntime({ env })?.entry === entry && builtinConfigPath(entry) === path.join(rt, 'resources', 'config', 'provider', 'zcode-builtin.json'),
+    'fixture runtime anchors the bundled builtin path (kernelEnv parity)');
+  const bhome = tempHome(famCli('zai-api/GLM-5.3'));
+  const bres = modelResolutionCheck({ env, home: bhome, config: famCli('zai-api/GLM-5.3') });
+  ok(bres?.ok === true && !bres.unverified,
+    `template list found beside the runtime -> verified verdict (${bres?.detail})`);
+  const lres = modelResolutionCheck({ env, home: bhome, config: famCli('zai-api/glm-5.3') });
+  ok(lres?.ok === false && /not in the builtin template's model list/.test(lres.detail),
+    `the runtime-anchored list is actually consulted (${lres?.detail})`);
+  rmSync(bhome, { recursive: true, force: true });
+  rmSync(rt, { recursive: true, force: true });
+
+  // Managed active cache (what a bare kernel spawn provisions under the data
+  // root) is the next candidate when nothing else resolves.
+  const mhome = tempHome(famCli('zai-api/GLM-5.3'));
+  const active = kernelActiveBuiltinPath({ env: {}, home: mhome });
+  mkdirSync(path.dirname(active), { recursive: true });
+  writeFileSync(active, JSON.stringify(BUILTIN_FIXTURE));
+  const mres = modelResolutionCheck({ env: {}, home: mhome, config: famCli('zai-api/GLM-5.3'), runtimeEntry: '/nonexistent-runtime-entry' });
+  ok(mres?.ok === true && !mres.unverified,
+    `managed active cache under the data root resolves the list (${mres?.detail})`);
+  rmSync(mhome, { recursive: true, force: true });
+}
+
+// --- the kernel's effective builtin file wins over the bundled copy ---
+// A normal spawn (no personal-config env pair) reads the managed active cache
+// (buildAccountConfigParams orders [effective, preset||bundled]); the verdict
+// must read the same file first, and fall back to the bundled/preset one.
+{
+  const famCli = main => ({ provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main } });
+  const { kernelActiveBuiltinPath } = await import('../driver/account-config.mjs');
+  const tmpl = ids => ({ schemaVersion: 1, config: { providerConfigRules: { providerRules: [], templateRules: [
+    { templateId: 'zai-api', config: { builtinModelIds: ids } }] } } });
+  const rt = mkdtempSync(path.join(tmpdir(), 'zagent-pp-rt2-'));
+  mkdirSync(path.join(rt, 'resources', 'glm'), { recursive: true });
+  mkdirSync(path.join(rt, 'resources', 'config', 'provider'), { recursive: true });
+  const entry = path.join(rt, 'resources', 'glm', 'zcode.cjs');
+  writeFileSync(entry, '// stub entry\n');
+  const bundled = path.join(rt, 'resources', 'config', 'provider', 'zcode-builtin.json');
+  writeFileSync(bundled, JSON.stringify(tmpl(['BUNDLED-ONLY'])));
+  const home = tempHome(famCli('zai-api/ACTIVE-ONLY'));
+  const active = kernelActiveBuiltinPath({ env: {}, home, bundledPath: bundled });
+  mkdirSync(path.dirname(active), { recursive: true });
+  writeFileSync(active, JSON.stringify(tmpl(['ACTIVE-ONLY'])));
+  const both = modelResolutionCheck({ env: {}, home, config: famCli('zai-api/ACTIVE-ONLY'), runtimeEntry: entry });
+  ok(both?.ok === true && !both.unverified, `active cache wins over the bundled copy (${both?.detail})`);
+  const stale = modelResolutionCheck({ env: {}, home, config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(stale?.ok === false, `a bundled-only id is not resolvable when the active cache lacks it (${stale?.detail})`);
+  rmSync(active);
+  const fb = modelResolutionCheck({ env: {}, home, config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(fb?.ok === true && !fb.unverified, `bundled copy is the fallback when no active cache exists (${fb?.detail})`);
+  // Same ordering with a preset: the preset only stands in for the bundled copy.
+  const pfile = path.join(tmpdir(), `zagent-pp-preset-${process.pid}.json`);
+  writeFileSync(pfile, JSON.stringify(tmpl(['PRESET-ONLY'])));
+  const pres = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: pfile }, home,
+    config: famCli('zai-api/PRESET-ONLY'), runtimeEntry: entry });
+  ok(pres?.ok === true && !pres.unverified, `preset builtin file is read when no active cache exists (${pres?.detail})`);
+  rmSync(pfile, { force: true });
+  // An unreadable explicit preset must not fall back to the bundled copy: the
+  // runtime would not use it, so a conflicting bundled catalog may not verify.
+  const missing = path.join(rt, 'no-such-builtin.json');
+  const ex = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: missing }, home,
+    config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(ex?.unverified === true, `unreadable explicit preset is unverified, not verified via bundled (${JSON.stringify(ex)})`);
+  const bad = path.join(rt, 'bad-builtin.json');
+  writeFileSync(bad, '{not json');
+  const exb = modelResolutionCheck({ env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: bad }, home,
+    config: famCli('zai-api/BUNDLED-ONLY'), runtimeEntry: entry });
+  ok(exb?.unverified === true, `invalid explicit preset is unverified (${JSON.stringify(exb)})`);
+  const xhome = tempHome(famCli('zai-api/BUNDLED-ONLY'));
+  const exs = provisionPersonalProviderConfig({ home: xhome,
+    env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: missing }, runtimeEntry: entry });
+  ok(exs.provisioned, 'family seeding is kept when the explicit preset is unreadable');
+  rmSync(xhome, { recursive: true, force: true });
+
+  // findRuntime receives the caller's home: a home-local installation is found
+  // with neither runtimeEntry nor ZCODE_RUNTIME.
+  const lhome = tempHome(famCli('zai-api/HOME-LOCAL'));
+  const lenv = { APPDATA: path.join(lhome, 'AppData', 'Roaming') };
+  const lroot = process.platform === 'win32'
+    ? path.join(lenv.APPDATA, 'npm', 'node_modules', 'zcode-app-cli')
+    : path.join(lhome, '.local', 'opt', 'zcode-app-cli', 'node_modules', 'zcode-app-cli');
+  mkdirSync(path.join(lroot, 'bin'), { recursive: true });
+  mkdirSync(path.join(lroot, 'config', 'provider'), { recursive: true });
+  writeFileSync(path.join(lroot, 'bin', 'zcode.js'), '// stub entry\n');
+  writeFileSync(path.join(lroot, 'config', 'provider', 'zcode-builtin.json'), JSON.stringify(tmpl(['HOME-LOCAL'])));
+  // A system-wide desktop install outranks a home-local one; only assert when
+  // the fixture is what discovery selects on this machine.
+  if (findRuntime({ env: lenv, home: lhome })?.kind === 'zcode-app-cli') {
+    const hl = modelResolutionCheck({ env: lenv, home: lhome, config: famCli('zai-api/HOME-LOCAL') });
+    ok(hl?.ok === true && !hl.unverified, `home-local runtime catalog is resolved via the given home (${JSON.stringify(hl)})`);
+  } else console.log('note - home-local discovery case not exercised: a system-wide install shadows the fixture');
+  rmSync(lhome, { recursive: true, force: true });
+
+  // provisionPersonalProviderConfig honours runtimeEntry like the plan does.
+  const reads = [];
+  const phome = tempHome(famCli('zai-api/BUNDLED-ONLY'));
+  const pr = provisionPersonalProviderConfig({ home: phome, env: {}, runtimeEntry: entry,
+    read: p => { reads.push(p); return readFileSync(p, 'utf8'); } });
+  ok(pr.provisioned && reads.includes(bundled), 'provisioning resolves the template list via the given runtimeEntry');
+  rmSync(phome, { recursive: true, force: true });
+  rmSync(home, { recursive: true, force: true });
+  rmSync(rt, { recursive: true, force: true });
+}
+
+// --- an already-seeded family rule without access.type is not resolvable ---
+// The kernel's strict parser rejects a rule whose access block lacks `type`
+// (and falls back to no personal providers); doctor must not call that ok.
+{
+  const mk = access => ({ schemaVersion: 1, config: {
+    providerConfigRules: { providerRules: [{ providerId: 'zai-api', templateId: 'zai-api',
+      config: { group: 'standard-personal', access } }] },
+    modelConfigRules: { providerModelRules: [], manualProviderModelRules: [] },
+    defaultModelSelection: { providerId: 'zai-api', modelId: 'GLM-5.3' } } });
+  const cfg = { provider: { 'builtin:zai': { options: { apiKey: KEY } } }, model: { main: 'zai-api/GLM-5.3' } };
+  const check = doc => {
+    const h = tempHome(cfg);
+    mkdirSync(path.dirname(personalProviderConfigPath({ home: h, env: {} })), { recursive: true });
+    writeFileSync(personalProviderConfigPath({ home: h, env: {} }), JSON.stringify(doc));
+    const res = modelResolutionCheck({ env: {}, home: h, config: cfg, builtin: BUILTIN_FIXTURE });
+    rmSync(h, { recursive: true, force: true });
+    return res;
+  };
+  for (const [label, doc] of [['non-object access', mk('sk')], ['empty access.type', mk({ type: '', apiKey: KEY })], ['typeless access without a key', mk({})],
+    ['null rule config', (() => { const d = mk({}); d.config.providerConfigRules.providerRules[0].config = null; return d; })()]]) {
+    const r = check(doc);
+    ok(r?.ok === false && /malformed/.test(r.detail), `${label} is flagged (${r?.detail})`);
+  }
+  // The kernel's schema makes access nullable + optional, so absent/null is valid.
+  for (const [label, a] of [['absent', undefined], ['null', null]]) {
+    const r = check(mk(a));
+    ok(r?.ok === true, `${label} access block is valid (${r?.detail})`);
+  }
+  const typed = check(mk({ type: 'api-key', apiKey: KEY }));
+  ok(typed?.ok === true, `typed access block stays ok (${typed?.detail})`);
+
+  // A typeless block WITH a key is what the first seeder wrote: the -p path
+  // repairs it in place (adding only the type tag), doctor judges the repaired
+  // state, and a typed file is never rewritten.
+  const rhome = tempHome(cfg);
+  const rpath = personalProviderConfigPath({ home: rhome, env: {} });
+  mkdirSync(path.dirname(rpath), { recursive: true });
+  writeFileSync(rpath, JSON.stringify(mk({ apiKey: KEY }), null, 2));
+  const rcheck = modelResolutionCheck({ env: {}, home: rhome, config: cfg, builtin: BUILTIN_FIXTURE });
+  ok(rcheck?.ok === false && /access\.type/.test(rcheck.detail), `typeless block on disk is NOT resolvable until rewritten (${rcheck?.detail})`);
+  ok(JSON.parse(readFileSync(rpath, 'utf8')).config.providerConfigRules.providerRules[0].config.access.type === undefined,
+    'doctor (read-only) leaves the typeless file untouched');
+  const rr = provisionPersonalProviderConfig({ env: {}, home: rhome, builtin: BUILTIN_FIXTURE });
+  ok(rr.repaired === true && !rr.provisioned, 'provisioning repairs the typeless file in place');
+  ok(readFileSync(rpath, 'utf8') === JSON.stringify(mk({ type: 'api-key', apiKey: KEY }), null, 2),
+    'the repaired file is exactly the typed document (only type added)');
+  const again = provisionPersonalProviderConfig({ env: {}, home: rhome, builtin: BUILTIN_FIXTURE });
+  ok(!again.repaired && !again.provisioned, 'a typed file is not rewritten');
+  rmSync(rhome, { recursive: true, force: true });
+}
+
+// --- custom lists are kernel-exact too: casing must match the config's own ---
+// Same registry semantics as family lists: a selection whose id differs in
+// case from the configured models map is rejected by the kernel's explicit
+// lookup (measured: zai/GLM-5.3 vs ['glm-5.3',…] answers model-not-found),
+// so the verdict flags it and the permanent-miss guard refuses the seed.
+{
+  const cli = JSON.parse(JSON.stringify(CLI_FIXTURE));
+  cli.model.main = 'zai/GLM-5.3';
+  const home = tempHome(cli);
+  const env = {};
+  const r = provisionPersonalProviderConfig({ home, env });
+  const res = modelResolutionCheck({ env, home, config: cli });
+  ok(!r.provisioned && res?.ok === false && /model zai\/GLM-5\.3 is not in the provider's model list/.test(res.detail),
+    `case-mismatched custom selection is flagged exactly (${res?.detail})`);
+  rmSync(home, { recursive: true, force: true });
+}
+
+// --- commit-msg and models test seed before opening their app-server client ---
+// The runtime stub dies on contact, so both commands must FAIL — but only
+// after the seeding line ran: the personal config exists afterwards. These
+// assertions fail if either seed call is removed from the command files.
+{
+  const bin = new URL('../../bin/zagent', import.meta.url).pathname;
+  const stubHome = () => {
+    const h = tempHome();
+    writeFileSync(path.join(h, 'runtime.cjs'), 'process.exit(3); // stub: never speaks JSON-RPC\n');
+    return h;
+  };
+  const stubEnv = h => ({ PATH: process.env.PATH, HOME: h, USERPROFILE: h,
+    ZAGENT_TEST_SANDBOX: h, ZCODE_RUNTIME: path.join(h, 'runtime.cjs') });
+
+  const ch = stubHome();
+  const repo = mkdtempSync(path.join(tmpdir(), 'zagent-pp-repo-'));
+  const git = (args, extra = {}) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', env: { ...process.env, ...extra } });
+  git(['init', '-q']);
+  git(['config', 'user.email', 't@t']);
+  git(['config', 'user.name', 't']);
+  writeFileSync(path.join(repo, 'hello.txt'), 'change');
+  git(['add', 'hello.txt']);
+  const cm = spawnSync(process.execPath, [bin, 'commit-msg'], {
+    encoding: 'utf8', timeout: 60000, env: stubEnv(ch), cwd: repo });
+  ok(!cm.error && !cm.signal && Number.isInteger(cm.status) && cm.status > 0,
+    `commit-msg fails against the dead stub (status ${cm.status}, signal ${cm.signal}, error ${cm.error?.code})`);
+  ok(existsSync(personalProviderConfigPath({ home: ch, env: {} })),
+    'commit-msg seeded the personal provider config before opening its client');
+  rmSync(ch, { recursive: true, force: true });
+  rmSync(repo, { recursive: true, force: true });
+
+  const mh = stubHome();
+  // models test consults the v2 config mirror (~/.zcode/v2/config.json) for
+  // configured carriers and exits before the client without one; give the
+  // fixture both stores so the command reaches its seeding line.
+  mkdirSync(path.join(mh, '.zcode', 'v2'), { recursive: true });
+  writeFileSync(path.join(mh, '.zcode', 'v2', 'config.json'),
+    JSON.stringify({ provider: { zai: { options: { apiKey: KEY },
+      models: { 'glm-5.3': {}, 'glm-5.3-flash': {} } } } }), { mode: 0o600 });
+  const mt = spawnSync(process.execPath, [bin, 'models', 'test', 'zai/glm-5.3'], {
+    encoding: 'utf8', timeout: 60000, env: stubEnv(mh), cwd: mh });
+  ok(!mt.error && !mt.signal && Number.isInteger(mt.status) && mt.status > 0,
+    `models test fails against the dead stub (status ${mt.status}, signal ${mt.signal}, error ${mt.error?.code})`);
+  ok(existsSync(personalProviderConfigPath({ home: mh, env: {} })),
+    'models test seeded the personal provider config before opening its client');
+  rmSync(mh, { recursive: true, force: true });
 }
 
 if (fails) { console.error(`${fails} FAILURE(S)`); process.exit(1); }
