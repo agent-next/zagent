@@ -364,13 +364,15 @@ else console.log('ok');
     assert.equal(rthang.status, 1, `a resident 'runtime:' frame must fail, got ${rthang.status}`);
     assert.match(receiptText(dirE), /PTY boot[^\n]*FAIL[^\n]*no recognizable surface/);
 
-    // review MINOR: a --bin path containing spaces must reach the PTY probe
-    // as one word (the inner sh splits an unquoted inline path).
-    const dirF = mkdtempSync(path.join(tmpdir(), 'zagent-soak-ptyspace-'));
-    const spaceDir = path.join(dirF, 'dir with space');
-    mkdirSync(spaceDir);
-    const spaceStub = path.join(spaceDir, 'stub-zagent');
-    writeFileSync(spaceStub, `#!/usr/bin/env node
+    // A --bin path containing spaces — and one carrying a shell quote — must
+    // reach the PTY probe as one word: the binary travels via env and the
+    // probe args are shell-quoted, never inline command text.
+    for (const awkward of ['dir with space', "dir with 'quote' and space"]) {
+      const dirF = mkdtempSync(path.join(tmpdir(), 'zagent-soak-ptyspace-'));
+      const spaceDir = path.join(dirF, awkward);
+      mkdirSync(spaceDir);
+      const spaceStub = path.join(spaceDir, 'stub-zagent');
+      writeFileSync(spaceStub, `#!/usr/bin/env node
 const a = process.argv.slice(2).join(' ');
 if (a === '--version') console.log('zagent 9.9.9');
 else if (a === '--help') console.log('Commands: quota doctor sessions task update models permissions inspect');
@@ -385,12 +387,13 @@ else if (a === '') {
 }
 else console.log('ok');
 `);
-    chmodSync(spaceStub, 0o755);
-    const spaced = spawnSync(process.execPath, [soak, '--receipt-dir', dirF,
-      '--bin', spaceStub, '--version', '9.9.9', '--probe-timeout', '6000'],
-      { encoding: 'utf8', timeout: 120_000, env });
-    assert.equal(spaced.status, 0, `space-bearing --bin path must pass: ${(spaced.stderr || spaced.stdout).slice(-300)}`);
-    assert.match(receiptText(dirF), /PTY boot[^\n]*PASS/);
+      chmodSync(spaceStub, 0o755);
+      const spaced = spawnSync(process.execPath, [soak, '--receipt-dir', dirF,
+        '--bin', spaceStub, '--version', '9.9.9', '--probe-timeout', '6000'],
+        { encoding: 'utf8', timeout: 120_000, env });
+      assert.equal(spaced.status, 0, `${awkward}: awkward --bin path must pass: ${(spaced.stderr || spaced.stdout).slice(-300)}`);
+      assert.match(receiptText(dirF), /PTY boot[^\n]*PASS/);
+    }
   });
 
   test('a missing --bin fails loudly in setup, not as ten probe failures', () => {
