@@ -358,11 +358,12 @@ test('the sun_path budget is platform-sized: 104 on Darwin/BSD, 108 on Linux', (
   // sun-path.mjs answers for the swarm's socket planning; a hardcoded 108
   // would wave a 105-byte path through on a 104-byte host. Platforms are
   // injected so both budgets are exercised on every host.
-  for (const [plat, cap] of [['darwin', 104], ['freebsd', 104], ['openbsd', 104],
-    ['netbsd', 104], ['linux', 108], ['sunos', 108]]) {
+  const caps = new Map([['darwin', 104], ['freebsd', 104], ['openbsd', 104],
+    ['netbsd', 104], ['linux', 108], ['sunos', 108]]);
+  for (const [plat, cap] of caps) {
     assert.equal(sunPathBudget(plat), cap, `${plat} must budget ${cap} bytes`);
   }
-  assert.equal(sunPathBudget(), process.platform === 'darwin' ? 104 : 108,
+  assert.equal(sunPathBudget(), caps.get(process.platform) ?? 108,
     'the host default must follow the host platform');
   // Boundary at both caps: exactly-budget bytes fit; one byte past does not.
   for (const plat of ['darwin', 'linux']) {
