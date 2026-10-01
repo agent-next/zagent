@@ -77,9 +77,11 @@ test('frontierharness quotes operator models and rejects a non-numeric timeout',
   assert.ok(py.stdout.includes("'a b;touch x' 'c$(id)'"), py.stdout);
   const tasks = path.join(scratch, 'fh-tasks.txt');
   writeFileSync(tasks, '');
-  const r = spawnSync('bash', [path.join(here, 'frontierharness/run-local-trials.sh'), '--run-id', 'x', '--tasks', tasks, '--timeout', '5400s'], { encoding: 'utf8' });
-  assert.equal(r.status, 2, r.stdout + r.stderr);
-  assert.match(r.stderr, /--timeout must be a positive integer/);
+  for (const bad of ['5400s', '0', '00']) {
+    const r = spawnSync('bash', [path.join(here, 'frontierharness/run-local-trials.sh'), '--run-id', 'x', '--tasks', tasks, '--timeout', bad], { encoding: 'utf8' });
+    assert.equal(r.status, 2, `${bad}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /--timeout must be a positive integer/);
+  }
 });
 
 test('first-frame detection survives a multi-byte box char split across chunks', () => {

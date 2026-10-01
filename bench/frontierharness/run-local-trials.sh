@@ -13,7 +13,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --run-id) RUN_ID=$2; shift 2;; --tasks) TASKS=$2; shift 2;; --model) MODEL=$2; shift 2;;
   --out) OUT=$2; shift 2;; --timeout) TIMEOUT=$2; shift 2;; *) echo "unknown arg $1" >&2; exit 2;; esac; done
 [ -n "$RUN_ID" ] && [ -f "$TASKS" ] || { echo "need --run-id and --tasks FILE" >&2; exit 2; }
-case "$TIMEOUT" in ''|*[!0-9]*) echo "--timeout must be a positive integer (seconds), got: $TIMEOUT" >&2; exit 2;; esac
+case "$TIMEOUT" in ''|*[!0-9]*|0*) echo "--timeout must be a positive integer (seconds), got: $TIMEOUT" >&2; exit 2;; esac
 RUN_DIR=$OUT/$RUN_ID; mkdir -p "$RUN_DIR/trials"
 ZV=$(tar -xzOf "$ROOT/zagent-runtime.tar.gz" ./prefix/lib/node_modules/zagent/package.json 2>/dev/null | jq -r .version)
 KSHA=$(tar -xzOf "$ROOT/zagent-runtime.tar.gz" ./kernel/zcode.cjs 2>/dev/null | sha256sum | cut -c1-64)
