@@ -2,6 +2,7 @@ import { buildLaunchArgs, isInteractive, runtimeShipsTui, tuiPreference, kernelE
 import path from 'node:path';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 let fails = 0;
 const ok = (c, m) => { if (!c) { console.error('FAIL:', m); fails++; } else console.log('ok -', m); };
@@ -82,8 +83,10 @@ ok(kernelEntry(null, () => true) === null, 'a missing entry resolves to itself')
 // --- launch args --------------------------------------------------------------
 let r = buildLaunchArgs({ entry: desktop, args: [], exists: () => false });
 ok(r.tui === 'zagent', 'default preference uses our TUI');
-ok(r.argv[0] === '--import' && r.argv[1] === TUI_LOADER && r.argv[2] === desktop,
-   'our TUI is injected with --import BEFORE the runtime entry');
+// --import consumes a module specifier: on Windows a bare absolute path throws
+// ERR_UNSUPPORTED_ESM_URL_SCHEME, so the loader must be passed as a file: URL.
+ok(r.argv[0] === '--import' && r.argv[1] === pathToFileURL(TUI_LOADER).href && r.argv[2] === desktop,
+   'our TUI is injected as a file: URL with --import BEFORE the runtime entry');
 ok(r.argv.at(-1) === 'tui', 'the tui subcommand is passed explicitly');
 
 r = buildLaunchArgs({ entry: desktop, args: ['--cwd', '/w'], exists: () => false });

@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+// TUI weave-in: installs our plugin commands as TUI slash commands (skills).
+import { readdirSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const SKILLS_DIR = `${os.homedir()}/.zcode/skills`;
+for (const cmd of readdirSync(`${ROOT}/plugins/zquota-panel/commands`)) {
+  if (!cmd.endsWith('.md')) continue;
+  mkdirSync(SKILLS_DIR, { recursive: true });
+  // Keep the .md extension — the skill catalog only names *.md files, so an
+  // extensionless copy was invisible. And never overwrite: an existing file
+  // may be user-edited; report it instead of clobbering.
+  const dest = `${SKILLS_DIR}/${cmd}`;
+  if (existsSync(dest)) { console.log(`kept existing: ${dest}`); continue; }
+  copyFileSync(`${ROOT}/plugins/zquota-panel/commands/${cmd}`, dest);
+  console.log(`installed: /${cmd.replace(/\.md$/, '')} -> ${dest}`);
+}
+console.log('TUI weave-in complete.');

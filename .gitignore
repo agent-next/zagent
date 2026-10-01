@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.env*
+.worktrees/
+
+__pycache__/
+*.pyc

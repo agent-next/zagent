@@ -5,22 +5,38 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSyn
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { findRuntime, DEFAULT_RUNTIME } from './runtime.mjs';
+import { fileURLToPath } from 'node:url';
+import { findRuntime, DEFAULT_RUNTIME, desktopRuntimeEntries } from './runtime.mjs';
 import { ZCodeProtocolClient } from './zcode-protocol.mjs';
 import { acceptRequest, currentAnswer, isolatedTurn, serializeWorkspaces, DAEMON_TURN_TIMEOUT_MS, DAEMON_RESPONSE_TIMEOUT_MS } from '../cli/daemon-request.mjs';
 import { installPlugin } from './plugins.mjs';
 
 const home = mkdtempSync(path.join(os.tmpdir(), 'zcore-'));
 try {
-  const local = `${home}/.local/opt/zcode-app-cli/node_modules/zcode-app-cli/bin/zcode.js`;
-  const cwdEntry = `${home}/workspace/node_modules/zcode-app-cli/bin/zcode.js`;
-  const choose = available => findRuntime({ env: {}, home, cwd: `${home}/workspace`, exists: p => available.includes(p) });
-  assert.equal(choose([local, cwdEntry, DEFAULT_RUNTIME]).entry, DEFAULT_RUNTIME); // official desktop first
+  // The per-user app-cli root differs per OS: ~/.local/opt on POSIX,
+  // %APPDATA%\npm on win32 — feed the matching env so the probe path is real.
+  const roaming = path.join(home, 'app-roaming');
+  const appLocal = path.join(home, 'app-local');
+  const appEnv = process.platform === 'win32' ? { APPDATA: roaming, LOCALAPPDATA: appLocal } : {};
+  const userRoot = process.platform === 'win32'
+    ? path.join(roaming, 'npm')
+    : `${home}/.local/opt/zcode-app-cli`;
+  const local = path.join(userRoot, 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js');
+  const cwdEntry = path.join(home, 'workspace', 'node_modules', 'zcode-app-cli', 'bin', 'zcode.js');
+  const choose = available => findRuntime({ env: appEnv, home, cwd: path.join(home, 'workspace'), exists: p => available.includes(p) });
+  // The "official desktop" fixture is the bundle table's first entry for THIS
+  // platform — findRuntime probes the per-OS roots (/Applications/ZCode.app on
+  // macOS, %LOCALAPPDATA%\Programs on win32), so the linux deb literal
+  // (DEFAULT_RUNTIME) is never probed there and the preference order cannot
+  // be asserted with it.
+  const desktopEntries = desktopRuntimeEntries({ env: appEnv, home });
+  const desktopEntry = desktopEntries[0];
+  assert.equal(choose([local, cwdEntry, ...desktopEntries]).entry, desktopEntry); // official desktop first
   assert.equal(choose([local, cwdEntry]).entry, local); // app-cli install root before cwd
-  assert.equal(choose([cwdEntry, DEFAULT_RUNTIME]).entry, DEFAULT_RUNTIME);
-  assert.equal(choose([DEFAULT_RUNTIME]).entry, DEFAULT_RUNTIME);
+  assert.equal(choose([cwdEntry, desktopEntry]).entry, desktopEntry);
+  assert.equal(choose([desktopEntry]).entry, desktopEntry);
   assert.equal(choose([]), null);
-  assert.equal(findRuntime({ env: { ZCODE_RUNTIME: 'override' }, cwd: home, exists: () => true }).entry, `${home}/override`);
+  assert.equal(findRuntime({ env: { ZCODE_RUNTIME: 'override' }, cwd: home, exists: () => true }).entry, path.resolve(home, 'override'));
   assert.equal(findRuntime({ env: { ZCODE_RUNTIME: 'missing' }, exists: p => p === DEFAULT_RUNTIME }), null);
   const runtime = path.join(home, 'runtime.cjs');
   writeFileSync(runtime, `if (process.argv.includes('app-server')) {
@@ -36,7 +52,7 @@ try {
     finally { client.close(); }
     mkdirSync(`${home}/.zcode/cli`, { recursive: true });
     writeFileSync(`${home}/.zcode/cli/config.json`, '{}');
-    const cli = spawnSync(process.execPath, [new URL('../cli/zagent.mjs', import.meta.url).pathname, '-p', 'fixture'], {
+    const cli = spawnSync(process.execPath, [fileURLToPath(new URL('../cli/zagent.mjs', import.meta.url)), '-p', 'fixture'], {
       env: { ...process.env, HOME: home, USERPROFILE: home, ZAGENT_TEST_SANDBOX: home }, encoding: 'utf8', timeout: 10000,
     });
     assert.equal(cli.status, 0, cli.stderr);

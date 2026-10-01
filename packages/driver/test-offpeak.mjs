@@ -79,10 +79,14 @@ try {
 // connection surfaces as its own error and fetch is never reached.
 {
   const previousHome = process.env.HOME;
+  const previousProfile = process.env.USERPROFILE;
   const previousMid = process.env.ZCODE_DEVICE_MID;
   let fetchCalls = 0;
   try {
+    // os.homedir() follows USERPROFILE on win32 — redirect both, or a
+    // sandboxed device.json still resolves and the request reaches fetch
     process.env.HOME = `/nonexistent-zcode-home-${process.pid}`;
+    process.env.USERPROFILE = process.env.HOME;
     delete process.env.ZCODE_DEVICE_MID;
     globalThis.fetch = async () => { fetchCalls++; return { status: 200, json: async () => ({}) }; };
     await assert.rejects(offPeakRequest('/ticket', {}, { jwt: 'j' }),
@@ -93,6 +97,7 @@ try {
   } finally {
     globalThis.fetch = previousFetch;
     if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    if (previousProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousProfile;
     if (previousMid === undefined) delete process.env.ZCODE_DEVICE_MID; else process.env.ZCODE_DEVICE_MID = previousMid;
   }
 }

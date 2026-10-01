@@ -1,0 +1,15 @@
+{
+  "name": "zquota-panel",
+  "version": "0.2.0",
+  "description": "Coding-plan quota panel: balance, preview, and 5h/weekly reset status",
+  "description_i18n": {
+    "en": "Coding-plan quota panel: balance, preview, and 5h/weekly reset status",
+    "zh-CN": "\u7f16\u7801\u5957\u9910\u989d\u5ea6\u9762\u677f\uff1a\u4f59\u989d\u3001\u9884\u89c8\u4e0e 5 \u5c0f\u65f6/\u6bcf\u5468\u91cd\u7f6e\u72b6\u6001"
+  },
+  "commands": [
+    {
+      "name": "zquota",
+      "description": "Show coding-plan quota panel"
+    }
+  ]
+}

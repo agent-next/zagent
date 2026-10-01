@@ -90,7 +90,7 @@ const silent = runHeadlessWithRetry(process.execPath,
   { backoffMs: [1] });
 ok(silent.attempts === 2, 'empty stdout + empty stderr still retries (the transient 429 shape)');
 
-// Cross-flag and parseArgs-verbatim classes (w2a receipt + 2026-09-16 probe):
+// Cross-flag and parseArgs-verbatim classes (observed on the installed build):
 const crossFlag = runHeadlessWithRetry(process.execPath,
   ['-e', 'process.stderr.write("--browser-executable requires --browser-use=headless.\\n"); process.exit(1)'],
   { backoffMs: [1] });

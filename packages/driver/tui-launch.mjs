@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs';
 import * as nodeModule from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const TUI_LOADER = fileURLToPath(new URL('../tui/loader.mjs', import.meta.url));
 
@@ -100,7 +100,9 @@ export function buildLaunchArgs({ entry, args = [], preference = 'zagent', loade
   // `tui` is explicit so the kernel takes the interactive path even when a
   // future build changes its default-subcommand behaviour.
   const forwarded = args.length > 0 ? args : ['tui'];
-  return { argv: ['--import', loader, kernelEntry(entry, exists), ...forwarded], tui: 'zagent', ships };
+  // --import takes a module specifier: a bare absolute path crashes on Windows
+  // ("Only URLs with a scheme in: file, data, and node are supported").
+  return { argv: ['--import', pathToFileURL(loader).href, kernelEntry(entry, exists), ...forwarded], tui: 'zagent', ships };
 }
 
 export function tuiPreference(env = process.env) {

@@ -85,8 +85,9 @@ const run = (args, { home, runtime, cwd } = {}) => {
     mode = statSync(cfg).mode & 0o777;
     hasKey = JSON.parse(readFileSync(cfg, 'utf8'))?.provider?.zai?.options?.apiKey === 'sk-test-key';
   } catch {}
+  // win32 reports synthetic modes (0666) — the 0600 bit is a POSIX contract
   check('J1 a provided key bootstraps config.json at mode 0600',
-    existsSync(cfg) && mode === 0o600 && hasKey,
+    existsSync(cfg) && (process.platform === 'win32' || mode === 0o600) && hasKey,
     `exists=${existsSync(cfg)} mode=${mode.toString(8)} hasKey=${hasKey}`);
 }
 

@@ -565,7 +565,7 @@ export function retryNotice(p, attempt, report) {
     const monitored = Date.parse(windowResetAt(report) ?? '');
     const stamp = hhmm(Number.isFinite(monitored) && monitored > Date.now()
       ? monitored : explained?.reset?.at);
-    // G7: measured receipts (2026-09-07) show the rolling window is independent
+    // G7: measured traffic shows the rolling window is independent
     // of off-peak routing — 1308s land inside an open off-peak window — so the
     // honest remedy is provider-errors': wait for the reset.
     return `5-hour window used up${stamp ? ` · resets ${stamp}` : ''} · nothing will succeed until the reset`;

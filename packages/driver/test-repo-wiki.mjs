@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Hermetic repo-wiki discovery. Temp HOME only; never writes into the real
 // ~/.zcode tree and never dumps wiki page bodies.
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,9 +18,11 @@ const SECRET = 'test-dummy-secret';
 
 const makeHome = (tag) => {
   const home = mkdtempSync(path.join(tmp, tag));
-  const cwd = path.join(home, 'ws');
-  mkdirSync(cwd);
-  return { home, cwd };
+  mkdirSync(path.join(home, 'ws'));
+  // The spawned inspect CLI hashes process.cwd(), and getcwd(3) yields the
+  // canonical spelling (macOS /var -> /private/var) — plant and probe through
+  // that form or the hashed wiki dir and the child's key disagree.
+  return { home, cwd: realpathSync(path.join(home, 'ws')) };
 };
 
 const writeWiki = (home, cwd, body) => {
@@ -99,8 +101,9 @@ try {
   try { namedReport = JSON.parse(namedRun.stdout); } catch (e) {
     ok(false, `named inspect --json parse failed: ${e.message} stdout=${JSON.stringify(namedRun.stdout)} stderr=${JSON.stringify(namedRun.stderr)}`);
   }
-  // Paths under the spawned home render as ~/..., never absolute.
-  const shownWiki = `~${namedFile.slice(named.home.length)}`;
+  // Paths under the spawned home render as ~/..., never absolute. displayPath
+  // forward-slashes separators, so the ~-suffix expectation does too.
+  const shownWiki = `~${namedFile.slice(named.home.length).split(path.sep).join('/')}`;
   ok(namedReport.wiki && namedReport.wiki.path === shownWiki, 'inspect --json includes home-relative wiki.path');
   ok(namedReport.wiki.title === 'demo-repo', 'inspect --json includes wiki.title');
   ok(Object.keys(namedReport.wiki).sort().join(',') === 'path,title', 'inspect wiki keys are path,title only');

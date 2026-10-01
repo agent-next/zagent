@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+// zplugin-validate — check our plugins against the official zcode-plugins contract
+// (kebab-case names, i18n parity, source paths, marketplace↔manifest equality).
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+let fails = 0;
+const ok = (c, m) => { if (!c) { console.error('FAIL:', m); fails++; } else console.log('ok -', m); };
+const mkt = JSON.parse(readFileSync(`${root}/plugins/marketplace.json`, 'utf8'));
+const names = new Set();
+for (const ent of mkt.plugins ?? []) {
+  const name = ent.name;
+  ok(/^[a-z0-9][a-z0-9._-]{0,127}$/.test(name), `${name}: kebab-case name`);
+  ok(!names.has(name), `${name}: unique`); names.add(name);
+  ok(ent.source === `./plugins/${name}`, `${name}: source path matches name`);
+  const mf = `${root}/plugins/${name}/.zcode-plugin/plugin.json`;
+  ok(existsSync(mf), `${name}: manifest exists`);
+  if (!existsSync(mf)) continue;
+  const p = JSON.parse(readFileSync(mf, 'utf8'));
+  ok(p.name === name, `${name}: manifest name == marketplace name`);
+  ok(typeof p.version === 'string' && /^\d+\.\d+\.\d+/.test(p.version), `${name}: semver`);
+  ok(p.description_i18n?.en === p.description, `${name}: i18n en == description`);
+  ok(!!p.description_i18n?.['zh-CN'], `${name}: zh-CN present`);
+}
+console.log(fails ? `FAIL (${fails})` : `PASS plugin validate (${names.size} plugins)`);
+process.exit(fails ? 1 : 0);

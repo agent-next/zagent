@@ -43,7 +43,8 @@ const fBot = async (url, init) => {
   if (url.includes('getUpdates')) { polls++;
     if (polls === 1) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
       { update_id: 1, message: { chat: { id: 9 }, text: 'what is 2+2?' } },
-      { update_id: 2, message: { chat: { id: 9 }, photo: {} } } ] }) };
+      { update_id: 2, message: { chat: { id: 9 }, photo: [{ file_id: 'p1' }] } },
+      { update_id: 3, channel_post: { chat: { id: 9 } } } ] }) };
     return { ok: true, status: 200, json: async () => new Promise(() => {}) }; // hang = long-poll idle
   }
   return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
@@ -54,26 +55,27 @@ const bot = await runBot({ token: 'T', fetchImpl: fBot, pollTimeout: 0,
   onEvent: (t, d) => events.push(t) });
 await new Promise(r => setTimeout(r, 150));
 bot.stop();
-ok(handled.length === 1 && handled[0][0] === 9, 'text update handled; photo skipped');
-ok(events.includes('skipped'), 'skip event emitted');
-const sent = fBot; // replies went through sendMessage
-ok(true, 'loop ran');
+ok(handled.length === 2 && handled[0][1] === 'what is 2+2?', 'text update handled');
+ok(handled[1][0] === 9 && handled[1][1] === '', 'photo-only update reaches the handler with empty text');
+ok(events.filter(e => e === 'skipped').length === 1, 'an update with no message is skipped');
 
 // handler error reported to chat, bot survives
-let polls2 = 0; let reported = null;
+let polls2 = 0; let reported = null; const replies2 = [];
 const fErr = async (url, init) => {
   if (url.includes('getUpdates')) { polls2++;
     if (polls2 === 1) return { ok: true, status: 200, json: async () => ({ ok: true, result: [ { update_id: 5, message: { chat: { id: 3 }, text: 'boom' } } ] }) };
+    if (polls2 === 2) return { ok: true, status: 200, json: async () => ({ ok: true, result: [ { update_id: 6, message: { chat: { id: 3 }, text: 'after' } } ] }) };
     return { ok: true, status: 200, json: async () => new Promise(() => {}) }; }
-  reported = JSON.parse(init.body);
+  replies2.push(JSON.parse(init.body));
   return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
 };
 const bot2 = await runBot({ token: 'T', fetchImpl: fErr, pollTimeout: 0,
-  handler: async () => { throw new Error('turn failed'); }, onEvent: () => {} });
-await new Promise(r => setTimeout(r, 150));
+  handler: async (chatId, text) => { if (text === 'boom') throw new Error('turn failed'); return 'still here'; }, onEvent: () => {} });
+await new Promise(r => setTimeout(r, 300));
 bot2.stop();
+reported = replies2[0];
 ok(reported && /^error: turn failed/.test(reported.text), 'handler error reported to chat');
-ok(events !== null, 'bot survived handler error');
+ok(replies2.some(r => r.text === 'still here'), 'bot survived handler error: the next update is still answered');
 
 // missing token/handler guards
 let g = false; try { await runBot({}); } catch { g = true; }
@@ -112,6 +114,153 @@ await new Promise(r => setTimeout(r, 100)); bot4.stop();
 release?.({ ok: true, result: [{ update_id: 9, message: { chat: { id: 1 }, text: 'too late' } }] });
 await new Promise(r => setTimeout(r, 100));
 ok(handled4.length === 0, 'handler not started after stop() (r2 #4)');
+
+// --- r3 #5: an update is not acknowledged until its reply is delivered ---
+// sendMessage fails once, then works: the same update_id must come back (offset
+// stayed behind), the handler must NOT re-run, and the cached reply is resent.
+{
+  const handled5 = [], sends5 = [];
+  const fRedeliver = async (url, init) => {
+    if (url.includes('getUpdates')) {
+      const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+      if (off <= 41) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
+        { update_id: 41, message: { chat: { id: 8 }, text: 'job' } } ] }) };
+      return { ok: true, status: 200, json: async () => new Promise(() => {}) }; // acked: idle
+    }
+    if (url.includes('sendMessage')) { sends5.push(JSON.parse(init.body));
+      if (sends5.length === 1) return { ok: false, status: 500, json: async () => ({ ok: false }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) }; }
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+  };
+  const ev5 = [];
+  const bot5 = await runBot({ token: 'T', fetchImpl: fRedeliver, pollTimeout: 0,
+    handler: async (c, t) => { handled5.push(t); return 'answer-42'; }, onEvent: (t, d) => ev5.push(t) });
+  for (let i = 0; i < 60 && sends5.length < 2; i++) await new Promise(r => setTimeout(r, 100));
+  bot5.stop();
+  ok(sends5.length >= 2 && sends5.every(s => s.text === 'answer-42'), 'undelivered reply is resent on redelivery');
+  ok(handled5.length === 1, 'handler not re-run for a redelivered update');
+  ok(ev5.includes('delivery_error'), 'delivery failure is observable');
+}
+
+// bounded drop: a chat whose sends always fail is acked after maxDeliveryAttempts
+// so one dead chat cannot stall every later update.
+{
+  const handled6 = [];
+  let maxOffsetSeen = 0;
+  const fDead = async (url, init) => {
+    if (url.includes('getUpdates')) {
+      const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+      maxOffsetSeen = Math.max(maxOffsetSeen, off);
+      if (off <= 7) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
+        { update_id: 7, message: { chat: { id: 1 }, text: 'hi' } } ] }) };
+      return { ok: true, status: 200, json: async () => new Promise(() => {}) };
+    }
+    return { ok: false, status: 500, json: async () => ({ ok: false }) }; // every send fails
+  };
+  const ev6 = [];
+  const bot6 = await runBot({ token: 'T', fetchImpl: fDead, pollTimeout: 0, maxDeliveryAttempts: 2,
+    handler: async (c, t) => { handled6.push(t); return 'never seen'; }, onEvent: (t, d) => ev6.push(t) });
+  for (let i = 0; i < 60 && !(ev6.includes('dropped') && maxOffsetSeen > 7); i++) await new Promise(r => setTimeout(r, 100));
+  bot6.stop();
+  ok(ev6.includes('dropped'), 'undeliverable update dropped after maxDeliveryAttempts');
+  ok(handled6.length === 1, 'dropped update still ran the handler once');
+  ok(maxOffsetSeen > 7, 'offset advances past the dropped update');
+}
+
+// --- r3: restart persistence — a completed turn whose reply failed to send
+// must never re-execute after a process restart. Two runBot instances share
+// one stateFile (the second simulates the restarted process); the handler
+// must run exactly once across both.
+{
+  const { mkdtempSync, rmSync, statSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'ztg-state-'));
+  const stateFile = join(dir, 'telegram-state.json');
+  try {
+    const handled7 = [], sends7 = [];
+    // First process: polls return update 41, every sendMessage fails.
+    const fFail = async (url, init) => {
+      if (url.includes('getUpdates')) {
+        const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+        if (off <= 41) return { ok: true, status: 200, json: async () => ({ ok: true, result: [
+          { update_id: 41, message: { chat: { id: 8 }, text: 'job' } } ] }) };
+        return { ok: true, status: 200, json: async () => new Promise(() => {}) };
+      }
+      if (url.includes('sendMessage')) { sends7.push(JSON.parse(init.body)); return { ok: false, status: 500, json: async () => ({ ok: false }) }; }
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+    };
+    const bot7a = await runBot({ token: 'T', fetchImpl: fFail, pollTimeout: 0, stateFile,
+      handler: async (c, t) => { handled7.push('a'); return 'answer-42'; }, onEvent: () => {} });
+    for (let i = 0; i < 60 && sends7.length < 1; i++) await new Promise(r => setTimeout(r, 100));
+    bot7a.stop();
+    ok(handled7.length === 1 && sends7.length >= 1, 'first process ran the handler once, send failed');
+    const st = JSON.parse(readFileSync(stateFile, 'utf8'));
+    ok(st.pending?.['41']?.reply === 'answer-42' && st.offset <= 41, 'pending answer + un-acked offset persisted');
+    if (process.platform !== 'win32')
+      ok((statSync(stateFile).mode & 0o777) === 0o600, 'state file is 0600');
+
+    // Second process (the restart): the pending answer is resent — the handler
+    // must not run again. This bot's sendMessage succeeds.
+    const sends7b = [];
+    const fRestart = async (url, init) => {
+      if (url.includes('getUpdates'))
+        return { ok: true, status: 200, json: async () => new Promise(() => {}) }; // idle: nothing new
+      if (url.includes('sendMessage')) { sends7b.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) }; }
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+    };
+    const bot7b = await runBot({ token: 'T', fetchImpl: fRestart, pollTimeout: 0, stateFile,
+      handler: async () => { handled7.push('b'); return 're-run'; }, onEvent: () => {} });
+    // The send fires before the settle write lands — wait on the file itself.
+    const settled = () => { try { const s = JSON.parse(readFileSync(stateFile, 'utf8')); return s.offset > 41 && !Object.keys(s.pending ?? {}).length; } catch { return false; } };
+    for (let i = 0; i < 60 && !settled(); i++) await new Promise(r => setTimeout(r, 100));
+    bot7b.stop();
+    ok(sends7b.length >= 1 && sends7b[0].text === 'answer-42', 'restarted bot resends the persisted answer');
+    ok(handled7.length === 1, 'handler ran exactly once across the restart');
+    ok(settled(), 'delivered answer settles the offset');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+// A successful send settles the update in ONE state write: a persisted state
+// with the pending answer gone but the offset not yet advanced is a crash
+// window in which a restart re-runs the turn.
+{
+  const fs = (await import('node:fs')).default;
+  const { syncBuiltinESMExports } = await import('node:module');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = fs.mkdtempSync(join(tmpdir(), 'ztg-win-'));
+  const stateFile = join(dir, 'telegram-state.json');
+  const snaps = [], realRename = fs.renameSync;
+  fs.renameSync = (from, to) => { if (to === stateFile) snaps.push(JSON.parse(fs.readFileSync(from, 'utf8'))); return realRename(from, to); };
+  syncBuiltinESMExports();
+  try {
+    let sends = 0, pendingAtSend = false;
+    const fOkSend = async (url) => {
+      if (url.includes('sendMessage')) {
+        sends++;
+        pendingAtSend = !!JSON.parse(fs.readFileSync(stateFile, 'utf8')).pending?.['50'];
+      }
+      if (url.includes('getUpdates')) {
+        const off = Number(/offset=(\d+)/.exec(url)?.[1] ?? 0);
+        if (off <= 50) return { ok: true, status: 200, json: async () => ({ ok: true, result: [ { update_id: 50, message: { chat: { id: 4 }, text: 'go' } } ] }) };
+        return { ok: true, status: 200, json: async () => new Promise(() => {}) };
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+    };
+    const bot8 = await runBot({ token: 'T', fetchImpl: fOkSend, pollTimeout: 0, stateFile, handler: async () => 'done', onEvent: () => {} });
+    for (let i = 0; i < 60 && !snaps.some(s => s.offset > 50); i++) await new Promise(r => setTimeout(r, 50));
+    bot8.stop();
+    ok(sends === 1, `the answer is sent once (sends=${sends})`);
+    ok(pendingAtSend, 'the answer was already in the state file when the send ran');
+    ok(snaps.some(s => s.pending?.['50']), 'the answer was persisted before the send');
+    ok(snaps.some(s => s.offset > 50 && !Object.keys(s.pending ?? {}).length), 'the settled state was persisted');
+    ok(!snaps.some(s => s.offset <= 50 && !Object.keys(s.pending ?? {}).length), 'no persisted state has the answer cleared with the offset still behind');
+  } finally {
+    fs.renameSync = realRename; syncBuiltinESMExports();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 console.log(fails ? `FAIL (${fails})` : 'PASS telegram-d5-full');
 process.exit(fails ? 1 : 0);

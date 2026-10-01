@@ -72,7 +72,8 @@ const ENABLED = { 'builtin:zai-coding-plan': { enabled: true, options: { apiKey:
   ok(decryptCredential(store[accountApiKeyKey(pid, id)], {}) === KEY, 'api-key record decrypts to the trimmed key');
   ok(kernelEntitled(store, pid), 'kernel resolver would mark the provider entitled');
   ok(!kernelEntitled(store, 'account:zai-start-plan'), 'unprovisioned rule stays unentitled');
-  ok((statSync(path.join(t.v2, 'credentials.json')).mode & 0o777) === 0o600, 'store stays owner-only');
+  // win32 reports synthetic modes; 0600 is a POSIX-only contract
+  ok(process.platform === 'win32' || (statSync(path.join(t.v2, 'credentials.json')).mode & 0o777) === 0o600, 'store stays owner-only');
   rmSync(t.home, { recursive: true, force: true });
 }
 
@@ -182,7 +183,7 @@ const ENABLED = { 'builtin:zai-coding-plan': { enabled: true, options: { apiKey:
   ok(readFileSync(f, 'utf8') === before, 'exhausted rename retries still leave the committed store');
   atomicWriteFileSync(f, '{"replaced":true}');
   ok(readFileSync(f, 'utf8') === '{"replaced":true}', 'atomic write commits via rename');
-  ok((statSync(f).mode & 0o777) === 0o600, 'committed store is owner-only');
+  ok(process.platform === 'win32' || (statSync(f).mode & 0o777) === 0o600, 'committed store is owner-only');
   rmSync(t.home, { recursive: true, force: true });
 }
 

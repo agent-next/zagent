@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, realpathSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 const sandbox = mkdtempSync(path.join(os.tmpdir(), 'zmemory-'));
@@ -52,8 +52,12 @@ assert.equal(loadProjectMemory(path.join(os.tmpdir(), 'zagent-memtest')), 'fallb
 mkdirSync(`${dir}/MEMORY.md`);
 assert.throws(() => loadProjectMemory(path.join(os.tmpdir(), 'zagent-memtest')), { code: 'EISDIR' });
 
-const appendWorkspace = path.join(sandbox, 'append-workspace');
-mkdirSync(appendWorkspace);
+mkdirSync(path.join(sandbox, 'append-workspace'));
+// The CLI children hash process.cwd(), and getcwd(3) returns the canonical
+// spelling — macOS tmpdirs live behind the /var -> /private/var symlink, so
+// seed and verify through the canonical form or the appends land under a
+// different workspace id than the one read back here.
+const appendWorkspace = realpathSync(path.join(sandbox, 'append-workspace'));
 appendProjectMemory(appendWorkspace, 'initial');
 assert.equal(loadProjectMemory(appendWorkspace), '# Memory Index\n- initial\n');
 // Delay each successful memory read to expose stale snapshots across real CLI
@@ -71,7 +75,7 @@ syncBuiltinESMExports();
 `);
 const cli = fileURLToPath(new URL('../cli/zagent-memory.mjs', import.meta.url));
 const appends = await Promise.all(Array.from({ length: 12 }, (_, i) => new Promise((resolve, reject) => {
-  const child = spawn(process.execPath, ['--import', preload, cli, 'append', `parallel-${i}`], {
+  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, cli, 'append', `parallel-${i}`], {
     cwd: appendWorkspace,
     timeout: 10000,
     env: { ...process.env, HOME: sandbox, USERPROFILE: sandbox, ZAGENT_TEST_SANDBOX: sandbox, TMPDIR: sandbox, TEMP: sandbox, TMP: sandbox },

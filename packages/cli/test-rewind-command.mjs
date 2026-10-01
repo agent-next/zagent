@@ -357,7 +357,7 @@ assert.throws(() => rewindTarget('checkpoint', 'junk'));
     assert.equal(all[0].messageId, 'msg_e1');
     assert.equal(all[0].fileCount, 2);
     assert.equal(all[0].createdAt, 1000);
-    assert.equal(all[0].workspace, '/w/a');
+    assert.equal(all[0].workspace, path.normalize('/w/a')); // stored value is normalized on read (win32 -> \w\a)
     assert.deepEqual(listSessionCheckpoints({ home, sessionId: 'sess_a' }).map(c => c.checkpointId), ['checkpoint_k1', 'checkpoint_k2']);
     assert.deepEqual(listSessionCheckpoints({ home, cwd: '/w/b' }).map(c => c.checkpointId), ['checkpoint_k3']);
     assert.deepEqual(listSessionCheckpoints({ home, cwd: '/w/none' }), []);

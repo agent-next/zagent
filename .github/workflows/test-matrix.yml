@@ -11,8 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         # All three run here: this repo is public, so Actions minutes are free
-        # and unlimited. The private source repo runs ubuntu only, because there
-        # Windows bills 2x and macOS 10x.
+        # and unlimited.
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -24,4 +23,11 @@ jobs:
       # Verify the generated package that consumers install on each OS.
       - name: installed package smoke (cross-platform)
         run: npm test
+        shell: bash
+      # Hermetic suite: every test file discover-tests.mjs finds, on all three
+      # OSes. The list is generated, not named — a new test cannot drift out of
+      # CI, and test-xplat-coverage.mjs fails if this step grows an OS `if`.
+      # Live-runtime and util-linux-pty tests report a loud skip, not a pass.
+      - name: unit tests
+        run: node scripts/test-all.mjs
         shell: bash

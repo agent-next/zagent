@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { strict as assert } from 'node:assert';
+import { displayPath } from '../driver/doctor.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const script = path.join(root, 'packages/cli/zagent-inspect.mjs');
@@ -93,7 +94,9 @@ const r4 = spawnSync(process.execPath, [script, '--storage', '--json'], {
 });
 assert.equal(r4.status, 0, `expected exit 0, stderr: ${r4.stderr}`);
 const r4Report = JSON.parse(r4.stdout);
-assert.equal(r4Report.root, path.join(home, '.zcode'));
+// the child prints root through displayPath: realpath-resolved (macOS /var
+// -> /private/var) and forward-slashed (win32) since it is outside HOME
+assert.equal(r4Report.root, displayPath(path.join(home, '.zcode'), empty));
 assert.equal(r4Report.totalBytes, report.totalBytes);
 
 console.log('ok - inspect --storage classifies ~/.zcode like the 3.12.1 resource manager');

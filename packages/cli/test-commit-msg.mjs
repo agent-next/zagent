@@ -3,7 +3,7 @@
 // fixture repo, so the payload shape, selection resolution, fence stripping,
 // diff scoping, refusal and failure paths are all verified on the wire.
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,7 +110,10 @@ try {
   assert.equal(out.scope, 'staged');
   let calls = genCalls();
   assert.equal(calls.length, 1, 'exactly one generateText RPC');
-  const ws = path.normalize(repo);
+  // the child sends path.normalize(process.cwd()): on macOS $TMPDIR is a
+  // /var -> /private/var symlink and getcwd returns the resolved path, while
+  // on win32 the cwd string round-trips verbatim
+  const ws = path.normalize(process.platform === 'win32' ? repo : realpathSync(repo));
   assert.deepEqual(calls[0].params.workspace, { workspaceKey: ws, workspacePath: ws });
   assert.equal(calls[0].params.querySource, 'git_commit_message');
   assert.equal(typeof calls[0].params.maxOutputTokens, 'number');

@@ -53,4 +53,14 @@ for (const removed of ['telegram.mjs', 'feishu.mjs', 'attachments.mjs', 'mention
   'controller-router.mjs', 'rpc-frame.mjs', 'rpc-bridge.mjs', 'packages/cli/zagent-compact.mjs'])
   ok(![...shipped].some(file => file === removed || file.endsWith(`/${removed}`)), `${removed} is not shipped`);
 
+// The driver sub-manifest ships its own lockfile; a stale one (left behind by a
+// version bump) is what npm ci rejects. Pin the two to each other.
+const driverPkg = JSON.parse(readFileSync(path.join(root, 'packages/driver/package.json'), 'utf8'));
+const driverLock = JSON.parse(readFileSync(path.join(root, 'packages/driver/package-lock.json'), 'utf8'));
+eq(driverLock.name, driverPkg.name, 'driver lockfile name matches manifest');
+eq(driverLock.version, driverPkg.version, 'driver lockfile version matches manifest');
+eq(driverLock.packages?.['']?.version, driverPkg.version, 'driver lockfile root entry version matches manifest');
+eq(driverLock.packages?.['']?.dependencies?.ws, driverPkg.dependencies?.ws,
+  'driver lockfile ws range matches manifest');
+
 summary('packaging');
