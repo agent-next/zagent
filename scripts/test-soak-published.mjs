@@ -396,6 +396,60 @@ else console.log('ok');
     }
   });
 
+  test('PTY probe args survive the script(1) transport as exact argv', () => {
+    // The PTY leg renders probe args into the script(1) payload with bash's
+    // printf %q and re-parses them with script's payload interpreter. Both
+    // halves must hold: every word (empty string, newlines, quotes,
+    // metacharacters, command substitutions) arrives as ONE exact argv word,
+    // and nothing interpolated into the payload executes as shell text. The
+    // old args.join(' ') transport word-split and expanded these — this test
+    // must fail against it.
+    if (spawnSync('script', ['--version'], { encoding: 'utf8' }).status !== 0) {
+      console.log('     (skipped: no script(1) on this host)');
+      return;
+    }
+    const hostile = [
+      '', 'plain', 'two\nlines', "single'quote", 'double"quote',
+      'semi;colon', 'pipe|x', 'and&and', 'paren(1)', 'star*glob',
+      '$(echo PWNED_OUTPUT)', '`id`', 'back\\slash', 'tab\there',
+      "x\n'; echo INJECTED_FROM_ARGUMENT; #",
+    ];
+    const dir = mkdtempSync(path.join(tmpdir(), 'zagent-soak-ptyargs-'));
+    const dump = path.join(dir, 'argv-dump.json');
+    const stub = path.join(dir, 'stub-zagent');
+    // The PTY branch matches the EXACT expected joined line so the boot-surface
+    // check runs its real path; the dump file is the exact-argv oracle.
+    writeFileSync(stub, `#!/usr/bin/env node
+const a = process.argv.slice(2).join(' ');
+if (a === '--version') console.log('zagent 9.9.9');
+else if (a === '--help') console.log('Commands: quota doctor sessions task update models permissions inspect');
+else if (a === 'doctor') console.log('runtime: stub-rt');
+else if (a === 'quota --json') { console.log(JSON.stringify({ error: 'no cred', class: 'auth' })); process.exit(1); }
+else if (a === 'qouta') { console.error("did you mean 'quota'?"); process.exit(2); }
+else if (a === 'inspect --json') console.log('{"storage":{}}');
+else if (a === 'permissions list') console.log('no grants recorded');
+else if (a === ${JSON.stringify(hostile.join(' '))}) {
+  require('node:fs').writeFileSync(${JSON.stringify(dump)}, JSON.stringify(process.argv.slice(2)));
+  console.log('runtime: NOT FOUND — install zcode-app-cli or the ZCode desktop app');
+  process.exit(1);
+}
+else console.log('ok');
+`);
+    chmodSync(stub, 0o755);
+    const r = spawnSync(process.execPath, [soak, '--receipt-dir', dir,
+      '--bin', stub, '--version', '9.9.9', '--probe-timeout', '8000',
+      ...hostile.flatMap(w => ['--pty-arg', w])],
+      { encoding: 'utf8', timeout: 120_000, env });
+    assert.equal(r.status, 0, `hostile-arg PTY boot must pass: ${(r.stderr || r.stdout).slice(-300)}`);
+    assert.ok(existsSync(dump), 'the PTY probe never ran — no argv dump');
+    assert.deepEqual(JSON.parse(readFileSync(dump, 'utf8')), hostile,
+      'PTY probe argv must match the requested words exactly');
+    // A re-parsed payload would EXECUTE the words, not carry them: the
+    // substitution markers must appear nowhere in the transcript.
+    assert.ok(!/PWNED_OUTPUT|INJECTED_FROM_ARGUMENT/.test(r.stdout + r.stderr),
+      'a probe arg executed as shell text');
+  });
+
   test('a missing --bin fails loudly in setup, not as ten probe failures', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'zagent-soak-nobin-'));
     const r = runSoak(['--bin', path.join(dir, 'no-such-zagent')], dir);
