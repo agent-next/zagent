@@ -1,0 +1,33 @@
+  /quota — Coding Plan quota: 5-hour window and monthly tool-call pool
+  /update — check npm for a newer zagent and offer to install it
+  /theme — switch the palette: /theme light | dark | auto
+  /feedback — where to report bugs and feedback
+  /bug — report a bug
+  /help /? — show this command list
+> \x1b[Z/theme
+> /hooks
+⎿ plugin android-emulator@0.1.0
+  ~/.zcode/cli/plugins/cache/zcode-plugins-official/android-emulator/0.1.0/hooks/hooks.json
+  (no events declared)
+  plugin ios-simulator@0.1.0
+  ~/.zcode/cli/plugins/cache/zcode-plugins-official/ios-simulator/0.1.0/hooks/hooks.json
+  (no events declared)
+  plugin video-agent-kit@0.4.3
+  ~/.zcode/cli/plugins/cache/zcode-plugins-official/video-agent-kit/0.4.3/hooks/hooks.json
+  SessionStart
+  UserPromptSubmit
+  Stop
+  plugin video2code@0.6.0
+  ~/.zcode/cli/plugins/cache/zcode-plugins-official/video2code/0.6.0/hooks/hooks.json
+  SessionStart
+  UserPromptSubmit
+  PreToolUse
+  Stop
+  events: SessionStart, UserPromptSubmit, Stop, PreToolUse
+  network retry 1/10
+  rate limited · retry 1/10
+  rate limited · retry 1/10
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ >                                                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  ⠙ working 6.4s · esc to interrupt · mcp 0/1 · 1 retry

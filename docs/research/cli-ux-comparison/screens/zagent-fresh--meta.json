@@ -1,0 +1,18 @@
+{
+ "cmd": "zagent",
+ "home": "<temp-home>",
+ "cols": 120,
+ "rows": 40,
+ "exit": 1,
+ "signal": null,
+ "seconds": 0.5,
+ "steps": [
+  "wait:8",
+  "snap:firstrun",
+  "key:enter",
+  "wait:3",
+  "snap:after-enter",
+  "key:c-c",
+  "wait:1"
+ ]
+}

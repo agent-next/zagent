@@ -1,0 +1,15 @@
+ <scratch-dir> 1.5K / 500K │ [Dashboard]
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────261─
+     /rewind                                  Rewind to a previous turn                                               █
+     /jump                                    Jump to a turn in the conversation                                     G█=
+d,d  /edit-prompt                             Open an external editor for an empty prompt; use the command palette   Ga=
+d,d                                            to preserve a draft                                                   Ga=
+d,d❯ /queue                                   List the prompts queued behind the running turn                        Ga=
+d,d  /rename                                  Rename the current session
+     /history                                 Search prompt history
+     /transcript                              View the conversation transcript in your pager ($PAGER)d,d
+=i,i=1,q=2q=2──────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d/                                                                                                │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+ Enter:send  │  Shift+Tab:mode  │  Ctrl+.:shortcuts

@@ -1,0 +1,18 @@
+{
+ "cmd": "claude --safe-mode",
+ "home": "<temp-home>",
+ "cols": 120,
+ "rows": 40,
+ "exit": null,
+ "signal": 1,
+ "seconds": 14.7,
+ "steps": [
+  "wait:8",
+  "snap:firstrun",
+  "key:enter",
+  "wait:3",
+  "snap:after-enter",
+  "key:c-c",
+  "wait:1"
+ ]
+}

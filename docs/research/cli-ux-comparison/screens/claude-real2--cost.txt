@@ -1,0 +1,26 @@
+⚠ Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)
+  Restart without --safe-mode to re-enable
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Settings  Status   Config   Usage   Stats
+   Session
+   Total cost:            $0.0000
+   Total duration (API):  0s
+   Total duration (wall): 50s
+   Total code changes:    0 lines added, 0 lines removed
+   Usage:                 0 input, 0 output, 0 cache read, 0 cache write
+   Current session
+   ████████████████████████████████████████████████▌  97% used
+   Resets 7pm (America/New_York)
+   Current week (all models)
+   ███████████████████████████████████████████████▌   95% used
+   Resets Sep 17, 1am (America/New_York)
+   +50% weekly limits promo ended · now +25% permanently · clau.de/cc-25-weekly
+   Current week (Fable)
+   ████████████████████████████████▌                  65% used
+   Resets Sep 17, 1am (America/New_York)
+   What's contributing to your limits usage?
+   Approximate, based on local sessions on this machine — does not include other devices or claude.ai
+   Scanning local sessions…
+   Usage credits
+   Usage credits are off · /usage-credits to turn them on
+   Esc to cancel

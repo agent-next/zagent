@@ -1,0 +1,37 @@
+                                                                                       G  d,d=i,i=1,q=2G
+a=d,d=i,i=1,q=2Ga=d,d┌────────────────────────────────────────────────────────────────────── [✗] ─┐
+                     ┌────────────────────────────────────────────────────────────────────── [✗] ─┐
+                     │──Context usage──Usage─limit──Session info──────────────────────────────────│
+                     │────────────────────────────────────────────────────────────────────────────│
+                     │ Session info   click or drag to copy                                       │
+                     │                                                                            │
+                     │ Shell version:                                                             │
+                     │ 1.0.30                                                                     │
+                     │                                                                            │
+                     │ Session ID:                                                                │
+                     │ 01a0a1e4-3953-7743-b70c-7abc8f260275                                       │
+                     │                                                                            │
+                     │ Working directory:                                                         │
+                     │ <scratch-dir>                                                              │
+                     │                                                                            │
+                     │ Model: Grok 4.6                                                            │
+                     │ API Backend: Responses                                                     │
+                     │ Turn: 0                                                                    │
+                     │ Context: 1475 / 500000 tokens (0%)                                         │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │                  G =
+d                    │                                                                            │                    =
+d,d                  │                                             Ga=d,d=i,i=1,q=│    =
+d,d                  │                                                                            │                    =
+dHelp improve Grok   │                                                                            │  [Opt out] [Opt in]
+ Off by default. Opt-│       Tab switch  |  ↑/↓ scroll  |  c copy session ID  |  y copy all       │
+ Off by default. Opt-│                                 Esc close                          Ga=d,d=i,i=1,q
+=2Ga=d,d
+=i,i=1,q=2                             G
+a│d❯d                                                                                                 │
+ ╰───             ───────────────────────────────────────────────────────────────── Grok 4d=i,i=1,q=2 always-approve ─╯
+                                                                                          Ga=d,d=i,i=1,q
+=

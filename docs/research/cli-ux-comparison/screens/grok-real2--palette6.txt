@@ -1,0 +1,15 @@
+ <scratch-dir> 1.5K / 500K │ [Dashboard]
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────261─
+     /vim-mode                                Toggle vim-style scrollback keybindings (j/k, h/l, g/G, y/Y, …)         █
+     /multiline                               Toggle multiline input mode (swap Enter and Shift+Enter)               G█=
+d,d  /compact-mode                            Toggle compact UI (less padding, more content)                         Ga=
+d,d  /timestamps                              Toggle message timestamps on/off                                       Ga=
+d,d❯ /minimal                                 Switch this session to minimal (scrollback-native) mode, back with     Ga=
+d,d                                            /fullscreen
+     /timeline                                Toggle the timeline sidebar
+     /imagine                                 Generate an image from a text description=2                    built-inGa=
+d,d=i,i=1,q=2──────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d/                                                                                                │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+ Enter:send  │  Shift+Tab:mode  │  Ctrl+.:shortcuts

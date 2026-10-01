@@ -1,0 +1,13 @@
+                                Help                                           esc/enter
+                                Press ctrl+p to see all available actions and commands
+                                in any context.
+                                                                                   ok
+                       ┃
+                       ┃  Ask anything... "Fix a TODO in the codebase"
+                       ┃
+                       ┃  Build · Kimi K2.5 Turbo (Developer Pass) Fireworks AI
+                       ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                       tab agents  ctrl+p commands
+                            ● Tip Run /connect to add API keys for 75+ supported LLM providers
+  <scratch-dir>    1.17.11
+  master

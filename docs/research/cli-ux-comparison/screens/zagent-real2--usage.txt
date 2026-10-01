@@ -1,0 +1,13 @@
+⏺ zagent 0.0.203 · runtime desktop-bundle 3.11.2 · zai/glm-5.3
+  <scratch-dir> · master
+  /help for commands · esc to interrupt · ctrl+c twice to exit
+  mcp node_repl: connecting
+> /diff
+  no session yet — diffs appear after the first turn
+> /usage
+⎿ tokens this session: 0 in · 0 cached · 0 out
+  ≈ $0.0000 list-price estimate at GLM-5.3 rates — the Coding Plan is a subscription, not metered billing
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > Ask a task about this workspace                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  >> build · zai/glm-5.3 · max · mcp 0/1

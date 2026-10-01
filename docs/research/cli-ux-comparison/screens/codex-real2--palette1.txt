@@ -1,0 +1,24 @@
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                         │
+│                                                    │
+│ model:       gpt-6-astra medium   /model to change │
+│ directory:   ~/workspace/zagent                    │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+⚠ 1 MCP startup issue · ctrl + t for details
+⚠ Ignoring malformed agent role definition: agent role file at ~/.codex/agents/researcher.toml must define a
+  non-empty `name`
+⚠ Under-development features enabled: apply_patch_streaming_events, artifact, chronicle, enable_mcp_apps,
+  exec_permission_approvals, runtime_metrics. Under-development features are incomplete and may behave unpredictably. To
+  suppress this warning, set `suppress_unstable_features_warning = true` in ~/.codex/config.toml.
+• You have 1 usage limit reset available. Run /usage to use one.
+› /
+  /model         choose what model and reasoning effort to use
+  /fast          2x speed, increased usage
+  /ide           include current selection, open files, and other context from your IDE
+  /permissions   choose what Codex is allowed to do
+  /keymap        remap TUI shortcuts
+  /vim           toggle Vim mode for the composer
+  /experimental  toggle experimental features
+  /approve       approve one retry of a recent auto-review denial

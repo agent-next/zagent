@@ -1,0 +1,36 @@
+ <scratch-dir> 3.0K / 500K │ [Dashboard]
+    //help                                                                                                    5:43 PM
+                     ┌────────────────────────────────────────────────────────────────────── [✗] ─┐
+                     │  Context usage  Usage limit  Session info                                  │
+                     │────────────────────────────────────────────────────────────────────────────│
+                     │ Weekly limit (SuperGrok Heavy)                                             │
+                     │                                                                            │
+                     │ ███████░░░░░░░░░░░░░░░░░░░░░░░  22%                                        │
+                     │ Resets: September 21, 12:02                                                │
+                     │                                                                            │
+                     │ Session usage: no model calls yet in this session.         │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │
+                     │                                                                            │                  G =
+d,d                  │                                                                            │                  Ga=
+d,d⠋p│                                                                            │  7.6
+     │                                                                            │                  Ga=
+dHelp improve Grok   │                                                                            │  [Opt out] [Opt in]
+ Off by default. Opt-│       Tab switch  |  ↑/↓ scroll  |  c copy session ID  |  Esc close        │
+ for training and deb└────────────────────────────────────────────────────────────────────────────┘     d,d=i,i=1,q=2d,d
+=Read Terms and Privacy Policy.                                                                                        G
+a=d,d=i,i=1,q=2───────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d                                                                                                 │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯

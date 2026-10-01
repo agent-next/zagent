@@ -1,0 +1,37 @@
+                                                                                       G  d,d=i,i=1,q=2G
+a=d,d=i,i=1,q=2Ga=d,d┌────────────────────────────────────────────────────────────────────── [✗] ─┐
+                     │  Context usage  Usage limit  Session info                                  │
+                     │────────────────────────────────────────────────────────────────────────────│
+                     │ Loading context usage…                                                     │
+                     │ Context                                                                    │
+                     │                                                                            │
+                     │ 1.5k / 500k tokens (0.29%)                                                 │
+                     │ grok-4.6                                                                   │
+                     │                                                                            │
+                     │ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇                                    │
+                     │ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇                                    │
+                     │ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇                                    │
+                     │ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇                                    │
+                     │ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇                                    │
+                     │                                                                            │
+                     │ ◆ System prompt      1.5k tokens   (0.3%)                                  │
+                     │ ◆ Messages          19.5k tokens   (3.9%)                                  │
+                     │ ◇ Free               499k tokens   (100%)                                  │
+                     │                                                                            │
+                     │ ◈ Tool definitions  11.3k tokens   (2.3%) ·  28 tools                      │
+                     │ ◈ Skills            19.1k tokens   (3.8%) · 195 skills                     │
+                     │ ◈ Workflows           358 tokens   (0.1%) ·   5 workflows                  │
+                     │ ◈ MCP servers        1.6k tokens   (0.3%) ·  14 servers                    │
+                     │ ◈ AGENTS.md          7.4k tokens   (1.5%) ·   9 files                      │                  G =
+d                    │                                                                            │                    =
+d,d                  │ Auto-compact at 80% · ~399k tokens remaining    =
+d,d                  │                                                                            │                    =
+dHelp improve Grok   │                                                                            │  [Opt out] [Opt in]
+ Off by default. Opt-│       Tab switch  |  ↑/↓ scroll  |  c copy session ID  |  Esc close        │
+ for training and deb└────────────────────────────────────────────────────────────────────────────┘              Ga=d,d=
+iRead Terms and Privacy Policy.                                                                                        G
+a=d,d=i,i=1,q=2───────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d                                                                                                 │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4d=i,i=1,q=2 always-approve ─╯
+                                                                                          Ga=d,d=i,i=1,q
+=2

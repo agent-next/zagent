@@ -1,0 +1,36 @@
+Usage: zagent [command]
+
+Run
+  zagent (default)                          start the interactive terminal UI
+  zagent -p "…" [--json]                    run one headless prompt and print the answer
+
+Set up
+  zagent onboard                            check your setup and run one test prompt
+  zagent doctor [--fix]                     diagnose the runtime, config, and API key
+  zagent models [query]                     list providers or search the model catalog
+
+Account
+  zagent quota [status|usage [--days 1..30]|balance|preview|reset] [--json] Coding Plan quota and account usage
+  zagent remote [status|connect] [--json]   whether this device is registered for remote control (not available yet)
+  zagent offpeak [--refresh|--json]         the off-peak campaign window (exit 0 while open)
+  zagent usage [--session id] [--json]      token totals for a session
+
+Project
+  zagent sessions                           your sessions across CLI and desktop
+  zagent diff [sessionId]                   the file changes a session made
+  zagent task list|archive|pin|rename|delete inspect or modify saved task records (no create)
+  zagent memory show|index|append           view or add project memory
+  zagent goal [show|set <text>|pause|resume|clear] [--session id] [--json] show or control a session's goal
+  zagent subagents [--session id] [--json]  list a session's child sessions
+
+Extend
+  zagent cron add|list|tick                 schedule prompts to run later
+  zagent plugins                            inspect and manage local plugins
+  zagent hooks list [--json]                list configured hook events
+  zagent import [--dry-run|--apply] [--force] [--json] import Claude Code instructions, commands, and skills
+
+Debug
+  zagent inspect [--json]                   dump runtime, config, skills, tasks, and plugins (secrets redacted)
+  zagent --version                          print the zagent version
+
+Run 'zagent <command> --help' for a command's usage.

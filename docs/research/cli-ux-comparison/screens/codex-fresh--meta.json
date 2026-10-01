@@ -1,0 +1,18 @@
+{
+ "cmd": "codex",
+ "home": "<temp-home>",
+ "cols": 120,
+ "rows": 40,
+ "exit": 0,
+ "signal": null,
+ "seconds": 12.4,
+ "steps": [
+  "wait:8",
+  "snap:firstrun",
+  "key:enter",
+  "wait:3",
+  "snap:after-enter",
+  "key:c-c",
+  "wait:1"
+ ]
+}

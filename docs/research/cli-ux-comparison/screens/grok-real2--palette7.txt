@@ -1,0 +1,15 @@
+ <scratch-dir> 1.5K / 500K │ [Dashboard]
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────261─
+     /feedback                                Send feedback about the current session                                 █
+     /doctor                                  Check this session and show available fixes                            G█=
+d,d  /import-claude                           Open the Claude settings import modal                                  Ga=
+d,d  /logout                                  Log out and return to the login screen                                 Ga=
+d,d❯ /home                                    Return to the welcome screen                                           Ga=
+d,d  /delete                                  Delete this session
+     /flush                                   Flush conversation memory to disk now
+     /dream                                   Run memory consolidation (merge session logs into organized topics)Ga=d,d=
+i,i=1,q=2,q=2──────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮G
+a│d❯d/                                                                                                │
+ ╰───────────────────────────────────────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+ Enter:send  │  Shift+Tab:mode  │  Ctrl+.:shortcuts
