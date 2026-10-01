@@ -13,10 +13,24 @@ import { spawnSync, spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fitsSunPath, sunPathBudget } from '../usertest/swarm/sun-path.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELAY = path.join(root, 'usertest', 'swarm', 'net-relay.mjs');
-const work = mkdtempSync(path.join(tmpdir(), 'flock-broker-'));
+// The bound leaves here run up to `b14-<random>.sock`; AF_UNIX sun_path is
+// platform-sized (108 bytes on Linux, 104 on Darwin/BSD), and a long TMPDIR
+// (this gate inherits one from its own runner) pushes a plain mkdtemp dir
+// past it — the bind then fails behind stdio:'ignore' and the readiness wait
+// is the only symptom. Root the work dir where the longest leaf provably
+// fits, /tmp as fallback.
+const work = (() => {
+  for (const dir of [...new Set([tmpdir(), '/tmp'])]) {
+    if (fitsSunPath(path.join(dir, 'flock-broker-xxxxxx', 'b14-xxxxxxxxxxxxxxxx.sock'))) {
+      return mkdtempSync(path.join(dir, 'flock-broker-'));
+    }
+  }
+  throw new Error(`no temp root can host the broker test sockets inside the ${sunPathBudget()}-byte AF_UNIX path cap (TMPDIR=${tmpdir()})`);
+})();
 const tests = [];
 const test = (n, f) => tests.push([n, f]);
 
@@ -316,6 +330,47 @@ test('TLS args validate: missing material, unreadable files, or tlsSock===sockPa
     { env: childEnv({ FLOCK_BROKER_KEY: 'k' }), encoding: 'utf8', timeout: 10000 });
   assert.equal(r.status, 2, `tlsSock===sockPath: got ${r.status} ${r.stderr.slice(0, 120)}`);
   assert.ok(!existsSync(same), 'refused broker must not leave a socket');
+});
+
+test('a socket path past the platform AF_UNIX cap is refused with the reason', () => {
+  // Past sun_path's platform budget (108 bytes on Linux, 104 on Darwin/BSD)
+  // the bind fails opaquely (or listen() never settles at all), so a caller
+  // learns nothing but a readiness timeout. The broker must name THIS host's
+  // cap and exit 2 before touching the filesystem.
+  const long = path.join(work, `${'x'.repeat(sunPathBudget())}.sock`);
+  assert.ok(Buffer.byteLength(long) > sunPathBudget(), 'fixture must actually exceed the cap');
+  const r = spawnSync(process.execPath, [RELAY, 'broker', long, '--upstream', 'http://127.0.0.1:9',
+    '--key-source', 'env:FLOCK_BROKER_KEY'],
+    { env: childEnv({ FLOCK_BROKER_KEY: 'k' }), encoding: 'utf8', timeout: 10_000 });
+  assert.equal(r.status, 2, `got ${r.status}: ${(r.stderr || r.error?.message || '').slice(0, 160)}`);
+  assert.match(r.stderr, new RegExp(`AF_UNIX paths are capped at ${sunPathBudget()}`), 'the refusal must name the cap');
+  assert.ok(!existsSync(long), 'refused broker must not leave a socket');
+  // The TLS twin is refused by the same cap, not silently degraded.
+  const short = path.join(work, 'tls-ok.sock');
+  const tls = spawnSync(process.execPath, [RELAY, 'broker', short, '--upstream', 'http://127.0.0.1:9',
+    '--key-source', 'env:FLOCK_BROKER_KEY', '--tls-sock', long, '--tls-cert', 'x', '--tls-key', 'y'],
+    { env: childEnv({ FLOCK_BROKER_KEY: 'k' }), encoding: 'utf8', timeout: 10_000 });
+  assert.equal(tls.status, 2, `tls twin: got ${tls.status}: ${(tls.stderr || '').slice(0, 160)}`);
+  assert.match(tls.stderr, new RegExp(`AF_UNIX paths are capped at ${sunPathBudget()}`));
+});
+
+test('the sun_path budget is platform-sized: 104 on Darwin/BSD, 108 on Linux', () => {
+  // sun-path.mjs answers for the swarm's socket planning; a hardcoded 108
+  // would wave a 105-byte path through on a 104-byte host. Platforms are
+  // injected so both budgets are exercised on every host.
+  const caps = new Map([['darwin', 104], ['freebsd', 104], ['openbsd', 104],
+    ['netbsd', 104], ['linux', 108], ['sunos', 108]]);
+  for (const [plat, cap] of caps) {
+    assert.equal(sunPathBudget(plat), cap, `${plat} must budget ${cap} bytes`);
+  }
+  assert.equal(sunPathBudget(), caps.get(process.platform) ?? 108,
+    'the host default must follow the host platform');
+  // Boundary at both caps: exactly-budget bytes fit; one byte past does not.
+  for (const plat of ['darwin', 'linux']) {
+    const cap = sunPathBudget(plat);
+    assert.ok(fitsSunPath('a'.repeat(cap), plat), `${plat}: a ${cap}-byte path must fit`);
+    assert.ok(!fitsSunPath('a'.repeat(cap + 1), plat), `${plat}: a ${cap + 1}-byte path must not fit`);
+  }
 });
 
 test('non-GET/POST/HEAD methods are refused', () => {

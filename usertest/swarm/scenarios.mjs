@@ -240,7 +240,7 @@ ${SIGNIN_RULES_PTY}`,
     // foldables (peek tag 'fold x/y <name>'), o toggles the pick, h/l fold
     // all, esc drops the selection. j/k/o/h/l are gated on an empty input
     // box (shift-up/down and esc are not).
-    // Transcript truth the card must teach (reviewer-caught): the writer is
+    // Transcript truth the card must teach: the writer is
     // APPEND-ONLY — collapsing a block whose body already printed cannot
     // un-print it (it silently retires), while expanding a born-collapsed
     // block (thinking) APPENDS its body at the tail. The visible gold

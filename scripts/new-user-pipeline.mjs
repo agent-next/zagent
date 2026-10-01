@@ -7,8 +7,8 @@
 // first turn, quota visibility. Stages are ordered exactly as the user meets
 // them; each asserts the behavior a new user depends on (honest missing-state
 // copy, guidance to the next step, working login paths, 0600 config, a real
-// answer). Live stages (real inference) are gated like [1b+]: mandatory when
-// the 5h window is below the skip threshold, loud-skip only when it is not.
+// answer). Live stages (real inference) are quota-gated: mandatory when the
+// 5h window is below the skip threshold, loud-skip only when it is not.
 //
 //   node scripts/new-user-pipeline.mjs              # full run (live if quota allows)
 //   node scripts/new-user-pipeline.mjs --offline    # skip the live turn stage

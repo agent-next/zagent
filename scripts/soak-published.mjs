@@ -10,6 +10,9 @@
 //   --receipt-dir D write the receipt somewhere else (default artifacts/verify)
 //   --keep          leave the install prefix for inspection
 //   --probe-timeout MS  per-probe kill bound (default 60000; gates use ~3000)
+//   --pty-arg WORD  repeatable; appended verbatim to the PTY boot probe's argv
+//                   (arg-transport hook: empty strings, newlines, quotes and
+//                   metacharacters must each arrive as one exact argv word)
 //   --version       in --bin mode this is the EXPECTED banner; without it the
 //                   version check is UNBOUND and the receipt says so
 //
@@ -26,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
-const KNOWN = new Set(['version', 'bin', 'receipt-dir', 'no-pty', 'keep', 'probe-timeout']);
+const KNOWN = new Set(['version', 'bin', 'receipt-dir', 'no-pty', 'keep', 'probe-timeout', 'pty-arg']);
 const VALUELESS = new Set(['no-pty', 'keep']);
 for (const a of argv) {
   if (!a.startsWith('--')) continue;
@@ -71,6 +74,24 @@ const probeTimeout = (() => {
   return n;
 })();
 const receiptDir = arg('receipt-dir') ?? path.join(root, 'artifacts', 'verify');
+// Repeatable, unlike the single-value flags above. The glued form accepts an
+// EMPTY value on purpose: the empty string is one of the words the transport
+// must carry intact, not a missing value.
+const ptyArgs = (() => {
+  const out = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--pty-arg') {
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith('--')) {
+        console.error('soak-published: --pty-arg needs a value');
+        process.exit(2);
+      }
+      out.push(v); i++;
+    } else if (a.startsWith('--pty-arg=')) out.push(a.slice('--pty-arg='.length));
+  }
+  return out;
+})();
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
 
 let installedVersion = arg('version') ?? null;
@@ -127,6 +148,12 @@ const probe = (name, fn) => {
 
 /** Run the soaked binary on the credential-free HOME; hash the transcript. */
 function run(args, { timeout = probeTimeout, pty = false } = {}) {
+  // Probe args ride bash's own argv and are rendered into the script(1)
+  // payload by printf %q — nothing interpolated into the command string is
+  // ever re-parsed as shell text. Probe args are compile-time constants
+  // today, but a future arg derived from data (a flag value, a path with
+  // spaces, quotes or a semicolon) must stay one word end to end.
+  const argWords = args.length ? ` $(printf ' %q' "$@")` : '';
   const r = pty
     // Keep stdin open while the TUI renders (a real stranger stares at the
     // first screen), then send ^C so a healthy TUI exits on its own; the
@@ -134,8 +161,16 @@ function run(args, { timeout = probeTimeout, pty = false } = {}) {
     // why the keystroke is delayed rather than absent. The binary path goes
     // via env, not inline quoting — space/quote-bearing --bin paths stay one
     // word for the inner sh.
-    ? spawnSync('bash', ['-c', `(sleep ${Math.max(2, Math.floor(timeout / 1000) - 4)}; printf '\\003') | script -qec 'timeout -k 2 ${Math.ceil(timeout / 1000)} "$ZSOAK_BIN" ${args.join(' ')}' /dev/null`],
-        { encoding: 'utf8', timeout, killSignal: 'SIGKILL', cwd: work, env: { ...env, ZSOAK_BIN: bin } })
+    ? spawnSync('bash', ['-c',
+        `(sleep ${Math.max(2, Math.floor(timeout / 1000) - 4)}; printf '\\003') | script -qec "timeout -k 2 ${Math.ceil(timeout / 1000)} \\"\\$ZSOAK_BIN\\"${argWords}" /dev/null`,
+        'soak-pty', ...args],
+        { encoding: 'utf8', timeout, killSignal: 'SIGKILL', cwd: work,
+          // script(1) parses the -c payload with $SHELL — unset (the probe env
+          // carries no SHELL), that is /bin/sh = dash on Debian-family hosts,
+          // which cannot read bash's printf %q quoting ($'...' for newlines
+          // and quotes). The payload interpreter must match the quoting, so
+          // the transport pins it to the same bash that rendered the words.
+          env: { ...env, ZSOAK_BIN: bin, SHELL: '/bin/bash' } })
     : spawnSync(bin, args, { encoding: 'utf8', timeout, killSignal: 'SIGKILL', cwd: work, env });
   // A wedged or crashed probe is a FAIL, not a PASS: timeout kills, signal
   // death and spawn errors all leave status null, and whatever the binary
@@ -281,7 +316,8 @@ try {
       // The real first-run: a stranger launches the TUI on a credential-free
       // machine. Whatever it shows (sign-in card, runtime warning) must be a
       // rendered card — a node stack or a silent exit is the failure class.
-      const r = run([], { timeout: Math.min(20_000, Math.max(6_000, probeTimeout)), pty: true });
+      // --pty-arg words ride along verbatim (the arg-transport hook).
+      const r = run(ptyArgs, { timeout: Math.min(20_000, Math.max(6_000, probeTimeout)), pty: true });
       const all = `${r.out}${r.err}`;
       // A healthy TUI stays resident waiting for input, so ETIMEDOUT is the
       // EXPECTED end state — the judgment is what the screen managed to render.

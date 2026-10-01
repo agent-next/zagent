@@ -180,18 +180,18 @@ gpt-6-astra · gpt-6-astra medium · /tmp/… · Context 100% left · Context 0%
 | Slash-command popup that filters live, Enter completes | Discoverable commands | **Copy**; note Enter-doesn't-submit quirk — zagent should make Enter-on-exact-match submit |
 | Silent failure on quota-dead submit, then UI disconnect | BAD: turn 1 vanished with no error line; turn 2 killed the UI | **Differ**: zagent must print the error inline and keep the composer content recoverable |
 
-## Evidence inventory (this worktree)
+## Evidence inventory (not carried into this repository)
 
-- raw frame captures (not included) — timestamped raw byte streams
-- `tui-study-codex-2026-09-15/frames/*.txt` — pyte-rendered screens per step
-- `tui-study-codex-2026-09-15/S6-transcript-full.txt`,
-  `T3-transcript-full.txt` — full recovered transcripts (633 / 161 lines)
-- `tui-study-codex-2026-09-15/probe{,2,3,4,5}.py` — reproducible drivers
-- `tui-study-codex-2026-09-15/notes*.md` — per-frame notes
+- raw frame captures — timestamped raw byte streams
+- pyte-rendered screens per step (`frames/*.txt` in the capture directory)
+- full recovered transcripts for S6 and T3 (633 / 161 lines)
+- the probe drivers (one per probe point; the step-driven pexpect/pyte capture
+  primitive they used is `scripts/pty-capture.py`, kept in this repo)
+- per-frame notes
 
 ## Gaps / follow-up (when quota resets after 2026-09-19 08:48)
 
-1. Re-run `probe2.py` to capture: token streaming cadence, live `Ran` spinner,
+1. Re-run the streaming probe to capture: token streaming cadence, live `Ran` spinner,
    Esc-mid-turn retention, tool-call collapse transition.
 2. `/usage` "1 usage limit reset" was NOT consumed (shared-account side effect,
    needs the account holder's authorization).

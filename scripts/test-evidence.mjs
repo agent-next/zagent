@@ -124,9 +124,9 @@ try {
   assert(checkInvariants({ ...clean, exitCode: 127, raw: 'node: command not found' }).some(p => p.id === 'unexpected-exit'));
   assert(checkInvariants({ ...clean, raw: '' }).some(p => p.id === 'incomplete-journey'));
 
-  // Triage's exit-class routing moved to scripts/loop/test-triage-once.mjs, which
-  // drives the real script end to end instead of slicing shell text out of it and
-  // re-declaring its variables by hand — a copy that had to be re-indexed on every
-  // edit to the file it was quoting.
+  // Triage's exit-class routing is covered by driving the real script —
+  // scripts/test-flock-triage.mjs runs `--triage` end to end — not by slicing
+  // shell text out of it and re-declaring its variables by hand, a copy that
+  // had to be re-indexed on every edit to the file it was quoting.
   console.log('PASS evidence: process failures, assertions, profile isolation, replay confirmation, startup invariants');
 } finally { sandbox?.cleanup(); rmSync(fixture, { recursive: true, force: true }); }

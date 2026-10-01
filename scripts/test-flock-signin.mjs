@@ -243,7 +243,7 @@ test('signin-pty-streaming card carries the streamed-partial-output contract', a
   assert.match(card, /waiting/, 'card must teach the waiting phase');
   assert.match(card, /responding/, 'card must teach the responding phase');
   assert.match(card, /\^\\s\*DONE\[\.!\?\]\?\\s\*\$/, 'card must teach the anchored whitespace/punctuation-tolerant end-marker expect');
-  // review F2: bind the card's own expect pattern to a realistic screen — an
+  // Bind the card's own expect pattern to a realistic screen — an
   // anchor regression (^DONE$) must break this oracle, not just the
   // presence assert above. The renderer indents answer continuation lines
   // two cells (render.mjs), so the settled tail is `  DONE`, while the
@@ -322,7 +322,7 @@ test('code shapes: broker spawn, seed, and cadence are wired', () => {
     'signinKeyOk must validate the key-source shape');
 });
 
-// review r1 MINOR: a record encrypted under the WRONG home must produce the
+// A record encrypted under the WRONG home must produce the
 // identity/api-key findings — pre-fix the stub crashed in credDec (GCM auth
 // throw), which the flock classifies INFRA, masking the very seeded-
 // credential regression this oracle exists to catch. Run the stub directly

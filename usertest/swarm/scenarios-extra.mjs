@@ -1,7 +1,7 @@
 // scenarios-extra — the LIVING card pool.
 //
 // Every FLOCK finding, every real user report (live-session pastes
-// above all), and every review finding that reveals a USER-FACING surface
+// above all), and every externally reported defect that reveals a USER-FACING surface
 // spawns a card here THE SAME TICK it is learned — the pool grows with the
 // product's real history instead of staying a static 14. Base cards in
 // scenarios.mjs stay stable; this file accumulates.
@@ -58,7 +58,7 @@ ${RULES_BASE}`,
   },
   {
     // Born from a real user's live session: 5h window at 100% — the error
-    // copy didn't say WHEN it resets (ux polish item in the ledger). The TUI
+    // copy didn't say WHEN it resets (a known ux polish gap). The TUI
     // turn-failure leg (bare "Turn execution failed" + monitor-verdict reset
     // notice) is unreachable in a credential-free sandbox by design — it is
     // pinned by the PTY journey 'a bare turn failure names the window reset
@@ -116,13 +116,13 @@ RULE: every missing value must produce an error naming the flag and that it requ
 ${RULES_BASE}`,
   },
   {
-    // Regression watch for the earlier-review residual (fixed 2026-09-19): flag
+    // Regression watch for an externally reported residual (fixed 2026-09-19): flag
     // scans used to read past `--`, so `-p hi -- --model x` hit the selection
     // path's refusal and `-p hi -- --json` armed the JSON retry path. POSIX and
     // the kernel's parseArgs both treat post-`--` tokens as positionals (data).
     id: 'post-separator-args-are-data',
     weight: 2,
-    origin: 'review-filed LOW (hasSelection scanned post-`--` args) — generalized regression watch on the `--` separator',
+    origin: 'externally reported LOW (hasSelection scanned post-`--` args) — generalized regression watch on the `--` separator',
     card: () => `You are a careful CLI user who puts a \`--\` separator before anything that should be treated as plain text, not a flag. On this no-credential machine, run forms like: zagent -p "hi" -- --json | zagent -p "hi" -- --model glm-5.3 | zagent -p "hi" -- --effort low | zagent -p "hi" -- --no-browser | zagent -p "hi" -- -p | zagent login -- --no-browser — and compare each one's behavior to the same command WITHOUT the "-- <token>" tail. (Note: noun subcommands like \`quota\` deliberately strip the first \`--\` before dispatch — that convention is NOT under test here; only the -p/entry-flag and kernel-passthrough paths are.)
 RULE: a token after \`--\` is positional data — it must NEVER change which flags apply. Each post-separator run must behave exactly like the same command without the tail (same error class, same exit-code class); specifically a post-\`--\` --json must NOT produce a JSON envelope when the plain run prints human text, and a post-\`--\` --model must NOT trigger a model-selection path or a refusal naming it. A refusal that treats the post-\`--\` token as a flag, or a silently different run, is a BUG — report the exact command pair. One deliberate exception: a run whose PRE-\`--\` argv carries --model/--effort is the selection path, which refuses post-\`--\` positionals with 'unrecognized arguments with --model/--effort: <names>' — naming ONLY the tail tokens as data (never the separator itself) is documented strictness, NOT a finding.
 ${RULES_BASE}`,

@@ -116,7 +116,7 @@ RUN useradd -m zctest
 | S6 Sessions | 4 × 10 = 40 | 35/40 (88%) |
 | S7 Quota | 3 × 10 = 30 | 25/30 (83%) |
 | S8 Stress | 4 × 10 = 40 | 35/40 (88%) |
-| **TOTAL** | **390** | **≥370 (95%)** |
+| **TOTAL** | **410** | **≥390 (95%)** |
 
 Each task scored: 10 (clean pass) / 5 (pass with hesitation or workaround) / 0 (fail/abandoned).
 
@@ -134,8 +134,11 @@ Each task scored: 10 (clean pass) / 5 (pass with hesitation or workaround) / 0 (
 ```bash
 # S1: fresh user
 sudo useradd -m zctest -s /bin/bash
-# ZAI_API_KEY must be exported in your shell; pass it through without writing it to disk
-sudo su zctest -c "export PATH=$ZAGENT_REPO/bin:\$PATH; export ZAI_API_KEY=$ZAI_API_KEY; timeout 300 zz"
+# ZAI_API_KEY must be exported in your shell. sudo hands it over through the
+# environment — never expanded into argv, where /proc/*/cmdline would expose
+# it to every local user for the whole run, and never written to disk — and
+# the TUI keeps your terminal.
+sudo -H -u zctest --preserve-env=ZAI_API_KEY bash -c 'cd && PATH="$1/bin:$PATH" exec timeout 300 zz' _ "$ZAGENT_REPO"
 # Watch the screen, score each task
 sudo userdel -r zctest
 

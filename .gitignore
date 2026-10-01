@@ -6,4 +6,5 @@ node_modules/
 __pycache__/
 *.pyc
 artifacts/
+usertest/results/
 bench/results/

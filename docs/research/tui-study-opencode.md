@@ -121,4 +121,4 @@
   submitted with the live prompt (visible in transcript). Treat input-clear as a weak spot.
 
 Raw frame captures (run 1 and run 2) are not included here.
-Driver reusable for other CLIs: `pty-cap2.py --out DIR --cmd <cli> --step wait:N --step type:X …`.
+Driver reusable for other CLIs: `scripts/pty-capture.py --out DIR --cmd <cli> --step wait:N --step type:X …`.

@@ -14,9 +14,9 @@
 //   node scripts/tui-smoke.mjs [--prompt "..."] [--cwd DIR] [--timeout MS] [--print]
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { writeFileSync, rmSync } from 'node:fs';
+import { writeFileSync, rmSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findRuntime } from '../packages/driver/runtime.mjs';
 import { replayTerminal } from '../packages/tui/screen-replay.mjs';
 export { replayTerminal };
@@ -124,4 +124,11 @@ async function main() {
   process.exit(fails === 0 ? 0 : 1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main();
+// Realpath'd and URL-encoded comparison: a script path with spaces, a
+// symlinked argv[1] or a Windows drive path must still run the tool, not
+// exit 0 having done nothing (nothing else would catch that — it is opt-in).
+const isMain = (() => {
+  try { return import.meta.url === pathToFileURL(realpathSync(path.resolve(process.argv[1] ?? ''))).href; }
+  catch { return false; }
+})();
+if (isMain) await main();
