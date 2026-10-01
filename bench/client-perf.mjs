@@ -6,6 +6,8 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { StringDecoder } from 'node:string_decoder';
+import { shQuote } from './proc.mjs';
 
 // Resolved from this file, not from a hardcoded checkout: the original lived in a
 // worktree that has since been deleted, which would have made the harness die on a
@@ -75,17 +77,19 @@ function treeCpuSec(rootPid) {
 
 async function measure(label, cmd, { prompt, settleMs = 6000, turnMs = 0 }) {
   const t0 = process.hrtime.bigint();
-  const child = spawn('script', ['-qfec', cmd.join(' ') + ` --cwd ${CWD}`, '/dev/null'], {
+  const child = spawn('script', ['-qfec', cmd.map(shQuote).join(' ') + ` --cwd ${shQuote(CWD)}`, '/dev/null'], {
     env: { ...process.env, COLUMNS: '100', LINES: '32', TERM: 'xterm-256color' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let bytes = 0;
   let firstFrameMs = null;
+  const decoder = new StringDecoder('utf8');
   const grab = (d) => {
     bytes += d.length;
+    const text = decoder.write(d);
     // First frame = the first time the client paints its own chrome, not the
     // kernel's boot noise. Both draw a bordered input box.
-    if (firstFrameMs === null && /[╭┌]/u.test(d.toString())) {
+    if (firstFrameMs === null && /[╭┌]/u.test(text)) {
       firstFrameMs = Number(process.hrtime.bigint() - t0) / 1e6;
     }
   };

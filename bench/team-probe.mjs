@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { ZCodeProtocolClient } from '../packages/driver/zcode-protocol.mjs';
+import { killChild } from './proc.mjs';
 
 const roles = ['zteam-build', 'zteam-test', 'zteam-review', 'zteam-verify'];
 const canonical = model => ({ opus: 'glm-5.3', sonnet: 'glm-5.3-flash', haiku: 'glm-5.3-flash' })[model] ?? model;
@@ -118,7 +119,7 @@ async function main() {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), `zteam-${client}-`));
   const receipt = { client, channel: 'ordinary plan usage, not free idle channel', startedAt: new Date().toISOString(), success: false };
   let child, runtime, cancelled = false;
-  function kill() { if (child?.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch {} }
+  const kill = () => killChild(child);
   function cancel() { cancelled = true; kill(); runtime?.close(); }
   process.on('SIGTERM', cancel); process.on('SIGINT', cancel);
   try {
@@ -135,6 +136,7 @@ async function main() {
     const start = Date.now();
     receipt.execution = await new Promise(resolve => {
       child = spawn(client === 'claude_code' ? (process.env.BENCH_CLAUDE_CODE_BIN ?? 'claude') : client, args, { cwd: ws, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
       let stdout = '', stderr = '', truncated = false, timedOut = false, spawnError;
       child.stdout.on('data', d => { if (stdout.length + d.length > 2000000) truncated = true; stdout = (stdout + d).slice(-2000000); });
       child.stderr.on('data', d => { stderr = (stderr + d).slice(-3000); });

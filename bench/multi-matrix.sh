@@ -9,7 +9,10 @@ for task in t1_rot13 t5_json t6_regex t9_sql t2_fixbug t3_toposort t7_cli t8_api
   for harness in claude_code zcode zcode-app-cli zcode-official; do  # add opencode or grok-cli here where they run
     RID="${MATRIX_RUN_ID:-m1}"
     REC="bench/results/mh_${harness}_${task}_${RID}.json"
-    if [ -f "$REC" ] && python3 -c "import json; json.load(open('$REC'))" 2>/dev/null; then
+    if [ -f "$REC" ] && node -e '
+      const r = JSON.parse(require("node:fs").readFileSync(process.argv[1]));
+      process.exit(r.invalid ? 1 : 0);
+    ' "$REC" 2>/dev/null; then
       echo "=== skip $RID $harness $task (valid receipt)"; continue
     fi
     echo "=== $(date +%T) $RID $harness $task"

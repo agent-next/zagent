@@ -5,6 +5,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { killChild } from './proc.mjs';
 import { codingPlanStatus, codingPlanUsage } from '../packages/driver/quota.mjs';
 
 if (process.argv.length !== 4 || process.argv[2] !== '--live') {
@@ -35,11 +36,11 @@ const options = { env: { ZAI_API_KEY: provider.apiKey } };
 const serialize = value => JSON.stringify(value, (_key, field) =>
   typeof field === 'string' ? field.replaceAll(providerKey, '[REDACTED]') : field, 2);
 const save = () => writeFileSync(output, serialize(receipt) + '\n');
-let activePid, interrupted = false;
+let activeChild, interrupted = false;
 function interrupt() {
   interrupted = true;
   process.exitCode = 1;
-  if (activePid) { try { process.kill(-activePid, 'SIGKILL'); } catch {} }
+  killChild(activeChild);
 }
 process.on('SIGINT', interrupt);
 process.on('SIGTERM', interrupt);
@@ -58,15 +59,16 @@ function run(client) {
   return new Promise(resolve => {
     const start = Date.now();
     const child = spawn(client === 'claude_code' ? (process.env.BENCH_CLAUDE_CODE_BIN ?? 'claude') : client, args, { cwd: workspace, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    activePid = child.pid;
+    activeChild = child;
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     let stdout = '', stderr = '', timedOut = false, spawnError = null;
     child.stdout.on('data', d => { stdout = (stdout + d).slice(-1000000); });
     child.stderr.on('data', d => { stderr = (stderr + d).slice(-10000); });
-    const timer = setTimeout(() => { timedOut = true; try { process.kill(-child.pid, 'SIGKILL'); } catch {} }, 180000);
+    const timer = setTimeout(() => { timedOut = true; killChild(child); }, 180000);
     child.on('error', e => { spawnError = e.message; });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      activePid = undefined;
+      activeChild = undefined;
       let body; try { body = JSON.parse(stdout); } catch {}
       // Claude verbose JSON is an event array; the final result carries usage.
       if (Array.isArray(body)) body = body.findLast(event => event?.type === 'result');
@@ -100,7 +102,7 @@ try {
   if (receipt.measurements.length !== receipt.order.length) process.exitCode = 1;
 } finally {
   try { save(); } finally {
-    if (activePid) { try { process.kill(-activePid, 'SIGKILL'); } catch {} }
+    killChild(activeChild);
     rmSync(workspace, { recursive: true, force: true });
     process.off('SIGINT', interrupt);
     process.off('SIGTERM', interrupt);
