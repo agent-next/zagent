@@ -1,0 +1,21 @@
+{
+  "task": "t10_refactor",
+  "lane": "zcode",
+  "repeat": 2,
+  "index": 56,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:55:01.035Z",
+  "wallMs": 50871,
+  "usage": {
+    "inputTokens": 39890,
+    "outputTokens": 2598,
+    "cacheReadTokens": 36288,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

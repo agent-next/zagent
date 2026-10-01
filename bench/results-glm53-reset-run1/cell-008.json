@@ -1,0 +1,21 @@
+{
+  "task": "t2_fixbug",
+  "lane": "zcode",
+  "repeat": 2,
+  "index": 8,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:33:04.221Z",
+  "wallMs": 21366,
+  "usage": {
+    "inputTokens": 17537,
+    "outputTokens": 283,
+    "cacheReadTokens": 13248,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

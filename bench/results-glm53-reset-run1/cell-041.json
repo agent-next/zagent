@@ -1,0 +1,21 @@
+{
+  "task": "t7_cli",
+  "lane": "claude_code",
+  "repeat": 3,
+  "index": 41,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:47:13.746Z",
+  "wallMs": 14227,
+  "usage": {
+    "input_tokens": 540,
+    "output_tokens": 1082,
+    "cache_read_input_tokens": 17984,
+    "cache_creation_input_tokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

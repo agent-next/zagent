@@ -1,0 +1,21 @@
+{
+  "task": "t6_regex",
+  "lane": "claude_code",
+  "repeat": 2,
+  "index": 33,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:44:08.470Z",
+  "wallMs": 14524,
+  "usage": {
+    "input_tokens": 557,
+    "output_tokens": 906,
+    "cache_read_input_tokens": 17984,
+    "cache_creation_input_tokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

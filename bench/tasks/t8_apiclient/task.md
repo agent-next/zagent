@@ -1,0 +1,1 @@
+Write a Python 3 class ApiClient with get(path), post(path, json), and retry: on any exception retry up to 3 times with exponential backoff (sleep 0.01 * 2**attempt), then raise. It takes a transport object with .request(method, path, json=None) in its constructor. Do not use the network. Reply with ONLY one python code block.

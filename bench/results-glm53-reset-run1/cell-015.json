@@ -1,0 +1,21 @@
+{
+  "task": "t3_toposort",
+  "lane": "zcode",
+  "repeat": 2,
+  "index": 15,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:36:02.706Z",
+  "wallMs": 23091,
+  "usage": {
+    "inputTokens": 8705,
+    "outputTokens": 1017,
+    "cacheReadTokens": 8064,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

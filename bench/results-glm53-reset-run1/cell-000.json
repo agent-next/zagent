@@ -1,0 +1,21 @@
+{
+  "task": "t1_rot13",
+  "lane": "zcode",
+  "repeat": 1,
+  "index": 0,
+  "pass": true,
+  "failureCategory": null,
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:30:10.557Z",
+  "wallMs": 9498,
+  "usage": {
+    "inputTokens": 8679,
+    "outputTokens": 111,
+    "cacheReadTokens": 4544,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}

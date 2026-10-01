@@ -1,0 +1,21 @@
+{
+  "task": "t7_cli",
+  "lane": "zcode",
+  "repeat": 2,
+  "index": 39,
+  "pass": false,
+  "failureCategory": "incorrect",
+  "model": "glm-5.3",
+  "completedAt": "2026-09-06T21:46:21.155Z",
+  "wallMs": 11249,
+  "usage": {
+    "inputTokens": 8703,
+    "outputTokens": 551,
+    "cacheReadTokens": 8064,
+    "cacheWriteTokens": 0
+  },
+  "tokenSource": "client stdout JSON usage object; allowlisted native fields only",
+  "observedModel": null,
+  "toolCallCount": null,
+  "internalRetryCount": null
+}
