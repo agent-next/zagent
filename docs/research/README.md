@@ -23,9 +23,8 @@ Benchmark configurations that appear in other documents use neutral labels:
 | [`tui-landscape.md`](tui-landscape.md) | Must-have versus differentiator TUI checklist and the complaints it answers |
 | [`cli-ux-comparison.md`](cli-ux-comparison.md) | Cross-CLI UX comparison of codex, claude, Grok CLI and opencode against zagent |
 | [`cli-ux-comparison/`](cli-ux-comparison/) | Its evidence: `help/` holds `--help` captures, `screens/` holds 116 rendered PTY screens (`<cli>-<mode>--<screen>.txt` plus `--meta.json` capture scripts) |
-| [`spikes/cloud-registry/`](spikes/cloud-registry/) | Design spike: a shared defect registry so a fan-out of fuzz agents on Cloudflare files one issue per defect; `node spikes/cloud-registry/test-registry.mjs` runs its offline tests |
 
 Conventions: captured third-party output has had home and scratch paths replaced by
 `~` / `<scratch-dir>` and account e-mails by `<user-email>`. Raw frame captures and
-the capture drivers are not stored here; `scripts/pty-capture.py` (added by the test-tooling PR, agent-next/zagent#10) is the capture tool
+the capture drivers are not stored here; `scripts/pty-capture.py` is the capture tool
 the studies reference.
