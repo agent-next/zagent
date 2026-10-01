@@ -71,9 +71,10 @@ const wall = +((Date.now() - t0) / 1000).toFixed(1);
 // --json harnesses: parse the JSON envelope, extract the response field, then find code blocks
 let text = '';
 try { text = extractResponse(answer); } catch { spawnFail ??= 'invalid response'; }
-if (!agentic) writeFileSync(`${grade}/solution.py`, text);
-else for (const f of readdirSync(ws)) if (f.endsWith('.py') && f !== 'test.py') try { copyFileSync(`${ws}/${f}`, `${grade}/${f}`); } catch {}
-try { writeFileSync(`${grade}/buggy.py`, readFileSync(`${taskDir}/buggy.py`)); } catch {}
+if (!agentic) {
+  writeFileSync(`${grade}/solution.py`, text);
+  try { writeFileSync(`${grade}/buggy.py`, readFileSync(`${taskDir}/buggy.py`)); } catch {}
+} else for (const f of readdirSync(ws)) if (f.endsWith('.py') && f !== 'test.py') try { copyFileSync(`${ws}/${f}`, `${grade}/${f}`); } catch {}
 const t = spawnSync('python3', ['test.py'], { cwd: grade, encoding: 'utf8', timeout: 30000 });
 // The first matrix recorded no model, so afterwards nobody could tell which model
 // each lane had actually used — the conditions of the experiment were unknowable
