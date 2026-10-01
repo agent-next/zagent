@@ -19,10 +19,11 @@ paired, significance-gated comparison (`bench/paired-stats.mjs`) for any new cla
 - `bench/results-glm53-reset-run1/`: the 60 cells, `manifest.json` and `summary.json` of the
   paired GLM-5.3 run. `node bench/recorded-results.test.mjs` re-derives `summary.json` from
   the cells with `summarize()` and checks the paired-stats verdict.
-- `bench/recorded-cells/`: 524 per-cell receipts of the earlier dual-lane and multi-harness
+- `bench/recorded-cells.jsonl`: 524 per-cell receipts of the earlier dual-lane and multi-harness
   runs (`bench/results/` is git-ignored because new runs write there).
-  `<lane>_<task>_<run>.json` are dual-lane cells; `mh_<harness>_<task>_<run>.json` are
-  multi-harness cells. Cells of the aider, codex, gemini and opencode harnesses were
+  One line per cell, `{"file":"<name>.json","cell":{...}}`, sorted by file;
+  `<lane>_<task>_<run>.json` are dual-lane cells, `mh_<harness>_<task>_<run>.json` are
+  multi-harness cells. Unpack to `bench/recorded-cells/` as described in `bench/README.md`. Cells of the aider, codex, gemini and opencode harnesses were
   authentication or spawn failures of the benchmark setup, not measurements of those tools,
   and are not included; RESULTS.md reports them as infrastructure failures.
 - `bench/frontierharness/`: adapter that runs the published FrontierHarness task set with

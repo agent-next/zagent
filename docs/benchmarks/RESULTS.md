@@ -9,7 +9,7 @@
 Setup: 10 objective tasks (8 reply-coded + 2 agentic edit-in-place), hidden test oracles,
 3 runs each × 2 lanes, same model (glm-5.3 via z.ai coding plan), clean agent workspaces,
 deduped usage (message.id), zcode latency measured as turn_s (send→turn-completed, excludes
-harness boot/settle). Raw records: `bench/recorded-cells/` (canonical runIds 1-3 only).
+harness boot/settle). Raw records: `bench/recorded-cells.jsonl` (canonical runIds 1-3 only).
 
 ## Evidence caliber (read first)
 - **turn med 7.1s is protocol-level** (send→turn-completed, excludes harness boot/settle);

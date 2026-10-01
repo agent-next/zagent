@@ -53,6 +53,14 @@ No personal paths are baked in. Defaults and overrides:
 Write-ups and raw cells of earlier runs: [`docs/benchmarks/`](../docs/benchmarks/README.md).
 `node bench/recorded-results.test.mjs` re-derives the recorded run's `summary.json` from its cells.
 
+The 524 cells of the earlier dual-lane and multi-harness runs are packed in
+`bench/recorded-cells.jsonl` (one `{"file","cell"}` line per cell, sorted by file) to keep
+the diff small. Unpack them byte-for-byte into `bench/recorded-cells/` with:
+
+```
+node -e 'const fs=require("fs");fs.mkdirSync("bench/recorded-cells",{recursive:true});for(const l of fs.readFileSync("bench/recorded-cells.jsonl","utf8").split("\n").filter(Boolean)){const{file,cell}=JSON.parse(l);fs.writeFileSync("bench/recorded-cells/"+file,JSON.stringify(cell,null,1))}'
+```
+
 ## Probes (live, credentialed, spend quota unless noted)
 
 - `quota-probe.mjs --live RECEIPT.json`: four small paid calls comparing account quota deltas.
