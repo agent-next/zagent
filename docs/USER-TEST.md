@@ -134,11 +134,11 @@ Each task scored: 10 (clean pass) / 5 (pass with hesitation or workaround) / 0 (
 ```bash
 # S1: fresh user
 sudo useradd -m zctest -s /bin/bash
-# ZAI_API_KEY must be exported in your shell. It is piped into su and read
-# there — never expanded into su's argv, where /proc/*/cmdline would expose
-# it to every local user for the whole run, and never written to disk. The
-# TUI gets the terminal back via /dev/tty after the one-line read.
-printf '%s\n' "$ZAI_API_KEY" | sudo su zctest -c "export PATH=$ZAGENT_REPO/bin:\$PATH; read -r ZAI_API_KEY; export ZAI_API_KEY; exec timeout 300 zz < /dev/tty"
+# ZAI_API_KEY must be exported in your shell. sudo hands it over through the
+# environment — never expanded into argv, where /proc/*/cmdline would expose
+# it to every local user for the whole run, and never written to disk — and
+# the TUI keeps your terminal.
+sudo -H -u zctest --preserve-env=ZAI_API_KEY bash -c 'cd && PATH="$1/bin:$PATH" exec timeout 300 zz' _ "$ZAGENT_REPO"
 # Watch the screen, score each task
 sudo userdel -r zctest
 
