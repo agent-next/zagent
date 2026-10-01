@@ -1,4 +1,4 @@
-# zcode vs claude_code — breadth benchmark (2026-09-04, harness v0.0.22+, 48 cells in runIds 1-3)
+# zcode vs claude_code — breadth benchmark (2026-09-04, harness v0.0.22+, 36 cells in runIds 1-3)
 
 > Historical results. Current comparison must use paired wall-time and correctness
 > receipts, including [the paired rerun](PAIRED-RESULTS.md) and
@@ -48,7 +48,7 @@ Per-task zcode turn medians: 6.2–8.2s coded, 24.4s agentic (t4). claude_code m
   breakage: turn completed, code extracted, oracle judged.
 
 ## Target verdict (target: match or beat claude_code)
-- [x] latency: like-for-like walls 1.6–4.4× faster (turn-vs-wall comparison retired)
+- [x] latency: like-for-like walls 1.5–4.2× faster (turn-vs-wall comparison retired)
 - [ ] token cost: UNVERIFIED; requires attributable billing evidence
 - [x] breadth: 6 tasks in runIds 1-3 (incl. 1 agentic), 18 cells/lane; 10 tasks in the rerun
 - [~] correctness: 94% vs 100% (single-cell difference at n=18; treat as parity-in-noise,
@@ -62,7 +62,7 @@ jsonl; this table supersedes them.
 
 ## Correctness rerun (runIds 4-6, 2026-09-04 late) — confounded, verdict = parity
 Both lanes hit shared-bucket throttling in the tail runs (zcode 25/30 with 4 turn-timeouts
-on runs 5-6; claude_code 26/30 with 4 fails on the same tail). Failures are infra (timeouts), not
+on run 6; claude_code 26/30 with 4 fails on the same tail). Failures are infra (timeouts), not
 reasoning. Pooled across both rounds: zcode 42/48 vs claude_code 44/48 — statistically
 indistinguishable; zcode never trails beyond noise.
 
@@ -121,7 +121,7 @@ lanes identically (zcode/claude_code/zcode-app-cli). After the fix all three lan
 Reading: all four cleanly-driven lanes now solve all 10 tasks; the differentiation is
 speed — zcode median 8.4s is 1.6× app-cli, 2.7× claude_code, 3.3× grok-cli. On THIS matrix the
 target condition (match claude_code correctness, beat on speed) is met; caveats: single
-run per cell (n=10), the earlier dedicated 30-cell bench still shows 97% vs 100% pooled,
+run per cell (n=10), the dedicated bench's shipped runIds 1-3 show 94% vs 100% (17/18 vs 18/18),
 and t10 standings mix pre/post-fix runs. Rerun 3× before any public claim.
 
 ## TARGET VERDICT — 3-run confirmation (m1+t10fix / m2 / m3, 2026-09-06)
