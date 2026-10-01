@@ -31,6 +31,18 @@ const sockPath = mode === 'inner' ? process.argv[4] : process.argv[3];
 const rest = process.argv.slice(mode === 'inner' ? 5 : 4);
 const port = mode === 'inner' ? parseInt(process.argv[3], 10) : NaN;
 
+// AF_UNIX sun_path is 108 bytes (a full 108-byte path binds; 109 does not).
+// Past it the bind fails opaquely — or worse, listen() sits silent forever —
+// and the caller's readiness wait is the only symptom. Refuse up front with
+// the reason, for the plain socket and the TLS twin alike.
+const tlsIdx = rest.indexOf('--tls-sock');
+for (const s of [sockPath, tlsIdx >= 0 ? rest[tlsIdx + 1] : null]) {
+  if (s && Buffer.byteLength(s) > 108) {
+    console.error(`[net-relay] socket path is ${Buffer.byteLength(s)} bytes; AF_UNIX paths are capped at 108: ${s}`);
+    process.exit(2);
+  }
+}
+
 if (mode === 'host') {
   // '--allowlist ""' parses to [] — deny EVERYTHING (fail closed), not any-host.
   const allow = rest[0] === '--allowlist' ? String(rest[1] ?? '').split(',').map((x) => x.trim().toLowerCase().replace(/\.$/, '')).filter(Boolean) : null;

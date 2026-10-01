@@ -571,12 +571,26 @@ const RELAY_HOSTS = (process.env.FLOCK_RELAY_HOSTS || 'opencode.ai').split(',').
 let relayProc = null, relaySock = null;
 let brokerProc = null, brokerSock = null;
 const sockDirs = new Set(); // every socket dir ever spawned — a relay respawn must not strand a live broker.sock
+// AF_UNIX sun_path is 108 bytes (a full 108-byte path binds; 109 does not).
+// On a host whose TMPDIR is long, a socket under a plain mkdtemp dir blows
+// past it and the broker dies behind stdio:'ignore' — surfacing only as a
+// readiness timeout with no cause. Root every socket dir where its longest
+// bound leaf provably fits, falling back to /tmp before giving up loudly.
+function socketDir(prefix, longestLeaf) {
+  for (const dir of [...new Set([tmpdir(), '/tmp'])]) {
+    // +6 for mkdtemp's random suffix
+    if (Buffer.byteLength(path.join(dir, prefix + 'xxxxxx', longestLeaf)) <= 108) {
+      return mkdtempSync(path.join(dir, prefix));
+    }
+  }
+  throw new Error(`no temp root can host ${prefix}*/${longestLeaf} inside the 108-byte AF_UNIX path cap (TMPDIR=${tmpdir()})`);
+}
 // Registered once, not per-respawn (the listener pile-up tripped
 // MaxListenersExceededWarning on long runs).
 process.on('exit', () => { try { relayProc?.kill(); } catch {} try { brokerProc?.kill(); } catch {} for (const d of sockDirs) { try { rmSync(d, { recursive: true, force: true }); } catch {} } });
 function ensureRelay() {
   if (relayProc && !relayProc.killed) return relaySock;
-  const dir = mkdtempSync(path.join(tmpdir(), 'flock-relay-'));
+  const dir = socketDir('flock-relay-', 'broker-tls.sock'); // the broker shares this dir (see ensureBroker)
   sockDirs.add(dir);
   relaySock = path.join(dir, 'relay.sock');
   relayProc = spawn(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'net-relay.mjs'), 'host', relaySock, '--allowlist', RELAY_HOSTS.join(',')], { stdio: 'ignore' });
@@ -659,7 +673,7 @@ let qbrokerProc = null, qbrokerSock = null;
 process.on('exit', () => { try { qbrokerProc?.kill(); } catch {} try { if (qbrokerSock) rmSync(path.dirname(qbrokerSock), { recursive: true, force: true }); } catch {} });
 function ensureQwenBroker() {
   if (qbrokerProc && !qbrokerProc.killed) return qbrokerSock;
-  const dir = mkdtempSync(path.join(tmpdir(), 'flock-qbroker-'));
+  const dir = socketDir('flock-qbroker-', 'broker.sock');
   qbrokerSock = path.join(dir, 'broker.sock');
   qbrokerProc = spawn(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'net-relay.mjs'), 'broker', qbrokerSock,
     '--upstream', QWEN_UPSTREAM, '--path-prefix', '/v1/', '--key-source', QWEN_KEY_SOURCE, '--client-name', QWEN_CLIENT],
@@ -694,7 +708,7 @@ process.on('exit', () => { for (const b of claudeLaneBrokers.values()) { try { b
 function ensureClaudeLaneBroker(lane) {
   const cur = claudeLaneBrokers.get(lane);
   if (cur?.proc && !cur.proc.killed) return cur.sock;
-  const dir = mkdtempSync(path.join(tmpdir(), 'flock-claude-lane-broker-'));
+  const dir = socketDir('flock-claude-lane-broker-', 'broker.sock');
   const sock = path.join(dir, 'broker.sock');
   const proc = spawn(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'net-relay.mjs'), 'broker', sock,
     '--upstream', FLOCK_LANE_UPSTREAM, '--path-prefix', '/anthropic',

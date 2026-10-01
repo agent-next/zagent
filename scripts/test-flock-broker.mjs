@@ -16,7 +16,19 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELAY = path.join(root, 'usertest', 'swarm', 'net-relay.mjs');
-const work = mkdtempSync(path.join(tmpdir(), 'flock-broker-'));
+// The bound leaves here run up to `b14-<random>.sock`; AF_UNIX sun_path is
+// 108 bytes, and a long TMPDIR (this gate inherits one from its own runner)
+// pushes a plain mkdtemp dir past it — the bind then fails behind
+// stdio:'ignore' and the readiness wait is the only symptom. Root the work
+// dir where the longest leaf provably fits, /tmp as fallback.
+const work = (() => {
+  for (const dir of [...new Set([tmpdir(), '/tmp'])]) {
+    if (Buffer.byteLength(path.join(dir, 'flock-broker-xxxxxx', 'b14-xxxxxxxxxxxxxxxx.sock')) <= 108) {
+      return mkdtempSync(path.join(dir, 'flock-broker-'));
+    }
+  }
+  throw new Error(`no temp root can host the broker test sockets inside the 108-byte AF_UNIX path cap (TMPDIR=${tmpdir()})`);
+})();
 const tests = [];
 const test = (n, f) => tests.push([n, f]);
 
@@ -316,6 +328,27 @@ test('TLS args validate: missing material, unreadable files, or tlsSock===sockPa
     { env: childEnv({ FLOCK_BROKER_KEY: 'k' }), encoding: 'utf8', timeout: 10000 });
   assert.equal(r.status, 2, `tlsSock===sockPath: got ${r.status} ${r.stderr.slice(0, 120)}`);
   assert.ok(!existsSync(same), 'refused broker must not leave a socket');
+});
+
+test('a socket path past the 108-byte AF_UNIX cap is refused with the reason', () => {
+  // Past sun_path's 108 bytes the bind fails opaquely (or listen() never
+  // settles at all), so a caller learns nothing but a readiness timeout. The
+  // broker must name the cap and exit 2 before touching the filesystem.
+  const long = path.join(work, `toolong-${'x'.repeat(90)}.sock`);
+  assert.ok(Buffer.byteLength(long) > 108, 'fixture must actually exceed the cap');
+  const r = spawnSync(process.execPath, [RELAY, 'broker', long, '--upstream', 'http://127.0.0.1:9',
+    '--key-source', 'env:FLOCK_BROKER_KEY'],
+    { env: childEnv({ FLOCK_BROKER_KEY: 'k' }), encoding: 'utf8', timeout: 10_000 });
+  assert.equal(r.status, 2, `got ${r.status}: ${(r.stderr || r.error?.message || '').slice(0, 160)}`);
+  assert.match(r.stderr, /AF_UNIX paths are capped at 108/, 'the refusal must name the cap');
+  assert.ok(!existsSync(long), 'refused broker must not leave a socket');
+  // The TLS twin is refused by the same cap, not silently degraded.
+  const short = path.join(work, 'tls-ok.sock');
+  const tls = spawnSync(process.execPath, [RELAY, 'broker', short, '--upstream', 'http://127.0.0.1:9',
+    '--key-source', 'env:FLOCK_BROKER_KEY', '--tls-sock', long, '--tls-cert', 'x', '--tls-key', 'y'],
+    { env: childEnv({ FLOCK_BROKER_KEY: 'k' }), encoding: 'utf8', timeout: 10_000 });
+  assert.equal(tls.status, 2, `tls twin: got ${tls.status}: ${(tls.stderr || '').slice(0, 160)}`);
+  assert.match(tls.stderr, /AF_UNIX paths are capped at 108/);
 });
 
 test('non-GET/POST/HEAD methods are refused', () => {
