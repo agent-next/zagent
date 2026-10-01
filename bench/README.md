@@ -21,10 +21,10 @@ refuse to overwrite an existing receipt, so pick a new run ID every time.
 | --- | --- |
 | `node bench/run.mjs <lane> <taskDir> <runId> [--model <provider/model>]` | dual-lane paired run; lane is `zcode` (this repo's CLI through the protocol client) or `claude_code` |
 | `node bench/run-multi.mjs <harness> <taskDir> <runId>` | multi-harness run; harness is `zcode`, `zcode-app-cli`, `zcode-official`, `claude_code`, `grok-cli` or `opencode` |
-| `bash bench/multi-matrix.sh` | 10 tasks x every harness with an adaptive pause between cells |
+| `bash bench/multi-matrix.sh` | 10 tasks x four harnesses (`claude_code`, `zcode`, `zcode-app-cli`, `zcode-official`) with an adaptive pause between cells; add `opencode` or `grok-cli` to the script's harness list by hand; resumes past valid receipts only, re-running any marked invalid |
 | `REPEATS=3 bash bench/offpeak-matrix.sh` | paced four-way matrix that only runs while `zagent offpeak` reports the free window open and stops when it closes |
 | `node bench/paired-release.mjs` | plan only (prints the matrix); `--live --acknowledge-host-access --output <dir> --runtime <entry> --claude-code <path>` runs the installed-package comparison |
-| `node bench/paired-stats.mjs <records.json>` | significance-gated verdict (sign test, Wilcoxon, bootstrap CI) over a run's records |
+| `node bench/paired-stats.mjs <records.json>` | significance-gated verdict (sign test, Wilcoxon, bootstrap CI) over the cell records written by `paired-release.mjs` (`lane`, `task`, `repeat`, `pass`, `wallMs`, `failureCategory`); `run.mjs` / `run-multi.mjs` receipts have a different shape and are rejected as `insufficient-evidence` |
 
 ### Lane labels
 
