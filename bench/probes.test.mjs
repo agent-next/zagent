@@ -54,6 +54,34 @@ test('PTY probes write under a private temp dir with no stray fixed names or dea
   assert.doesNotMatch(src('slash-probe.mjs'), /replayScreen\(raw, /);
 });
 
+test('slash-probe runs through its PTY launch without a ReferenceError', () => {
+  if (!posix || spawnSync('script', ['--version']).error) return;
+  const fx = path.join(scratch, 'slash');
+  mkdirSync(path.join(fx, 'packages/tui'), { recursive: true });
+  mkdirSync(path.join(fx, 'packages/cli'), { recursive: true });
+  writeFileSync(path.join(fx, 'packages/tui/screen-replay.mjs'), 'export const replayTerminal = () => ({ scrollback: [], screen: [] });\n');
+  writeFileSync(path.join(fx, 'packages/cli/zagent.mjs'), 'process.exit(0);\n');
+  const r = spawnSync(process.execPath, [path.join(here, 'slash-probe.mjs'), '--repo', fx, '--cwd', fx, '--out', path.join(fx, 'raw')], { encoding: 'utf8', timeout: 30000 });
+  assert.doesNotMatch(r.stderr, /ReferenceError/);
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stdout, /banner never rendered/);
+});
+
+test('frontierharness quotes operator models and rejects a non-numeric timeout', () => {
+  if (!posix) return;
+  const py = spawnSync('python3', ['-c',
+    'import sys; sys.path.insert(0, sys.argv[1]); from zagent_common import install_script; print(install_script("b", "a b;touch x", "c$(id)"))',
+    path.join(here, 'frontierharness')], { encoding: 'utf8' });
+  if (py.error) return;
+  assert.equal(py.status, 0, py.stderr);
+  assert.ok(py.stdout.includes("'a b;touch x' 'c$(id)'"), py.stdout);
+  const tasks = path.join(scratch, 'fh-tasks.txt');
+  writeFileSync(tasks, '');
+  const r = spawnSync('bash', [path.join(here, 'frontierharness/run-local-trials.sh'), '--run-id', 'x', '--tasks', tasks, '--timeout', '5400s'], { encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /--timeout must be a positive integer/);
+});
+
 test('first-frame detection survives a multi-byte box char split across chunks', () => {
   const box = Buffer.from('╭', 'utf8');
   assert.equal(box.length, 3);

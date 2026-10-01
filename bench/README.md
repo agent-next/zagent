@@ -83,4 +83,5 @@ node bench/paired-release.test.mjs
 node bench/client-perf.test.mjs
 node bench/test-offpeak-probe.mjs
 node bench/recorded-results.test.mjs
+node bench/probes.test.mjs
 ```

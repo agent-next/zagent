@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 
 # Working root holding the bundle and key file; override with FH_ROOT.
@@ -33,7 +34,7 @@ def install_script(bundle_remote: str, model_main: str, model_lite: str) -> str:
         "const c=JSON.parse(fs.readFileSync(p,\"utf8\"));"
         "c.model=c.model||{};c.model.main=process.argv[2];c.model.lite=process.argv[3];"
         "fs.writeFileSync(p,JSON.stringify(c,null,2));' "
-        f"\"$HOME/.zcode/cli/config.json\" {model_main} {model_lite}"
+        f"\"$HOME/.zcode/cli/config.json\" {shlex.quote(model_main)} {shlex.quote(model_lite)}"
     )
     wrapper = "\n".join([
         "#!/bin/sh",
